@@ -726,6 +726,7 @@ const GOJO_BLUE_PUNCH_HOLD_TICKS = Math.round(0.6 * 60);
 const GOJO_BLUE_PUNCH_ACTIVE_TICKS = 10 * 60;
 const GOJO_BLUE_PUNCH_COOLDOWN_TICKS = 10 * 60;
 const GOJO_BLUE_PUNCH_MAX_CHASES = 3;
+const GOJO_PUSH_PULL_FINISHER_COOLDOWN_TICKS = 5 * 60;
 const FUGA_COOLDOWN_TICKS = 10 * 60;
 const FUGA_CHARGE_TICKS = 150;
 const RCT_HEAL_BAR_RATIO_PER_SECOND = { limitless: 0.24, shrine: 0.12 };
@@ -1268,6 +1269,7 @@ function makeFighter(config) {
     gojoPushPullTimer: 0,
     gojoPushPullAnchorX: null,
     gojoPushPullAnchorY: null,
+    gojoPushPullCooldown: 0,
     fugaAiming: false,
     fugaChargeTicks: 0,
     fugaCooldown: 0,
@@ -4253,8 +4255,7 @@ function startGojoPushPullFinisher(attacker, defender) {
   defender.gojoPushPullTimer = Math.round(1.4 * 60);
   defender.gojoPushPullAnchorX = defender.x;
   defender.gojoPushPullAnchorY = defender.y;
-  defender.vx = 0;
-  defender.vy = 0;
+  attacker.gojoPushPullCooldown = GOJO_PUSH_PULL_FINISHER_COOLDOWN_TICKS;
   defender.knockdown = false;
   defender.knockdownTimer = 0;
   defender.stun = Math.max(defender.stun, defender.gojoPushPullTimer);
@@ -4707,7 +4708,7 @@ function applyHit(attacker, defender) {
   const comboFinisher = heavyFinisher || finalLightHit;
   const bluePullHit = bluePunchActive && attacker.technique === "limitless" && !blocked && !comboFinisher;
   const gojoRedHeavyFinisher = attacker.technique === "limitless" && heavyFinisher && !blocked;
-  const gojoPushPullFinisher = attacker.technique === "limitless" && finalLightHit && !bluePunchActive && !blocked;
+  const gojoPushPullFinisher = attacker.technique === "limitless" && finalLightHit && !bluePunchActive && !blocked && (attacker.gojoPushPullCooldown || 0) <= 0;
   const rawAttackDamage = Math.ceil(attack.damage * getOutgoingDamageMultiplier(attacker));
   const scaledAttackDamage = blocked ? rawAttackDamage : Math.ceil(rawAttackDamage * getComboDamageScale(attacker));
   const baseDamage = blocked ? Math.ceil(scaledAttackDamage * 0.28) : scaledAttackDamage;
@@ -5810,6 +5811,7 @@ function updateEnemyAi() {
 function updateFighter(f, opponent) {
   if (!f.ko) f.dir = f.x + f.w / 2 < opponent.x + opponent.w / 2 ? 1 : -1;
   updateBluePunchTimers(f);
+  if (f.gojoPushPullCooldown > 0) f.gojoPushPullCooldown -= 1;
 
   if (f.ko) {
     f.attacking = null;
@@ -5881,13 +5883,8 @@ function updateFighter(f, opponent) {
     f.gojoPushPullTimer -= 1;
     f.stun = Math.max(f.stun, f.gojoPushPullTimer);
     f.hurt = Math.max(f.hurt, 4);
-    if (!isPracticeDummy(f) || !practiceSettings.stationaryDummy) {
-      const pull = Math.sin(frame * 1.35) * 3.4;
-      const anchorX = Number.isFinite(f.gojoPushPullAnchorX) ? f.gojoPushPullAnchorX : f.x;
-      f.vx = pull;
-      if (Math.abs(f.x - anchorX) > 16) f.x += (anchorX - f.x) * 0.22;
-      f.vy *= 0.4;
-    }
+    // Do not pin or zero velocity here. The finisher keeps the opponent stunned,
+    // but knockback from later hits/projectiles can still move them normally.
     if (f.gojoPushPullTimer <= 0) {
       f.gojoPushPullAnchorX = null;
       f.gojoPushPullAnchorY = null;
