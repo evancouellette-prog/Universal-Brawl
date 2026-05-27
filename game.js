@@ -124,7 +124,7 @@ let musicMasterGain = null;
 const MUSIC_VOLUME_STORAGE_KEY = "jujutsuBrawlMusicVolume";
 const MUSIC_TRACK_STORAGE_KEY = "jujutsuBrawlMusicTrack";
 const RADIO_TRACKS = [
-  { title: "Judas", artist: "Lady Gaga", type: "audio", src: "assets/battle-music.mp3", style: "battle" },
+  { title: "Judas", artist: "Lady Gaga", type: "audio", src: "assets/judas.mp3", style: "battle" },
   { title: "If I Am With You", artist: "Yoshimasa Terui", type: "audio", src: "assets/if-i-am-with-you.mp3", style: "menu" },
   { title: "Kaikai Kitan", artist: "Eve", type: "audio", src: "assets/kaikai-kitan.mp3", style: "battle" },
   { title: "Inferno", artist: "Mrs. GREEN APPLE", type: "audio", src: "assets/inferno.mp3", style: "battle" },
