@@ -8676,7 +8676,7 @@ battleMusic.addEventListener("play", updateMusicProgressUi);
 battleMusic.addEventListener("pause", updateMusicProgressUi);
 battleMusic.addEventListener("error", () => {
   const track = getCurrentRadioTrack();
-  if (track.type === "audio") playNextSong();
+  console.warn("Music failed to load:", track?.title, track?.src);
 });
 techniqueButtons.forEach((button) => {
   button.addEventListener("click", () => finishTechniqueSelect(button.dataset.technique));
