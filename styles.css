@@ -1,7 +1,7 @@
 :root {
   color-scheme: dark;
   font-family: Arial, Helvetica, sans-serif;
-  background: #7b98f8;
+  background: #0f1320;
   color: #f4f7fb;
 }
 
@@ -2732,4 +2732,108 @@ button.hidden {
   font-size: 10px;
   justify-self: end;
   margin-left: 4px;
+}
+
+
+/* PRACTICE_DUMMY_HP_ONLY_PATCH */
+.hidden {
+  display: none !important;
+}
+
+.fighter-panel.practice-hp-only .health-frame {
+  margin-top: 4px;
+}
+
+.fighter-panel.practice-hp-only .fighter-name {
+  margin-bottom: 2px;
+}
+
+
+/* DYNAMIC_CONTROLS_KEYBIND_LABEL_CSS */
+.controls-grid kbd {
+  min-width: 22px;
+  text-align: center;
+}
+
+.controls-grid span {
+  flex-wrap: wrap;
+}
+
+
+/* COOLDOWN_SQUARE_LABEL_ONLY_PATCH */
+.extra-cooldown.ct-slot {
+  border-radius: 0 !important;
+  overflow: hidden !important;
+  background: #f8fafc !important;
+  border: 2px solid #020617 !important;
+  box-shadow: 0 3px 0 rgba(2, 6, 23, 0.66) !important;
+}
+
+.extra-cooldown .ct-meter {
+  border-radius: 0 !important;
+  background: transparent !important;
+  inset: 0 !important;
+}
+
+.extra-cooldown-fill.ct-fill {
+  height: 100% !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  opacity: 0 !important;
+}
+
+/* Only show a full-bar fill while the cooldown is actually charging/cooling down. */
+.extra-cooldown.cooling .extra-cooldown-fill.ct-fill {
+  background: linear-gradient(90deg, #fde68a, #fb923c) !important;
+  opacity: 0.9 !important;
+}
+
+/* Ready state should NOT have a blue full background. */
+.extra-cooldown.ready .extra-cooldown-fill.ct-fill {
+  background: transparent !important;
+  opacity: 0 !important;
+}
+
+/* Blue should only sit behind the words/status, like a tag, with outline. */
+.extra-cooldown-label.ct-label,
+.extra-cooldown-status.ct-status {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: max-content !important;
+  max-width: 100% !important;
+  padding: 2px 5px !important;
+  background: #7dd3fc !important;
+  border: 2px solid #020617 !important;
+  border-radius: 0 !important;
+  box-shadow: 0 2px 0 rgba(2, 6, 23, 0.55) !important;
+  color: #020617 !important;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) !important;
+}
+
+/* When charging/cooling, make the status tag warmer so it is obvious. */
+.extra-cooldown.cooling .extra-cooldown-status.ct-status {
+  background: #fde68a !important;
+}
+
+/* Keep long STUN COMBO readable without making a rounded pill. */
+.extra-cooldown-label.ct-label {
+  font-size: 11px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.extra-cooldown-status.ct-status {
+  font-size: 10px !important;
+  margin-left: 4px !important;
+}
+
+.extra-cooldown .ct-meter {
+  z-index: 0 !important;
+}
+
+.extra-cooldown-label.ct-label,
+.extra-cooldown-status.ct-status {
+  z-index: 2 !important;
 }
