@@ -1348,7 +1348,6 @@ let lastOnlineInputKey = "";
 let lastOnlineFighterSent = 0;
 let remoteInput = { left: false, right: false, up: false, down: false, block: false, rct: false, heavy: false, bluePunch: false };
 let onlineReady = { p1: false, p2: false };
-let onlinePlayerNames = { p1: "Player 1", p2: "Player 2" };
 let player1Ready = false;
 let player2Ready = false;
 let readyCountdownValue = 0;
