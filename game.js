@@ -3108,6 +3108,9 @@ function getCooldownRatio(current, max) {
 function getExtraCooldownItems(f) {
   if (!f) return [];
 
+  // Practice dummy should only show HP, not cooldown rows.
+  if (gameMode === "practice" && f === enemy) return [];
+
   const rctMax = RCT_COOLDOWN_TICKS[f.technique] || 180;
   const bluePunchMax = GOJO_BLUE_PUNCH_COOLDOWN_TICKS || 600;
   const finisherMax = GOJO_LIGHT_FINISHER_COOLDOWN_TICKS || GOJO_PUSH_PULL_FINISHER_COOLDOWN_TICKS || 300;
@@ -3118,7 +3121,7 @@ function getExtraCooldownItems(f) {
 
   if (f.technique === "limitless") {
     items.push({ name: "AMP", current: f.bluePunchCooldown || 0, max: bluePunchMax });
-    items.push({ name: "COMBO", current: f.gojoLightFinisherCooldown || f.pushPullFinisherCooldown || 0, max: finisherMax });
+    items.push({ name: "STUN COMBO", current: f.gojoLightFinisherCooldown || f.pushPullFinisherCooldown || 0, max: finisherMax });
   }
 
   return items;
@@ -3128,6 +3131,13 @@ function updateExtraCooldownHud(container, f) {
   if (!container) return;
   const items = getExtraCooldownItems(f);
   container.innerHTML = "";
+
+  if (!items.length) {
+    container.classList.add("hidden");
+    return;
+  }
+
+  container.classList.remove("hidden");
 
   items.forEach((item) => {
     const ratio = getCooldownRatio(item.current, item.max);
@@ -3176,22 +3186,31 @@ function canUseRctClean(f) {
   return f.health < bounds.ceiling - 0.5;
 }
 
+function stopRctClean(f, startCooldown = true) {
+  if (!f) return;
+  const wasActive = Boolean(f.rctActive || f.rctHolding);
+  f.rctActive = false;
+  f.rctHolding = false;
+  f.rctTicks = 0;
+  if (startCooldown && wasActive) {
+    f.rctCooldown = Math.max(f.rctCooldown || 0, RCT_COOLDOWN_TICKS[f.technique] || 180);
+  }
+}
+
 function updateRctClean(f, wantsRct) {
   if (!f) return;
 
   f.rctCooldown = Math.max(0, (f.rctCooldown || 0) - 1);
 
-  const wasActive = Boolean(f.rctActive);
   const wants = Boolean(wantsRct);
 
-  if (!wants || !canUseRctClean(f)) {
-    f.rctActive = false;
-    f.rctHolding = false;
-    f.rctTicks = 0;
+  if (!wants) {
+    stopRctClean(f, true);
+    return;
+  }
 
-    if (wasActive && !wants) {
-      f.rctCooldown = Math.max(f.rctCooldown || 0, RCT_COOLDOWN_TICKS[f.technique] || 180);
-    }
+  if (!canUseRctClean(f)) {
+    stopRctClean(f, false);
     return;
   }
 
@@ -3208,19 +3227,14 @@ function updateRctClean(f, wantsRct) {
   f.ce = Math.max(0, f.ce - ceCostPerTick);
 
   if (f.health >= bounds.ceiling - 0.25 || f.ce <= 0) {
-    f.rctActive = false;
-    f.rctHolding = false;
-    f.rctTicks = 0;
-    f.rctCooldown = Math.max(f.rctCooldown || 0, RCT_COOLDOWN_TICKS[f.technique] || 180);
+    stopRctClean(f, true);
   }
 }
 
 function cancelRct(f, forceReset = false) {
   // RCT is not cancelled by normal attacks anymore.
   if (!forceReset || !f) return;
-  f.rctActive = false;
-  f.rctHolding = false;
-  f.rctTicks = 0;
+  stopRctClean(f, false);
 }
 
 function updateHud() {
@@ -9790,7 +9804,11 @@ window.addEventListener("keyup", (event) => {
   keys.delete(event.code.toLowerCase());
   keys.delete(event.key);
   keys.delete(event.code);
-  if (isEventForAction("specialAim", key, code) && !homeOpen && !paused && gameState === "playing") {
+  
+  if (isEventForAction("rct", event.key, event.code)) {
+    stopRctClean(player, true); // RCT_KEYUP_FORCE_STOP_PATCH
+  }
+if (isEventForAction("specialAim", key, code) && !homeOpen && !paused && gameState === "playing") {
     const active = gameMode === "online" && onlineRole === "p2" ? enemy : player;
     if (active?.fugaAiming) {
       startFuga(active, active?.techniqueAim || mouseAimWorld);
