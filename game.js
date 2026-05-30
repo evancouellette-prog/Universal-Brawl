@@ -131,7 +131,7 @@ const PLAYER_NAME_STORAGE_KEY = "jujutsuBrawlPlayerName";
 const BUTTON_SFX_VOLUME_STORAGE_KEY = "jujutsuBrawlButtonSfxVolume";
 const GAME_SFX_VOLUME_STORAGE_KEY = "jujutsuBrawlGameSfxVolume";
 
-const KEY_BINDINGS_STORAGE_KEY = "jujutsuBrawlKeyBindingsV1";
+const KEY_BINDINGS_STORAGE_KEY = "jujutsuBrawlKeyBindingsV2";
 const DEFAULT_KEY_BINDINGS = {
   moveLeft: "KeyA",
   moveRight: "KeyD",
@@ -146,14 +146,7 @@ const DEFAULT_KEY_BINDINGS = {
   specialAim: "KeyS",
   ultimate: "KeyC",
   throw: "Tab",
-  pause: "Escape",
-  p2Left: "ArrowLeft",
-  p2Right: "ArrowRight",
-  p2Jump: "ArrowUp",
-  p2Light: "KeyN",
-  p2Heavy: "KeyM",
-  p2Block: "KeyP",
-  p2Dodge: "Slash"
+  pause: "Escape"
 };
 const KEY_BINDING_LABELS = {
   moveLeft: "Move Left",
@@ -169,14 +162,7 @@ const KEY_BINDING_LABELS = {
   specialAim: "Teleport / Fuga Aim",
   ultimate: "Ultimate Aim",
   throw: "Throw",
-  pause: "Pause",
-  p2Left: "P2 Move Left",
-  p2Right: "P2 Move Right",
-  p2Jump: "P2 Jump",
-  p2Light: "P2 Light Punch",
-  p2Heavy: "P2 Heavy Punch",
-  p2Block: "P2 Block",
-  p2Dodge: "P2 Dodge"
+  pause: "Pause"
 };
 let keyBindings = loadKeyBindings();
 let listeningForKeybind = null;
@@ -264,14 +250,21 @@ function applySavedPlayerName() {
 function loadKeyBindings() {
   try {
     const saved = JSON.parse(window.localStorage.getItem(KEY_BINDINGS_STORAGE_KEY) || "{}");
-    const merged = { ...DEFAULT_KEY_BINDINGS, ...saved };
+    const next = { ...DEFAULT_KEY_BINDINGS };
     const used = new Set();
-    Object.keys(merged).forEach((action) => {
-      const key = merged[action];
-      if (!key || used.has(key)) merged[action] = DEFAULT_KEY_BINDINGS[action];
-      used.add(merged[action]);
+
+    Object.keys(DEFAULT_KEY_BINDINGS).forEach((action) => {
+      const savedKey = typeof saved[action] === "string" ? saved[action] : DEFAULT_KEY_BINDINGS[action];
+      if (savedKey && !used.has(savedKey)) {
+        next[action] = savedKey;
+        used.add(savedKey);
+      } else {
+        next[action] = DEFAULT_KEY_BINDINGS[action];
+        used.add(next[action]);
+      }
     });
-    return merged;
+
+    return next;
   } catch (err) {
     return { ...DEFAULT_KEY_BINDINGS };
   }
@@ -284,11 +277,13 @@ function saveKeyBindings() {
 }
 
 function getBoundKey(action) {
-  return keyBindings[action] || DEFAULT_KEY_BINDINGS[action];
+  return keyBindings?.[action] || DEFAULT_KEY_BINDINGS[action];
 }
 
 function isBoundPressed(action) {
-  return keys.has(getBoundKey(action));
+  const bound = getBoundKey(action);
+  if (!bound) return false;
+  return keys.has(bound) || keys.has(String(bound).toLowerCase());
 }
 
 function keyName(code) {
@@ -322,22 +317,29 @@ function isKeyAlreadyUsed(action, code) {
 function renderKeybindList() {
   if (!keybindList) return;
   keybindList.innerHTML = "";
+
   Object.keys(KEY_BINDING_LABELS).forEach((action) => {
     const row = document.createElement("div");
     row.className = "keybind-row";
+
     const label = document.createElement("span");
     label.textContent = KEY_BINDING_LABELS[action];
+
     const button = document.createElement("button");
     button.type = "button";
     button.className = "keybind-set-button";
     button.dataset.action = action;
     button.textContent = listeningForKeybind === action ? "Press a key..." : keyName(getBoundKey(action));
     button.classList.toggle("listening", listeningForKeybind === action);
-    button.addEventListener("click", () => {
+
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
       listeningForKeybind = action;
-      if (keybindWarning) keybindWarning.textContent = "";
+      if (keybindWarning) keybindWarning.textContent = `Press a key for ${KEY_BINDING_LABELS[action]}.`;
       renderKeybindList();
     });
+
     row.append(label, button);
     keybindList.appendChild(row);
   });
@@ -346,6 +348,7 @@ function renderKeybindList() {
 function openKeybindScreen() {
   if (!keybindScreen) return;
   listeningForKeybind = null;
+  if (keybindWarning) keybindWarning.textContent = "";
   renderKeybindList();
   keybindScreen.classList.remove("hidden");
 }
@@ -358,19 +361,22 @@ function closeKeybindScreen() {
 }
 
 function setKeyBinding(action, code) {
-  if (!action || !code) return false;
+  if (!action || !code || !DEFAULT_KEY_BINDINGS[action]) return false;
+
   if (["F5", "F11", "F12"].includes(code)) {
     if (keybindWarning) keybindWarning.textContent = "That key is reserved by the browser.";
     return false;
   }
+
   if (isKeyAlreadyUsed(action, code)) {
     const usedBy = Object.entries(keyBindings).find(([otherAction, otherCode]) => otherAction !== action && otherCode === code)?.[0];
     if (keybindWarning) keybindWarning.textContent = `${keyName(code)} is already used for ${KEY_BINDING_LABELS[usedBy] || usedBy}.`;
     return false;
   }
+
   keyBindings[action] = code;
   saveKeyBindings();
-  if (keybindWarning) keybindWarning.textContent = "Saved.";
+  if (keybindWarning) keybindWarning.textContent = `Saved ${KEY_BINDING_LABELS[action]} as ${keyName(code)}.`;
   return true;
 }
 
@@ -885,11 +891,14 @@ function startBackgroundMusic() {
 }
 
 
-// KEYBIND_CAPTURE_HANDLER
+
+
+
+// KEYBIND_CAPTURE_HANDLER_CLEAN
 document.addEventListener("keydown", (event) => {
-  if (typeof listeningForKeybind === "undefined" || !listeningForKeybind) return;
+  if (!listeningForKeybind) return;
   event.preventDefault();
-  event.stopPropagation();
+  event.stopImmediatePropagation();
 
   const action = listeningForKeybind;
   if (event.code === "Escape") {
@@ -902,6 +911,7 @@ document.addEventListener("keydown", (event) => {
   if (setKeyBinding(action, event.code)) {
     listeningForKeybind = null;
   }
+
   renderKeybindList();
 }, true);
 
@@ -1523,13 +1533,6 @@ const KEY_ACTION_ALIASES = {
   s: "specialAim", keys: "specialAim",
   c: "ultimate", keyc: "ultimate",
   tab: "throw",
-  arrowleft: "p2Left",
-  arrowright: "p2Right",
-  arrowup: "p2Jump",
-  n: "p2Light", keyn: "p2Light",
-  m: "p2Heavy", keym: "p2Heavy",
-  p: "p2Block", keyp: "p2Block",
-  "/": "p2Dodge", slash: "p2Dodge"
 };
 
 function normalizeKeyName(name) {
@@ -9774,13 +9777,13 @@ document.addEventListener("click", (event) => {
 
   if (button.id === "keybindsButton") {
     event.preventDefault();
-    forceOpenKeybindScreen();
+    openKeybindScreen();
     return;
   }
 
   if (button.id === "keybindCloseButton") {
     event.preventDefault();
-    forceCloseKeybindScreen();
+    closeKeybindScreen();
     return;
   }
 
@@ -10088,3 +10091,24 @@ function drawSukunaModelCleanup(f) {
   ctx.restore();
 }
 
+
+
+// KEYBIND_DIRECT_BUTTON_INIT
+window.addEventListener("load", () => {
+  const openButton = document.getElementById("keybindsButton");
+  const closeButton = document.getElementById("keybindCloseButton");
+  const resetButton = document.getElementById("keybindResetButton");
+
+  if (openButton) openButton.onclick = (event) => {
+    event.preventDefault();
+    openKeybindScreen();
+  };
+  if (closeButton) closeButton.onclick = (event) => {
+    event.preventDefault();
+    closeKeybindScreen();
+  };
+  if (resetButton) resetButton.onclick = (event) => {
+    event.preventDefault();
+    resetKeyBindings();
+  };
+});
