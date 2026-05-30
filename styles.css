@@ -2837,7 +2837,32 @@ button.hidden {
 .extra-cooldown-status.ct-status {
   z-index: 2 !important;
 }
-/* Make extra cooldown bars match normal CT cooldown bars */
+
+
+/* FINAL_NAME_AND_SETTINGS_PATCH */
+.username-input,
+#usernameInput,
+.fighter-name-text,
+#playerName,
+#enemyName {
+  text-transform: none !important;
+}
+
+.home-panel .settings-button {
+  background: linear-gradient(180deg, #d6bb62, #a17423) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 0 #5f4213 !important;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.55) !important;
+}
+
+.pause-panel .settings-button,
+#pauseSettingsButton {
+  background: linear-gradient(180deg, #f8fafc, #cbd5e1) !important;
+  color: #020617 !important;
+  box-shadow: 0 4px 0 #475569 !important;
+  text-shadow: none !important;
+}
+
 .extra-cooldowns {
   display: grid !important;
   grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
@@ -2880,13 +2905,11 @@ button.hidden {
   border-radius: 0 !important;
 }
 
-/* Only show colored fill while cooling down */
 .extra-cooldown.cooling .extra-cooldown-fill.ct-fill {
   background: linear-gradient(90deg, #fde68a, #fb923c) !important;
   opacity: 0.95 !important;
 }
 
-/* Ready should look like the normal ready CT bar, not a tiny pill */
 .extra-cooldown.ready .extra-cooldown-fill.ct-fill {
   background: transparent !important;
   opacity: 0 !important;
@@ -2918,12 +2941,4 @@ button.hidden {
   font-size: 10px !important;
   justify-self: end !important;
   margin-left: 4px !important;
-}
-/* Allow lowercase letters in player names */
-.username-input,
-#usernameInput,
-.player-name,
-#playerName,
-#enemyName {
-  text-transform: none !important;
 }
