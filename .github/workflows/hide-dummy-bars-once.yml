@@ -1,0 +1,79 @@
+name: Hide dummy bars once
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    if: ${{ !contains(github.event.head_commit.message, 'Hide practice dummy bars') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Patch game.js safely
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          p = Path('game.js')
+          s = p.read_text(encoding='utf-8')
+
+          def find_function(src, name):
+              start = src.find(f'function {name}(')
+              if start < 0:
+                  raise SystemExit(f'Could not find function {name}')
+              open_brace = src.find('{', start)
+              if open_brace < 0:
+                  raise SystemExit(f'Could not find opening brace for {name}')
+              depth = 0
+              for i in range(open_brace, len(src)):
+                  ch = src[i]
+                  if ch == '{':
+                      depth += 1
+                  elif ch == '}':
+                      depth -= 1
+                      if depth == 0:
+                          return start, open_brace, i
+              raise SystemExit(f'Could not find closing brace for {name}')
+
+          # 1) Hide enemy CE, ult, and extra/RCT HUD only while the enemy is the practice dummy.
+          marker = 'DUMMY_RESOURCE_HUD_HIDE_PATCH'
+          if marker not in s:
+              start, open_brace, close_brace = find_function(s, 'updateHud')
+              inject = '''\n  // DUMMY_RESOURCE_HUD_HIDE_PATCH\n  const hideDummyResourceHud = typeof enemy !== "undefined" && isPracticeDummy(enemy);\n  [enemyCeEl, enemyUltimateEl, enemyExtraCooldownsEl].forEach((el) => {\n    const container = el?.closest?.(".ce-frame, .ultimate-frame, .extra-cooldowns") || el;\n    container?.classList.toggle("hidden", hideDummyResourceHud);\n  });\n'''
+              s = s[:open_brace + 1] + inject + s[open_brace + 1:]
+
+          # 2) Hide the small in-fight CE bar under the practice dummy, but keep health.
+          marker2 = 'DUMMY_FLOATING_CE_HIDE_PATCH'
+          if marker2 not in s:
+              start, open_brace, close_brace = find_function(s, 'drawStatusBars')
+              block = s[start:close_brace]
+              needle = '  ctx.fillStyle = "rgba(15, 23, 42, 0.8)";\n  ctx.fillRect(x, y + 7, f.w + 16, 4);'
+              if needle not in block:
+                  raise SystemExit('Could not find floating CE bar draw block')
+              replacement = '  // DUMMY_FLOATING_CE_HIDE_PATCH\n  if (isPracticeDummy(f)) return;\n\n' + needle
+              block = block.replace(needle, replacement, 1)
+              s = s[:start] + block + s[close_brace:]
+
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Remove one-time workflow and commit
+        run: |
+          git config user.name "ChatGPT"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/hide-dummy-bars-once.yml
+          git add game.js
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Hide practice dummy bars"
+            git push
+          fi
