@@ -9681,7 +9681,7 @@ if (usernameInput) {
     localPlayerName = usernameInput.value.trim().slice(0, 18) || "Player";
     try { window.localStorage.setItem(PLAYER_NAME_STORAGE_KEY, localPlayerName); } catch (err) {}
   });
-  applySavedPlayerName();
+loadLocalPlayerName();
 }
 
 restartButton.addEventListener("click", resetGame);
