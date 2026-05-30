@@ -3107,22 +3107,21 @@ function getCooldownRatio(current, max) {
 
 function getExtraCooldownItems(f) {
   if (!f) return [];
-  const rctMax = RCT_COOLDOWN_TICKS[f.technique] || 180;
-  const bluePunchMax = GOJO_BLUE_PUNCH_COOLDOWN_TICKS || 600;
-  const finisherMax = GOJO_LIGHT_FINISHER_COOLDOWN_TICKS || GOJO_PUSH_PULL_FINISHER_COOLDOWN_TICKS || 300;
-  const fugaMax = FUGA_COOLDOWN_TICKS || 600;
-  const teleportMax = GOJO_TELEPORT_COOLDOWN_TICKS || 480;
 
-  const items = [
-    { name: "RCT", current: f.rctCooldown || 0, max: rctMax }
-  ];
+  // Practice dummy should only show HP, not CE/ULT/CT/extra cooldown rows.
+  if (gameMode === "practice" && f === enemy) return [];
+
+  const items = [];
+
+  const rctMax = RCT_COOLDOWN_TICKS[f.technique] || 180;
+  items.push({ name: "RCT", current: f.rctCooldown || 0, max: rctMax });
 
   if (f.technique === "limitless") {
+    const bluePunchMax = GOJO_BLUE_PUNCH_COOLDOWN_TICKS || 600;
+    const stunComboMax = GOJO_PUSH_PULL_FINISHER_COOLDOWN_TICKS || GOJO_LIGHT_FINISHER_COOLDOWN_TICKS || 300;
+
     items.push({ name: "AMP", current: f.bluePunchCooldown || 0, max: bluePunchMax });
-    items.push({ name: "FIN", current: f.gojoLightFinisherCooldown || f.pushPullFinisherCooldown || 0, max: finisherMax });
-    items.push({ name: "TP", current: f.teleportCooldown || 0, max: teleportMax });
-  } else if (f.technique === "shrine") {
-    items.push({ name: "FUGA", current: f.fugaCooldown || 0, max: fugaMax });
+    items.push({ name: "STUN COMBO", current: f.gojoPushPullCooldown || 0, max: stunComboMax });
   }
 
   return items;
@@ -3130,20 +3129,41 @@ function getExtraCooldownItems(f) {
 
 function updateExtraCooldownHud(container, f) {
   if (!container) return;
+
   const items = getExtraCooldownItems(f);
   container.innerHTML = "";
+
+  if (!items.length) {
+    container.classList.add("hidden");
+    return;
+  }
+
+  container.classList.remove("hidden");
+
   items.forEach((item) => {
     const ratio = getCooldownRatio(item.current, item.max);
     const ready = ratio <= 0;
+
     const row = document.createElement("div");
-    row.className = `extra-cooldown ${ready ? "ready" : "cooling"}`;
-    const fill = document.createElement("div");
-    fill.className = "extra-cooldown-fill";
-    fill.style.width = `${ready ? 100 : ratio * 100}%`;
+    row.className = `extra-cooldown ct-slot ${ready ? "ready" : "cooling"}`;
+
     const label = document.createElement("span");
-    label.className = "extra-cooldown-label";
-    label.textContent = ready ? `${item.name}: READY` : `${item.name}: ${Math.ceil(item.current / 60)}s`;
-    row.append(fill, label);
+    label.className = "extra-cooldown-label ct-label";
+    label.textContent = item.name;
+
+    const meter = document.createElement("div");
+    meter.className = "ct-meter";
+
+    const fill = document.createElement("div");
+    fill.className = "extra-cooldown-fill ct-fill";
+    fill.style.width = `${ready ? 100 : Math.max(4, ratio * 100)}%`;
+
+    const status = document.createElement("span");
+    status.className = "extra-cooldown-status ct-status";
+    status.textContent = ready ? "READY" : `${Math.ceil(item.current / 60)}s`;
+
+    meter.appendChild(fill);
+    row.append(label, meter, status);
     container.appendChild(row);
   });
 }
