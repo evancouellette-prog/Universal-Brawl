@@ -237,14 +237,7 @@ function closeSettingsScreen() {
   if (settingsScreen) settingsScreen.classList.add("hidden");
 }
 
-function applySavedPlayerName() {
-  try {
-    const saved = window.localStorage.getItem(PLAYER_NAME_STORAGE_KEY);
-    if (saved) localPlayerName = saved.slice(0, 18);
-  } catch (err) {}
-  if (usernameInput) usernameInput.value = localPlayerName === "Player" ? "" : localPlayerName;
-  if (playerNameEl && localPlayerName && localPlayerName !== "Player") playerNameEl.textContent = localPlayerName;
-}
+
 
 
 function loadKeyBindings() {
@@ -358,6 +351,7 @@ function closeKeybindScreen() {
   listeningForKeybind = null;
   keybindScreen.classList.add("hidden");
   renderKeybindList();
+  updateControlsPanelKeybindLabels();
 }
 
 function setKeyBinding(action, code) {
@@ -376,6 +370,7 @@ function setKeyBinding(action, code) {
 
   keyBindings[action] = code;
   saveKeyBindings();
+  updateControlsPanelKeybindLabels();
   if (keybindWarning) keybindWarning.textContent = `Saved ${KEY_BINDING_LABELS[action]} as ${keyName(code)}.`;
   return true;
 }
@@ -384,28 +379,86 @@ function resetKeyBindings() {
   keyBindings = { ...DEFAULT_KEY_BINDINGS };
   listeningForKeybind = null;
   saveKeyBindings();
+  updateControlsPanelKeybindLabels();
   if (keybindWarning) keybindWarning.textContent = "Defaults restored.";
   renderKeybindList();
 }
+
+// DYNAMIC_CONTROLS_KEYBIND_LABEL_PATCH
+function controlKeyLabel(action) {
+  return keyName(getBoundKey(action));
+}
+
+function makeControlKbd(label) {
+  return `<kbd>${String(label).replace(/[&<>"']/g, (ch) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  }[ch]))}</kbd>`;
+}
+
+function updateControlsPanelKeybindLabels() {
+  if (!controlsGrid) return;
+
+  controlsGrid.innerHTML = `
+    <p><strong>Move</strong>
+      <span>${makeControlKbd(controlKeyLabel("moveLeft"))}${makeControlKbd(controlKeyLabel("moveRight"))} walk</span>
+      <span>${makeControlKbd(controlKeyLabel("jump"))} jump / double jump</span>
+    </p>
+    <p><strong>Attack</strong>
+      <span>${makeControlKbd(controlKeyLabel("light"))} light punch</span>
+      <span>${makeControlKbd(controlKeyLabel("heavy"))} heavy punch</span>
+      <span><kbd>Toward</kbd>${makeControlKbd(controlKeyLabel("throw"))} throw</span>
+    </p>
+    <p><strong>Defend</strong>
+      <span>${makeControlKbd(controlKeyLabel("block"))} block</span>
+      <span>${makeControlKbd(controlKeyLabel("dodge"))} dodge</span>
+    </p>
+    <p><strong>Technique</strong>
+      <span><kbd>Left Click</kbd> Blue</span>
+      <span><kbd>Right Click</kbd> Red / Dismantle</span>
+      <span>${makeControlKbd(controlKeyLabel("specialAim"))} Teleport / Fuga aim</span>
+      <span>${makeControlKbd(controlKeyLabel("ultimate"))} Ultimate aim</span>
+      <span>${makeControlKbd(controlKeyLabel("infinity"))} Infinity</span>
+      <span>${makeControlKbd(controlKeyLabel("bluePunch"))} Blue Amp</span>
+      <span>${makeControlKbd(controlKeyLabel("rct"))} hold RCT</span>
+    </p>
+  `;
+}
+
+
 
 if (keybindsButton) keybindsButton.addEventListener("click", openKeybindScreen);
 if (keybindCloseButton) keybindCloseButton.addEventListener("click", closeKeybindScreen);
 if (keybindResetButton) keybindResetButton.addEventListener("click", resetKeyBindings);
 
 
-// NAME_TAG_INIT_PATCH
-window.setTimeout(() => {
-  if (usernameInput) {
-    loadLocalPlayerName();
-    usernameInput.addEventListener("input", saveLocalPlayerName);
-    usernameInput.addEventListener("change", saveLocalPlayerName);
-  } else {
-    loadLocalPlayerName();
-  }
-}, 0)
+
 
 
 // CLEAN_NAME_TAG_SYSTEM_PATCH
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// CLEAN_NAME_TAG_EVERY_MODE_PATCH
 function sanitizePlayerName(name, fallback = "Player") {
   const clean = String(name || "")
     .replace(/[<>]/g, "")
@@ -428,46 +481,51 @@ function loadLocalPlayerName() {
   } catch (err) {
     localPlayerName = "Player";
   }
-  if (usernameInput) usernameInput.value = localPlayerName;
+
+  if (usernameInput) usernameInput.value = localPlayerName === "Player" ? "" : localPlayerName;
   updatePlayerNameLabels();
 }
 
 function saveLocalPlayerName() {
   localPlayerName = getLocalPlayerName();
+
   try {
     window.localStorage.setItem(PLAYER_NAME_STORAGE_KEY, localPlayerName);
   } catch (err) {}
+
   updatePlayerNameLabels();
   sendOnlineName();
 }
 
-function getOpponentNameForMode() {
+function getPlayerLabel() {
+  const mode = typeof gameMode !== "undefined" ? gameMode : "cpu";
+  const role = typeof onlineRole !== "undefined" ? onlineRole : null;
+
+  if (mode === "online" && role === "p2") {
+    return sanitizePlayerName(onlinePlayerNames.p1, "Player 1");
+  }
+
+  return getLocalPlayerName();
+}
+
+function getEnemyLabel() {
   const mode = typeof gameMode !== "undefined" ? gameMode : "cpu";
   const role = typeof onlineRole !== "undefined" ? onlineRole : null;
 
   if (mode === "practice") return "Practice Dummy";
   if (mode === "cpu") return "CPU";
+
   if (mode === "online") {
     if (role === "p1") return sanitizePlayerName(onlinePlayerNames.p2, "Player 2");
-    if (role === "p2") return sanitizePlayerName(onlinePlayerNames.p1, "Player 1");
+    if (role === "p2") return getLocalPlayerName();
   }
 
   return "Player 2";
 }
 
 function updatePlayerNameLabels() {
-  const mode = typeof gameMode !== "undefined" ? gameMode : "cpu";
-  const role = typeof onlineRole !== "undefined" ? onlineRole : null;
-  const mine = getLocalPlayerName();
-
-  if (mode === "online" && role === "p2") {
-    if (playerNameEl) playerNameEl.textContent = sanitizePlayerName(onlinePlayerNames.p1, "Player 1");
-    if (enemyNameEl) enemyNameEl.textContent = mine;
-    return;
-  }
-
-  if (playerNameEl) playerNameEl.textContent = mine;
-  if (enemyNameEl) enemyNameEl.textContent = getOpponentNameForMode();
+  if (playerNameEl) playerNameEl.textContent = getPlayerLabel();
+  if (enemyNameEl) enemyNameEl.textContent = getEnemyLabel();
 }
 
 function sendOnlineName() {
@@ -485,14 +543,17 @@ function sendOnlineName() {
 
 function handleOnlineNameMessage(data) {
   if (!data || data.type !== "name") return false;
+
   const role = data.role === "p2" ? "p2" : "p1";
   onlinePlayerNames[role] = sanitizePlayerName(data.name, role === "p1" ? "Player 1" : "Player 2");
   updatePlayerNameLabels();
   return true;
 }
 
+// NAME_TAG_INIT_PATCH
 window.setTimeout(() => {
   loadLocalPlayerName();
+
   if (usernameInput) {
     usernameInput.addEventListener("input", saveLocalPlayerName);
     usernameInput.addEventListener("change", saveLocalPlayerName);
@@ -1296,41 +1357,13 @@ let lastOnlineNameSent = 0;
 const mouseTechniqueHeld = { ct1: false, ct2: false, teleport: false, fuga: false };
 
 
-function sanitizePlayerName(name, fallback = "Player") {
-  const clean = String(name || "")
-    .replace(/[<>]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 18);
-  return clean || fallback;
-}
 
-function getLocalPlayerName() {
-  if (usernameInput) {
-    localPlayerName = sanitizePlayerName(usernameInput.value, "Player");
-  }
-  return sanitizePlayerName(localPlayerName, "Player");
-}
 
-function saveLocalPlayerName() {
-  localPlayerName = getLocalPlayerName();
-  try {
-    window.localStorage.setItem(PLAYER_NAME_STORAGE_KEY, localPlayerName);
-  } catch (err) {}
-  updatePlayerNameLabels();
-  sendOnlineName();
-}
 
-function loadLocalPlayerName() {
-  try {
-    const saved = window.localStorage.getItem(PLAYER_NAME_STORAGE_KEY);
-    localPlayerName = sanitizePlayerName(saved, "Player");
-  } catch (err) {
-    localPlayerName = "Player";
-  }
-  if (usernameInput) usernameInput.value = localPlayerName;
-  updatePlayerNameLabels();
-}
+
+
+
+
 
 function getOpponentDisplayName() {
   if (gameMode === "online") {
@@ -1342,76 +1375,19 @@ function getOpponentDisplayName() {
   return "Player 2";
 }
 
-function updatePlayerNameLabels() {
-  const mode = typeof gameMode !== "undefined" ? gameMode : "cpu";
-  const role = typeof onlineRole !== "undefined" ? onlineRole : null;
-  const names = typeof onlinePlayerNames !== "undefined" ? onlinePlayerNames : { p1: "Player 1", p2: "Player 2" };
-  const mine = getLocalPlayerName ? getLocalPlayerName() : "Player";
 
-  if (mode === "online" && role === "p2") {
-    if (playerNameEl) playerNameEl.textContent = sanitizePlayerName(names.p1, "Player 1");
-    if (enemyNameEl) enemyNameEl.textContent = mine;
-    return;
-  }
 
-  if (playerNameEl) playerNameEl.textContent = mine;
 
-  if (enemyNameEl) {
-    if (mode === "practice") updatePlayerNameLabels();
-    else if (mode === "cpu") updatePlayerNameLabels();
-    else if (mode === "online" && role === "p1") enemyNameEl.textContent = sanitizePlayerName(names.p2, "Player 2");
-    else updatePlayerNameLabels();
-  }
-}
-
-function sendOnlineName() {
-  if (typeof onlineSocket === "undefined" || typeof onlineConnected === "undefined" || typeof onlineRole === "undefined") return;
-  if (!onlineSocket || !onlineConnected || !onlineRole) return;
-  try {
-    onlineSocket.send(JSON.stringify({
-      type: "name",
-      role: onlineRole,
-      name: getLocalPlayerName()
-    }));
-  } catch (err) {}
-}
 
 
 // NAME_TAG_SYSTEM_PATCH
-function sanitizePlayerName(name, fallback = "Player") {
-  const clean = String(name || "")
-    .replace(/[<>]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 18);
-  return clean || fallback;
-}
 
-function getLocalPlayerName() {
-  if (usernameInput) {
-    localPlayerName = sanitizePlayerName(usernameInput.value, "Player");
-  }
-  return sanitizePlayerName(localPlayerName, "Player");
-}
 
-function loadLocalPlayerName() {
-  try {
-    localPlayerName = sanitizePlayerName(window.localStorage.getItem(PLAYER_NAME_STORAGE_KEY), "Player");
-  } catch (err) {
-    localPlayerName = "Player";
-  }
-  if (usernameInput) usernameInput.value = localPlayerName;
-  updatePlayerNameLabels();
-}
 
-function saveLocalPlayerName() {
-  localPlayerName = getLocalPlayerName();
-  try {
-    window.localStorage.setItem(PLAYER_NAME_STORAGE_KEY, localPlayerName);
-  } catch (err) {}
-  updatePlayerNameLabels();
-  sendOnlineName();
-}
+
+
+
+
 
 function getModeOpponentName() {
   if (gameMode === "practice") return "Practice Dummy";
@@ -1423,27 +1399,9 @@ function getModeOpponentName() {
   return "Player 2";
 }
 
-function updatePlayerNameLabels() {
-  const mine = getLocalPlayerName();
-  if (gameMode === "online" && onlineRole === "p2") {
-    if (playerNameEl) playerNameEl.textContent = sanitizePlayerName(onlinePlayerNames.p1, "Player 1");
-    if (enemyNameEl) enemyNameEl.textContent = mine;
-    return;
-  }
-  if (playerNameEl) playerNameEl.textContent = mine;
-  if (enemyNameEl) enemyNameEl.textContent = getModeOpponentName();
-}
 
-function sendOnlineName() {
-  if (!onlineSocket || !onlineConnected || !onlineRole) return;
-  try {
-    onlineSocket.send(JSON.stringify({
-      type: "name",
-      role: onlineRole,
-      name: getLocalPlayerName()
-    }));
-  } catch (err) {}
-}
+
+
 
 function sanitizeAimPoint(aimPoint) {
   if (!aimPoint) return null;
@@ -2451,7 +2409,10 @@ function startOnlineGame(role) {
   onlineConnected = true;
   
   
-  sendOnlineName(); // CLEAN_ONLINE_NAME_SEND
+  
+  sendOnlineName(); // NAME_SEND_ON_CONNECT
+  updatePlayerNameLabels();
+sendOnlineName(); // CLEAN_ONLINE_NAME_SEND
   updatePlayerNameLabels();
 sendOnlineName(); // ONLINE_NAME_SEND_PATCH
   updatePlayerNameLabels();
@@ -2977,14 +2938,9 @@ function startRound(nextState = "playing") {
   updateHud();
 }
 
-function getPlayerLabel() {
-  return "Player 1";
-}
 
-function getEnemyLabel() {
-  if (pacifistBot) return "Dummy";
-  return gameMode === "cpu" ? "CPU" : "Player 2";
-}
+
+
 
 function getPlayerLabelColor() {
   return "#ff4b4b";
@@ -3175,21 +3131,22 @@ function setHudElementHidden(el, hidden) {
 function updatePracticeDummyHudVisibility() {
   const hideDummyMeters = gameMode === "practice";
 
-  setHudElementHidden(enemyCeEl ? enemyCeEl.closest(".ce-frame") : null, hideDummyMeters);
-  setHudElementHidden(enemyUltimateEl ? enemyUltimateEl.closest(".ultimate-frame") : null, hideDummyMeters);
+  const enemyPanel = enemyHealthEl ? enemyHealthEl.closest(".fighter-panel") : null;
+  const enemyCeFrame = enemyCeEl ? enemyCeEl.closest(".ce-frame") : null;
+  const enemyUltFrame = enemyUltimateEl ? enemyUltimateEl.closest(".ultimate-frame") : null;
+  const enemyCtGrid = ctHud?.enemy?.[0]?.slot ? ctHud.enemy[0].slot.closest(".ct-cooldowns") : null;
 
-  const enemyCtGrid = ctHud?.enemy?.[0]?.slot
-    ? ctHud.enemy[0].slot.closest(".ct-cooldowns")
-    : null;
-
+  setHudElementHidden(enemyCeFrame, hideDummyMeters);
+  setHudElementHidden(enemyUltFrame, hideDummyMeters);
   setHudElementHidden(enemyCtGrid, hideDummyMeters);
   setHudElementHidden(enemyExtraCooldownsEl, hideDummyMeters);
+  setHudElementHidden(enemyStarsEl, hideDummyMeters);
+
+  if (enemyPanel) enemyPanel.classList.toggle("practice-hp-only", hideDummyMeters);
 }
 
 function updateHud() {
   updatePlayerNameLabels();
-  playerNameEl.textContent = getPlayerLabel();
-  enemyNameEl.textContent = getEnemyLabel();
   enemyNameEl.classList.toggle("player-two-name", gameMode !== "cpu");
   enemyNameEl.classList.toggle("cpu-name", gameMode === "cpu");
   renderSegmentedHealth(playerHealthEl, player);
@@ -3212,8 +3169,8 @@ function updateHud() {
 
   updateExtraCooldownHud(playerExtraCooldownsEl, player);
   updateExtraCooldownHud(enemyExtraCooldownsEl, enemy);
-
-  updatePracticeDummyHudVisibility();}
+  updatePracticeDummyHudVisibility();
+}
 
 function finishRound(winner) {
   if (roundResolved) return;
@@ -9723,7 +9680,6 @@ if (usernameInput) {
   usernameInput.addEventListener("input", () => {
     localPlayerName = usernameInput.value.trim().slice(0, 18) || "Player";
     try { window.localStorage.setItem(PLAYER_NAME_STORAGE_KEY, localPlayerName); } catch (err) {}
-    if (playerNameEl) playerNameEl.textContent = localPlayerName;
   });
   applySavedPlayerName();
 }
@@ -9948,13 +9904,7 @@ document.addEventListener("click", (event) => {
 
 
 // ONLINE_NAME_FALLBACK_HANDLER
-function handleOnlineNameMessage(data) {
-  if (!data || data.type !== "name") return false;
-  const role = data.role === "p2" ? "p2" : "p1";
-  onlinePlayerNames[role] = sanitizePlayerName(data.name, role === "p1" ? "Player 1" : "Player 2");
-  updatePlayerNameLabels();
-  return true;
-}
+
 
 
 // SAFE_BUTTON_AND_KEYBIND_RECOVERY_PATCH
@@ -10265,3 +10215,5 @@ window.addEventListener("load", () => {
 });
 
 // KEYBIND_ALIAS_REBIND_FIX: old default aliases no longer trigger after rebinding.
+
+window.addEventListener("load", () => updateControlsPanelKeybindLabels()); // DYNAMIC_CONTROLS_LOAD_CALL
