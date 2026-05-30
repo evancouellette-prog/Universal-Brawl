@@ -2942,3 +2942,23 @@ button.hidden {
   justify-self: end !important;
   margin-left: 4px !important;
 }
+
+
+/* FIX_PAUSE_AND_MAIN_SETTINGS_BUTTONS */
+.home-panel .start-actions .settings-button {
+  background: linear-gradient(180deg, #d6bb62, #a17423) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 0 #5f4213 !important;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.55) !important;
+}
+
+.pause-screen .settings-button,
+.pause-panel .settings-button,
+#pauseScreen .settings-button,
+#pauseSettingsButton {
+  background: inherit !important;
+  color: inherit !important;
+  box-shadow: inherit !important;
+  text-shadow: inherit !important;
+  filter: none !important;
+}
