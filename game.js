@@ -168,7 +168,6 @@ let keyBindings = loadKeyBindings();
 let listeningForKeybind = null;
 
 let localPlayerName = "Player";
-let onlinePlayerNames = { p1: "Player 1", p2: "Player 2" };
 let buttonSfxVolume = 0.45;
 let gameSfxVolume = 0.75;
 
@@ -458,8 +457,6 @@ if (keybindResetButton) keybindResetButton.addEventListener("click", resetKeyBin
 
 
 
-
-// CLEAN_NAME_TAG_EVERY_MODE_PATCH
 function sanitizePlayerName(name, fallback = "Player") {
   const clean = String(name || "")
     .replace(/[<>]/g, "")
@@ -489,7 +486,6 @@ function loadLocalPlayerName() {
 
 function saveLocalPlayerName() {
   localPlayerName = getLocalPlayerName();
-
   try {
     window.localStorage.setItem(PLAYER_NAME_STORAGE_KEY, localPlayerName);
   } catch (err) {}
@@ -550,6 +546,7 @@ function handleOnlineNameMessage(data) {
   updatePlayerNameLabels();
   return true;
 }
+
 
 // NAME_TAG_INIT_PATCH
 window.setTimeout(() => {
@@ -1348,6 +1345,7 @@ let lastOnlineInputKey = "";
 let lastOnlineFighterSent = 0;
 let remoteInput = { left: false, right: false, up: false, down: false, block: false, rct: false, heavy: false, bluePunch: false };
 let onlineReady = { p1: false, p2: false };
+let onlinePlayerNames = { p1: "Player 1", p2: "Player 2" };
 let player1Ready = false;
 let player2Ready = false;
 let readyCountdownValue = 0;
@@ -9680,8 +9678,10 @@ if (usernameInput) {
   usernameInput.addEventListener("input", () => {
     localPlayerName = usernameInput.value.trim().slice(0, 18) || "Player";
     try { window.localStorage.setItem(PLAYER_NAME_STORAGE_KEY, localPlayerName); } catch (err) {}
+    updatePlayerNameLabels();
+    sendOnlineName();
   });
-loadLocalPlayerName();
+  loadLocalPlayerName();
 }
 
 restartButton.addEventListener("click", resetGame);
@@ -10217,3 +10217,277 @@ window.addEventListener("load", () => {
 // KEYBIND_ALIAS_REBIND_FIX: old default aliases no longer trigger after rebinding.
 
 window.addEventListener("load", () => updateControlsPanelKeybindLabels()); // DYNAMIC_CONTROLS_LOAD_CALL
+
+
+// VISUAL_UPGRADE_PATCH_INFINITY_RED_CLEAVE_WCS
+function drawInfinityField(f) {
+  if (!isInfinityActive(f)) return;
+  const center = getFighterCenter(f);
+  const fieldY = center.y - 8;
+  const pulse = 1 + Math.sin((f.infinityPulse || frame) * 0.16) * 0.045;
+  const radius = INFINITY_RADIUS * pulse;
+  const ceRatio = Math.max(0, Math.min(1, f.ce / f.maxCe));
+  const spin = frame * 0.035;
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+
+  const glow = ctx.createRadialGradient(center.x, fieldY, radius * 0.12, center.x, fieldY, radius * 1.18);
+  glow.addColorStop(0, `rgba(224, 242, 254, ${0.10 + ceRatio * 0.05})`);
+  glow.addColorStop(0.42, `rgba(56, 189, 248, ${0.12 + ceRatio * 0.06})`);
+  glow.addColorStop(0.78, "rgba(37, 99, 235, 0.08)");
+  glow.addColorStop(1, "rgba(14, 165, 233, 0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(center.x, fieldY, radius * 1.2, 0, Math.PI * 2);
+  ctx.fill();
+
+  for (let i = 0; i < 3; i += 1) {
+    const r = radius * (0.72 + i * 0.16);
+    ctx.strokeStyle = `rgba(191, 219, 254, ${0.42 - i * 0.08})`;
+    ctx.lineWidth = 2 + i * 0.9;
+    ctx.setLineDash(i === 1 ? [13, 9] : [7, 13]);
+    ctx.lineDashOffset = -(frame * (0.65 + i * 0.25));
+    ctx.beginPath();
+    ctx.ellipse(center.x, fieldY, r * (1 + i * 0.02), r * (0.88 + i * 0.03), spin * (i + 1), 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  ctx.strokeStyle = "rgba(125, 211, 252, 0.7)";
+  ctx.lineWidth = 1.5;
+  for (let i = 0; i < 7; i += 1) {
+    const a = frame * 0.035 + i * Math.PI * 2 / 7;
+    const x = center.x + Math.cos(a) * radius * 0.85;
+    const y = fieldY + Math.sin(a) * radius * 0.72;
+    ctx.beginPath();
+    ctx.arc(x, y, 2.2 + Math.sin(frame * 0.1 + i) * 0.9, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  ctx.globalCompositeOperation = "source-over";
+  ctx.restore();
+}
+
+function drawLimitlessOrb(move, radius, dir = 1) {
+  ctx.save();
+  if (move === "red") {
+    ctx.scale(dir, 1);
+    const pulse = 1 + Math.sin(frame * 0.42) * 0.09;
+    const spin = frame * 0.18;
+
+    ctx.globalCompositeOperation = "lighter";
+    const redGlow = ctx.createRadialGradient(0, 0, radius * 0.05, 0, 0, radius * 2.35 * pulse);
+    redGlow.addColorStop(0, "rgba(255, 255, 255, 0.98)");
+    redGlow.addColorStop(0.17, "rgba(254, 202, 202, 0.96)");
+    redGlow.addColorStop(0.43, "rgba(248, 113, 113, 0.92)");
+    redGlow.addColorStop(0.78, "rgba(127, 29, 29, 0.42)");
+    redGlow.addColorStop(1, "rgba(127, 29, 29, 0)");
+    ctx.fillStyle = redGlow;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, radius * 2.15 * pulse, radius * 1.55 * pulse, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "rgba(127, 29, 29, 0.96)";
+    ctx.beginPath();
+    ctx.ellipse(0, 0, radius * 1.02, radius * 0.82, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "rgba(248, 113, 113, 0.96)";
+    ctx.beginPath();
+    ctx.ellipse(radius * 0.1, 0, radius * 0.74, radius * 0.58, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+    ctx.beginPath();
+    ctx.ellipse(radius * 0.24, -radius * 0.18, radius * 0.28, radius * 0.2, -0.25, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.lineCap = "round";
+    for (let i = 0; i < 4; i += 1) {
+      ctx.strokeStyle = i % 2 ? "rgba(254, 226, 226, 0.82)" : "rgba(127, 29, 29, 0.86)";
+      ctx.lineWidth = i % 2 ? 3 : 5;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius * (0.98 + i * 0.2), spin + i * 1.45, spin + i * 1.45 + Math.PI * 1.1);
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = "rgba(248, 113, 113, 0.82)";
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(-radius * 3.2, -radius * 0.22);
+    ctx.lineTo(-radius * 0.7, -radius * 0.05);
+    ctx.moveTo(-radius * 2.8, radius * 0.34);
+    ctx.lineTo(-radius * 0.55, radius * 0.16);
+    ctx.stroke();
+
+    ctx.globalCompositeOperation = "source-over";
+  } else if (move === "blue") {
+    const spin = frame * 0.16;
+    const pulse = 1 + Math.sin(frame * 0.22) * 0.06;
+    const blueGlow = ctx.createRadialGradient(0, 0, 1, 0, 0, radius * 1.8 * pulse);
+    blueGlow.addColorStop(0, "rgba(2, 6, 23, 0.95)");
+    blueGlow.addColorStop(0.28, "rgba(29, 78, 216, 0.92)");
+    blueGlow.addColorStop(0.6, "rgba(56, 189, 248, 0.72)");
+    blueGlow.addColorStop(1, "rgba(56, 189, 248, 0)");
+    ctx.fillStyle = blueGlow;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius * 1.8 * pulse, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "rgba(15, 23, 42, 0.92)";
+    ctx.beginPath();
+    ctx.arc(0, 0, radius * 0.52, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(224, 242, 254, 0.9)";
+    ctx.beginPath();
+    ctx.arc(-radius * 0.15, -radius * 0.12, radius * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(186, 230, 253, 0.9)";
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    for (let i = 0; i < 3; i += 1) {
+      ctx.beginPath();
+      ctx.arc(0, 0, radius * (0.82 + i * 0.28), spin + i * 1.8, spin + i * 1.8 + Math.PI * 1.25);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+function drawShrineTechniqueShape(move, radius) {
+  ctx.save();
+  ctx.rotate(move === "cleave" ? -0.24 : -0.1);
+
+  if (move === "slash") {
+    ctx.globalCompositeOperation = "lighter";
+    ctx.fillStyle = "rgba(2, 6, 23, 0.96)";
+    ctx.beginPath();
+    ctx.moveTo(-radius * 1.55, -radius * 0.36);
+    ctx.lineTo(radius * 1.8, -radius * 1.0);
+    ctx.lineTo(radius * 1.38, -radius * 0.24);
+    ctx.lineTo(radius * 1.92, radius * 0.14);
+    ctx.lineTo(-radius * 1.28, radius * 0.72);
+    ctx.lineTo(-radius * 0.8, radius * 0.08);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = "rgba(220, 38, 38, 0.96)";
+    ctx.beginPath();
+    ctx.moveTo(-radius * 1.16, -radius * 0.2);
+    ctx.lineTo(radius * 1.32, -radius * 0.66);
+    ctx.lineTo(radius * 0.98, -radius * 0.14);
+    ctx.lineTo(radius * 1.42, radius * 0.1);
+    ctx.lineTo(-radius * 1.0, radius * 0.5);
+    ctx.lineTo(-radius * 0.58, radius * 0.05);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-radius * 1.25, radius * 0.38);
+    ctx.lineTo(radius * 1.55, -radius * 0.78);
+    ctx.stroke();
+  } else {
+    ctx.globalCompositeOperation = "lighter";
+    ctx.lineCap = "round";
+
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.92)";
+    ctx.lineWidth = Math.max(4, radius * 0.16);
+    ctx.beginPath();
+    ctx.arc(0, 0, radius * 1.45, -Math.PI * 0.78, Math.PI * 0.28);
+    ctx.stroke();
+
+    ctx.strokeStyle = "rgba(2, 6, 23, 0.98)";
+    ctx.lineWidth = Math.max(7, radius * 0.24);
+    ctx.beginPath();
+    ctx.arc(radius * 0.08, 0, radius * 1.25, -Math.PI * 0.78, Math.PI * 0.28);
+    ctx.stroke();
+
+    ctx.strokeStyle = "rgba(127, 29, 29, 0.96)";
+    ctx.lineWidth = Math.max(3, radius * 0.1);
+    ctx.beginPath();
+    ctx.arc(radius * 0.16, 0, radius * 1.08, -Math.PI * 0.74, Math.PI * 0.2);
+    ctx.stroke();
+
+    ctx.strokeStyle = "rgba(248, 113, 113, 0.7)";
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 3; i += 1) {
+      ctx.beginPath();
+      ctx.moveTo(-radius * (1.15 + i * 0.18), radius * (-0.4 + i * 0.32));
+      ctx.lineTo(radius * (0.55 + i * 0.25), radius * (-0.72 + i * 0.23));
+      ctx.stroke();
+    }
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  ctx.restore();
+}
+
+function drawWorldSlashEffects() {
+  for (const effect of worldSlashEffects) {
+    const t = effect.life / effect.maxLife;
+    const crackReady = effect.life < effect.maxLife - effect.splitDelay;
+    const dx = effect.x2 - effect.x1;
+    const dy = effect.y2 - effect.y1;
+    const length = Math.hypot(dx, dy) || 1;
+    const nx = -dy / length;
+    const ny = dx / length;
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = Math.max(0, t);
+    ctx.lineCap = "round";
+
+    ctx.strokeStyle = `rgba(255, 255, 255, ${0.95 * t})`;
+    ctx.lineWidth = crackReady ? 13 : 7;
+    ctx.beginPath();
+    ctx.moveTo(effect.x1, effect.y1);
+    ctx.lineTo(effect.x2, effect.y2);
+    ctx.stroke();
+
+    ctx.strokeStyle = `rgba(2, 6, 23, ${0.98 * t})`;
+    ctx.lineWidth = crackReady ? 9 : 4;
+    ctx.beginPath();
+    ctx.moveTo(effect.x1 + nx * 1.5, effect.y1 + ny * 1.5);
+    ctx.lineTo(effect.x2 + nx * 1.5, effect.y2 + ny * 1.5);
+    ctx.stroke();
+
+    ctx.strokeStyle = `rgba(248, 113, 113, ${0.7 * t})`;
+    ctx.lineWidth = crackReady ? 3 : 2;
+    ctx.setLineDash([18, 12]);
+    ctx.lineDashOffset = -frame * 1.2;
+    ctx.beginPath();
+    ctx.moveTo(effect.x1 - nx * 4, effect.y1 - ny * 4);
+    ctx.lineTo(effect.x2 - nx * 4, effect.y2 - ny * 4);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    if (crackReady) {
+      ctx.strokeStyle = `rgba(255, 255, 255, ${0.72 * t})`;
+      ctx.lineWidth = 3;
+      for (const branch of effect.branches || []) {
+        const bx = effect.x1 + dx * branch.t;
+        const by = effect.y1 + dy * branch.t;
+        const side = Math.sign(branch.offset) || 1;
+        ctx.beginPath();
+        ctx.moveTo(bx, by);
+        ctx.lineTo(bx + nx * branch.offset, by + ny * branch.offset);
+        ctx.stroke();
+
+        ctx.strokeStyle = `rgba(2, 6, 23, ${0.75 * t})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(bx + nx * side * 5, by + ny * side * 5);
+        ctx.lineTo(bx + nx * branch.offset * 0.72, by + ny * branch.offset * 0.72);
+        ctx.stroke();
+        ctx.strokeStyle = `rgba(255, 255, 255, ${0.72 * t})`;
+        ctx.lineWidth = 3;
+      }
+    }
+
+    ctx.restore();
+  }
+}
