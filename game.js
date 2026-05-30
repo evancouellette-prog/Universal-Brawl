@@ -1532,7 +1532,7 @@ const KEY_ACTION_ALIASES = {
   t: "bluePunch", keyt: "bluePunch",
   s: "specialAim", keys: "specialAim",
   c: "ultimate", keyc: "ultimate",
-  tab: "throw",
+  tab: "throw"
 };
 
 function normalizeKeyName(name) {
@@ -1547,13 +1547,17 @@ function isEventForAction(action, key, code) {
 function isPressed(...names) {
   return names.some((name) => {
     const raw = normalizeKeyName(name);
-    if (keys.has(raw)) return true;
-
     const action = KEY_ACTION_ALIASES[raw];
-    if (!action) return false;
 
-    const bound = normalizeKeyName(getBoundKey(action));
-    return keys.has(bound);
+    // Important: if this key name maps to a bindable action, ONLY check that action's current binding.
+    // Do not also check the old raw key, or rebinding A/Space can trigger two actions at once.
+    if (action) {
+      const bound = normalizeKeyName(getBoundKey(action));
+      return keys.has(bound);
+    }
+
+    // Non-bindable raw checks still work normally.
+    return keys.has(raw);
   });
 }
 
@@ -10112,3 +10116,5 @@ window.addEventListener("load", () => {
     resetKeyBindings();
   };
 });
+
+// KEYBIND_ALIAS_REBIND_FIX: old default aliases no longer trigger after rebinding.
