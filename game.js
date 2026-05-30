@@ -388,13 +388,15 @@ if (keybindResetButton) keybindResetButton.addEventListener("click", resetKeyBin
 
 
 // NAME_TAG_INIT_PATCH
-if (usernameInput) {
-  loadLocalPlayerName();
-  usernameInput.addEventListener("input", saveLocalPlayerName);
-  usernameInput.addEventListener("change", saveLocalPlayerName);
-} else {
-  loadLocalPlayerName();
-}
+window.setTimeout(() => {
+  if (usernameInput) {
+    loadLocalPlayerName();
+    usernameInput.addEventListener("input", saveLocalPlayerName);
+    usernameInput.addEventListener("change", saveLocalPlayerName);
+  } else {
+    loadLocalPlayerName();
+  }
+}, 0)
 
 function getAudioContext() {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -1234,22 +1236,29 @@ function getOpponentDisplayName() {
 }
 
 function updatePlayerNameLabels() {
-  const mine = getLocalPlayerName();
-  if (gameMode === "online") {
-    if (onlineRole === "p2") {
-      if (playerNameEl) playerNameEl.textContent = sanitizePlayerName(onlinePlayerNames.p1, "Player 1");
-      if (enemyNameEl) enemyNameEl.textContent = mine;
-    } else {
-      if (playerNameEl) playerNameEl.textContent = mine;
-      if (enemyNameEl) enemyNameEl.textContent = sanitizePlayerName(onlinePlayerNames.p2, "Player 2");
-    }
+  const mode = typeof gameMode !== "undefined" ? gameMode : "cpu";
+  const role = typeof onlineRole !== "undefined" ? onlineRole : null;
+  const names = typeof onlinePlayerNames !== "undefined" ? onlinePlayerNames : { p1: "Player 1", p2: "Player 2" };
+  const mine = getLocalPlayerName ? getLocalPlayerName() : "Player";
+
+  if (mode === "online" && role === "p2") {
+    if (playerNameEl) playerNameEl.textContent = sanitizePlayerName(names.p1, "Player 1");
+    if (enemyNameEl) enemyNameEl.textContent = mine;
     return;
   }
+
   if (playerNameEl) playerNameEl.textContent = mine;
-  if (enemyNameEl) enemyNameEl.textContent = getOpponentDisplayName();
+
+  if (enemyNameEl) {
+    if (mode === "practice") enemyNameEl.textContent = "Practice Dummy";
+    else if (mode === "cpu") enemyNameEl.textContent = "CPU";
+    else if (mode === "online" && role === "p1") enemyNameEl.textContent = sanitizePlayerName(names.p2, "Player 2");
+    else enemyNameEl.textContent = "Player 2";
+  }
 }
 
 function sendOnlineName() {
+  if (typeof onlineSocket === "undefined" || typeof onlineConnected === "undefined" || typeof onlineRole === "undefined") return;
   if (!onlineSocket || !onlineConnected || !onlineRole) return;
   try {
     onlineSocket.send(JSON.stringify({
@@ -9730,7 +9739,7 @@ document.addEventListener("click", (event) => {
 
   if (button.id === "keybindResetButton") {
     event.preventDefault();
-    resetKeyBindings();
+    if (typeof resetKeyBindings === "function") resetKeyBindings();
     return;
   }
 }, true);
@@ -9788,3 +9797,14 @@ document.addEventListener("click", (event) => {
   }
 }, true);
 
+
+
+// RUNTIME_ERROR_VISIBLE_BOX_PATCH
+window.addEventListener("error", (event) => {
+  const existing = document.getElementById("runtimeErrorBox");
+  const box = existing || document.createElement("pre");
+  box.id = "runtimeErrorBox";
+  box.style.cssText = "position:fixed;left:10px;right:10px;bottom:10px;z-index:99999;max-height:180px;overflow:auto;background:#450a0a;color:#fecaca;border:2px solid #fca5a5;padding:10px;font:12px monospace;white-space:pre-wrap;";
+  box.textContent = "JavaScript error:\n" + event.message + "\nLine: " + event.lineno + ":" + event.colno;
+  if (!existing) document.body.appendChild(box);
+});
