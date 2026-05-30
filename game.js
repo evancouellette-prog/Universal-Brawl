@@ -119,9 +119,66 @@ const settingsCloseButton = document.getElementById("settingsCloseButton");
 const buttonSfxVolumeSlider = document.getElementById("buttonSfxVolumeSlider");
 const gameSfxVolumeSlider = document.getElementById("gameSfxVolumeSlider");
 const usernameInput = document.getElementById("usernameInput");
+const keybindsButton = document.getElementById("keybindsButton");
+const keybindScreen = document.getElementById("keybindScreen");
+const keybindList = document.getElementById("keybindList");
+const keybindWarning = document.getElementById("keybindWarning");
+const keybindCloseButton = document.getElementById("keybindCloseButton");
+const keybindResetButton = document.getElementById("keybindResetButton");
 const PLAYER_NAME_STORAGE_KEY = "jujutsuBrawlPlayerName";
 const BUTTON_SFX_VOLUME_STORAGE_KEY = "jujutsuBrawlButtonSfxVolume";
 const GAME_SFX_VOLUME_STORAGE_KEY = "jujutsuBrawlGameSfxVolume";
+
+const KEY_BINDINGS_STORAGE_KEY = "jujutsuBrawlKeyBindingsV1";
+const DEFAULT_KEY_BINDINGS = {
+  moveLeft: "KeyA",
+  moveRight: "KeyD",
+  jump: "Space",
+  light: "KeyW",
+  heavy: "KeyE",
+  block: "KeyQ",
+  dodge: "ShiftLeft",
+  rct: "KeyR",
+  infinity: "KeyF",
+  bluePunch: "KeyT",
+  specialAim: "KeyS",
+  ultimate: "KeyC",
+  throw: "Tab",
+  pause: "Escape",
+  p2Left: "ArrowLeft",
+  p2Right: "ArrowRight",
+  p2Jump: "ArrowUp",
+  p2Light: "KeyN",
+  p2Heavy: "KeyM",
+  p2Block: "KeyP",
+  p2Dodge: "Slash"
+};
+const KEY_BINDING_LABELS = {
+  moveLeft: "Move Left",
+  moveRight: "Move Right",
+  jump: "Jump",
+  light: "Light Punch",
+  heavy: "Heavy Punch",
+  block: "Block / Shield",
+  dodge: "Dodge",
+  rct: "RCT Hold",
+  infinity: "Infinity",
+  bluePunch: "Blue Amp Punch",
+  specialAim: "Teleport / Fuga Aim",
+  ultimate: "Ultimate Aim",
+  throw: "Throw",
+  pause: "Pause",
+  p2Left: "P2 Move Left",
+  p2Right: "P2 Move Right",
+  p2Jump: "P2 Jump",
+  p2Light: "P2 Light Punch",
+  p2Heavy: "P2 Heavy Punch",
+  p2Block: "P2 Block",
+  p2Dodge: "P2 Dodge"
+};
+let keyBindings = loadKeyBindings();
+let listeningForKeybind = null;
+
 let localPlayerName = "Player";
 let buttonSfxVolume = 0.45;
 let gameSfxVolume = 0.75;
@@ -200,6 +257,132 @@ function applySavedPlayerName() {
   if (usernameInput) usernameInput.value = localPlayerName === "Player" ? "" : localPlayerName;
   if (playerNameEl && localPlayerName && localPlayerName !== "Player") playerNameEl.textContent = localPlayerName;
 }
+
+
+function loadKeyBindings() {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(KEY_BINDINGS_STORAGE_KEY) || "{}");
+    const merged = { ...DEFAULT_KEY_BINDINGS, ...saved };
+    const used = new Set();
+    Object.keys(merged).forEach((action) => {
+      const key = merged[action];
+      if (!key || used.has(key)) merged[action] = DEFAULT_KEY_BINDINGS[action];
+      used.add(merged[action]);
+    });
+    return merged;
+  } catch (err) {
+    return { ...DEFAULT_KEY_BINDINGS };
+  }
+}
+
+function saveKeyBindings() {
+  try {
+    window.localStorage.setItem(KEY_BINDINGS_STORAGE_KEY, JSON.stringify(keyBindings));
+  } catch (err) {}
+}
+
+function getBoundKey(action) {
+  return keyBindings[action] || DEFAULT_KEY_BINDINGS[action];
+}
+
+function isBoundPressed(action) {
+  return keys.has(getBoundKey(action));
+}
+
+function keyName(code) {
+  if (!code) return "Unset";
+  const names = {
+    Space: "Space",
+    Tab: "Tab",
+    Escape: "Esc",
+    ShiftLeft: "Left Shift",
+    ShiftRight: "Right Shift",
+    ControlLeft: "Left Ctrl",
+    ControlRight: "Right Ctrl",
+    AltLeft: "Left Alt",
+    AltRight: "Right Alt",
+    ArrowLeft: "←",
+    ArrowRight: "→",
+    ArrowUp: "↑",
+    ArrowDown: "↓",
+    Slash: "/"
+  };
+  if (names[code]) return names[code];
+  if (code.startsWith("Key")) return code.slice(3);
+  if (code.startsWith("Digit")) return code.slice(5);
+  return code;
+}
+
+function isKeyAlreadyUsed(action, code) {
+  return Object.entries(keyBindings).some(([otherAction, otherCode]) => otherAction !== action && otherCode === code);
+}
+
+function renderKeybindList() {
+  if (!keybindList) return;
+  keybindList.innerHTML = "";
+  Object.keys(KEY_BINDING_LABELS).forEach((action) => {
+    const row = document.createElement("div");
+    row.className = "keybind-row";
+    const label = document.createElement("span");
+    label.textContent = KEY_BINDING_LABELS[action];
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "keybind-set-button";
+    button.dataset.action = action;
+    button.textContent = listeningForKeybind === action ? "Press a key..." : keyName(getBoundKey(action));
+    button.classList.toggle("listening", listeningForKeybind === action);
+    button.addEventListener("click", () => {
+      listeningForKeybind = action;
+      if (keybindWarning) keybindWarning.textContent = "";
+      renderKeybindList();
+    });
+    row.append(label, button);
+    keybindList.appendChild(row);
+  });
+}
+
+function openKeybindScreen() {
+  if (!keybindScreen) return;
+  listeningForKeybind = null;
+  renderKeybindList();
+  keybindScreen.classList.remove("hidden");
+}
+
+function closeKeybindScreen() {
+  if (!keybindScreen) return;
+  listeningForKeybind = null;
+  keybindScreen.classList.add("hidden");
+  renderKeybindList();
+}
+
+function setKeyBinding(action, code) {
+  if (!action || !code) return false;
+  if (["F5", "F11", "F12"].includes(code)) {
+    if (keybindWarning) keybindWarning.textContent = "That key is reserved by the browser.";
+    return false;
+  }
+  if (isKeyAlreadyUsed(action, code)) {
+    const usedBy = Object.entries(keyBindings).find(([otherAction, otherCode]) => otherAction !== action && otherCode === code)?.[0];
+    if (keybindWarning) keybindWarning.textContent = `${keyName(code)} is already used for ${KEY_BINDING_LABELS[usedBy] || usedBy}.`;
+    return false;
+  }
+  keyBindings[action] = code;
+  saveKeyBindings();
+  if (keybindWarning) keybindWarning.textContent = "Saved.";
+  return true;
+}
+
+function resetKeyBindings() {
+  keyBindings = { ...DEFAULT_KEY_BINDINGS };
+  listeningForKeybind = null;
+  saveKeyBindings();
+  if (keybindWarning) keybindWarning.textContent = "Defaults restored.";
+  renderKeybindList();
+}
+
+if (keybindsButton) keybindsButton.addEventListener("click", openKeybindScreen);
+if (keybindCloseButton) keybindCloseButton.addEventListener("click", closeKeybindScreen);
+if (keybindResetButton) keybindResetButton.addEventListener("click", resetKeyBindings);
 
 function getAudioContext() {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -687,6 +870,26 @@ function startBackgroundMusic() {
   backgroundMusicTimer = window.setInterval(scheduleBackgroundMusic, 90);
 }
 
+
+// KEYBIND_CAPTURE_HANDLER
+document.addEventListener("keydown", (event) => {
+  if (listeningForKeybind) return;
+  if (!listeningForKeybind) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const action = listeningForKeybind;
+  if (event.code === getBoundKey("pause")) {
+    listeningForKeybind = null;
+    if (keybindWarning) keybindWarning.textContent = "Cancelled.";
+    renderKeybindList();
+    return;
+  }
+  if (setKeyBinding(action, event.code)) {
+    listeningForKeybind = null;
+  }
+  renderKeybindList();
+}, true);
+
 document.addEventListener("click", (event) => {
   const button = event.target.closest("button");
   if (!button || button.disabled) return;
@@ -743,35 +946,60 @@ const H = canvas.height;
 const STAGE_W = 1600;
 const GROUND = 438;
 const NORMAL_JUMP_VELOCITY = -16.8;
-let platforms = [
-  { x: 255, y: 270, w: 260, h: 22, broken: false },
-  { x: 665, y: 240, w: 270, h: 22, broken: false },
-  { x: 1085, y: 270, w: 285, h: 22, broken: false }
+const BASE_PLATFORMS = [
+  { x: 255, y: 270, w: 260, h: 22 },
+  { x: 665, y: 240, w: 270, h: 22 },
+  { x: 1085, y: 270, w: 285, h: 22 }
 ];
+let platforms = BASE_PLATFORMS.map((platform) => ({ ...platform, broken: false }));
 
 function isDroppingThroughPlatform(f) {
   return Boolean(f && f.dropThroughPlatformTicks > 0);
 }
 
 function getActivePlatforms() {
-  return platforms.filter((platform) => !platform.broken);
+  return platforms.filter((platform) => !platform.broken && platform.w > 18);
 }
 
 function breakPlatformsNear(x, y, radius = ULT_PLATFORM_BREAK_RADIUS) {
+  // Ults carve out only the platform chunk they actually touch instead of deleting the whole platform.
   let brokeAny = false;
-  getActivePlatforms().forEach((platform) => {
-    if (platform.broken) return;
+  const nextPlatforms = [];
+  for (const platform of platforms) {
+    if (platform.broken || platform.w <= 18) continue;
+
     const closestX = Math.max(platform.x, Math.min(platform.x + platform.w, x));
     const closestY = Math.max(platform.y, Math.min(platform.y + platform.h, y));
     const distance = Math.hypot(x - closestX, y - closestY);
-    if (distance <= radius) {
-      platform.broken = true;
-      brokeAny = true;
-      if (typeof groundEraseEffects !== "undefined") {
-        groundEraseEffects.push({ x: platform.x + platform.w / 2, y: platform.y + platform.h / 2, w: platform.w, h: platform.h, ticks: 36, maxTicks: 36 });
-      }
+
+    if (distance > radius) {
+      nextPlatforms.push(platform);
+      continue;
     }
-  });
+
+    brokeAny = true;
+    const chunkWidth = Math.max(48, Math.min(platform.w, radius * 1.15));
+    const cutLeft = Math.max(platform.x, closestX - chunkWidth / 2);
+    const cutRight = Math.min(platform.x + platform.w, closestX + chunkWidth / 2);
+    const leftWidth = cutLeft - platform.x;
+    const rightWidth = platform.x + platform.w - cutRight;
+
+    if (leftWidth > 22) nextPlatforms.push({ ...platform, w: leftWidth, broken: false });
+    if (rightWidth > 22) nextPlatforms.push({ ...platform, x: cutRight, w: rightWidth, broken: false });
+
+    if (typeof groundEraseEffects !== "undefined") {
+      groundEraseEffects.push({
+        x: (cutLeft + cutRight) / 2,
+        y: platform.y + platform.h / 2,
+        w: Math.max(36, cutRight - cutLeft),
+        h: platform.h,
+        ticks: 36,
+        maxTicks: 36
+      });
+    }
+  }
+
+  if (brokeAny) platforms = nextPlatforms;
   return brokeAny;
 }
 const GRAVITY = 0.78;
@@ -938,12 +1166,87 @@ let lastOnlineInputKey = "";
 let lastOnlineFighterSent = 0;
 let remoteInput = { left: false, right: false, up: false, down: false, block: false, rct: false, heavy: false, bluePunch: false };
 let onlineReady = { p1: false, p2: false };
+let onlinePlayerNames = { p1: "Player 1", p2: "Player 2" };
 let player1Ready = false;
 let player2Ready = false;
 let readyCountdownValue = 0;
 let lastRoundWinner = null;
 let lastOnlineReadySent = 0;
 const mouseTechniqueHeld = { ct1: false, ct2: false, teleport: false, fuga: false };
+
+
+function sanitizePlayerName(name, fallback = "Player") {
+  const clean = String(name || "")
+    .replace(/[<>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 18);
+  return clean || fallback;
+}
+
+function getLocalPlayerName() {
+  if (usernameInput) {
+    localPlayerName = sanitizePlayerName(usernameInput.value, "Player");
+  }
+  return sanitizePlayerName(localPlayerName, "Player");
+}
+
+function saveLocalPlayerName() {
+  localPlayerName = getLocalPlayerName();
+  try {
+    window.localStorage.setItem(PLAYER_NAME_STORAGE_KEY, localPlayerName);
+  } catch (err) {}
+  updatePlayerNameLabels();
+  sendOnlineName();
+}
+
+function loadLocalPlayerName() {
+  try {
+    const saved = window.localStorage.getItem(PLAYER_NAME_STORAGE_KEY);
+    localPlayerName = sanitizePlayerName(saved, "Player");
+  } catch (err) {
+    localPlayerName = "Player";
+  }
+  if (usernameInput) usernameInput.value = localPlayerName;
+  updatePlayerNameLabels();
+}
+
+function getOpponentDisplayName() {
+  if (gameMode === "online") {
+    if (onlineRole === "p1") return sanitizePlayerName(onlinePlayerNames.p2, "Player 2");
+    if (onlineRole === "p2") return sanitizePlayerName(onlinePlayerNames.p1, "Player 1");
+  }
+  if (gameMode === "practice") return "Practice Dummy";
+  if (gameMode === "cpu") return "CPU";
+  return "Player 2";
+}
+
+function updatePlayerNameLabels() {
+  const mine = getLocalPlayerName();
+  if (gameMode === "online") {
+    if (onlineRole === "p2") {
+      if (playerNameEl) playerNameEl.textContent = sanitizePlayerName(onlinePlayerNames.p1, "Player 1");
+      if (enemyNameEl) enemyNameEl.textContent = mine;
+    } else {
+      if (playerNameEl) playerNameEl.textContent = mine;
+      if (enemyNameEl) enemyNameEl.textContent = sanitizePlayerName(onlinePlayerNames.p2, "Player 2");
+    }
+    return;
+  }
+  if (playerNameEl) playerNameEl.textContent = mine;
+  if (enemyNameEl) enemyNameEl.textContent = getOpponentDisplayName();
+}
+
+function sendOnlineName() {
+  if (!onlineSocket || !onlineConnected || !onlineRole) return;
+  try {
+    onlineSocket.send(JSON.stringify({
+      type: "name",
+      role: onlineRole,
+      name: getLocalPlayerName()
+    }));
+  } catch (err) {}
+}
 
 function sanitizeAimPoint(aimPoint) {
   if (!aimPoint) return null;
@@ -1947,7 +2250,14 @@ function connectOnline(room = onlineRoom, side = onlineSide) {
 
   onlineSocket.addEventListener("message", (event) => {
     const data = JSON.parse(event.data);
-    if (data.type === "role") {
+    
+    if (data.type === "name") {
+      const role = data.role === "p2" ? "p2" : "p1";
+      onlinePlayerNames[role] = sanitizePlayerName(data.name, role === "p1" ? "Player 1" : "Player 2");
+      updatePlayerNameLabels();
+      return;
+    }
+if (data.type === "role") {
       startOnlineGame(data.role);
       return;
     }
@@ -2114,8 +2424,12 @@ function handleTechniqueMouseDown(event) {
   event.preventDefault();
   const aim = updateMouseAimFromEvent(event);
   if (homeOpen || paused || gameState !== "playing") return;
-  mouseTechniqueHeld[action] = true;
   const fighter = getActiveMouseTechniqueFighter();
+  if (!fighter?.teleportAiming && !fighter?.fugaAiming) {
+    mouseTechniqueHeld.teleport = false;
+    mouseTechniqueHeld.fuga = false;
+  }
+  mouseTechniqueHeld[action] = true;
   if (mouseTechniqueHeld.ct1 && mouseTechniqueHeld.ct2) {
     if (fighter?.technique === "shrine" && prepareFuga(fighter, aim)) {
       if (gameMode === "online" && onlineRole === "p2") sendOnlineInput("fuga-start", aim);
@@ -2151,7 +2465,7 @@ function handleTechniqueMouseUp(event) {
     const fighter = getActiveMouseTechniqueFighter();
     mouseTechniqueHeld.ct1 = false;
     mouseTechniqueHeld.ct2 = false;
-    mouseTechniqueHeld.teleport = false;
+    clearSpecialHoldState(fighter);
     performTeleport(fighter, aim);
     if (gameMode === "online" && onlineRole === "p2") sendOnlineInput("teleport", aim);
     return;
@@ -2160,7 +2474,7 @@ function handleTechniqueMouseUp(event) {
     const fighter = getActiveMouseTechniqueFighter();
     mouseTechniqueHeld.ct1 = false;
     mouseTechniqueHeld.ct2 = false;
-    mouseTechniqueHeld.fuga = false;
+    clearSpecialHoldState(fighter);
     startFuga(fighter, aim);
     if (gameMode === "online" && onlineRole === "p2") sendOnlineInput("fuga", aim);
     return;
@@ -2176,12 +2490,24 @@ function handleTechniqueMouseUp(event) {
   if (action === "ct2-release") releaseTechniqueInput(player, 2, aim);
 }
 
+
+function clearSpecialHoldState(f = null) {
+  mouseTechniqueHeld.teleport = false;
+  mouseTechniqueHeld.fuga = false;
+  if (f) {
+    f.teleportAiming = false;
+    f.fugaAiming = false;
+    f.fugaChargeTicks = 0;
+  }
+}
+
 function sendOnlineInput(action = null, aim = null) {
   if (!onlineSocket || onlineSocket.readyState !== WebSocket.OPEN || onlineRole !== "p2") return;
   lastOnlineInputKey = JSON.stringify(getOnlineInput());
   lastOnlineInputSent = performance.now();
   const aimPoint = sanitizeAimPoint(aim);
-  onlineSocket.send(JSON.stringify({ type: "input", input: getOnlineInput(), action, aim: aimPoint }));
+  onlineSocket.send(JSON.stringify({ type: "input",
+      localName: getLocalPlayerName(), input: getOnlineInput(), action, aim: aimPoint }));
 }
 
 function sendOnlineInputTick(force = false) {
@@ -2322,7 +2648,7 @@ function sendOnlineState() {
 }
 
 function resetRoundActors() {
-  platforms.forEach((platform) => { platform.broken = false; });
+  platforms = BASE_PLATFORMS.map((platform) => ({ ...platform, broken: false }));
   player = makeFighter({ x: 170, w: 50, h: 128, dir: 1, color: "#2563eb", accent: "#1d4ed8" });
   enemy = makeFighter({ x: STAGE_W - 230, w: 52, h: 128, dir: -1, color: "#dc2626", accent: "#991b1b" });
   projectiles = [];
@@ -3324,7 +3650,7 @@ function startTechnique(f, slot, chargeRatio = 0, aimPoint = null, releasingChar
   const spawnOffset = move === "cleave" ? previewDistance : Math.min(36, Math.max(0, previewDistance - 6));
   const travelDistance = Math.max(0, previewDistance - spawnOffset);
   const damageScale = (chargedLimitless ? 1 + finalCharge * (move === "red" ? 1.45 : 1.25) : 1) * (voidBoost ? 1.28 : shrineBoost ? 1.12 : 1);
-  const knockbackScale = (chargedLimitless ? 1 + finalCharge * (move === "red" ? 0.9 : 0.78) : 1) * (voidBoost && move === "blue" ? 1.75 : voidBoost ? 1.25 : shrineBoost ? 1.16 : 1);
+  const knockbackScale = (chargedLimitless ? 1 + finalCharge * (move === "red" ? 1.25 : 1.08) : 1) * (move === "red" ? 1.28 : move === "blue" ? 1.32 : 1) * (voidBoost && move === "blue" ? 1.9 : voidBoost ? 1.32 : shrineBoost ? 1.16 : 1);
   projectiles.push({
     owner: f === player ? "player" : "enemy",
     move,
@@ -5104,7 +5430,7 @@ function applyProjectileHit(projectile, defender) {
   if (blocked) damageShield(defender, projectile.damage);
   const projectileDamageDealt = applyFighterDamage(defender, damage);
   const ownerFighter = projectile.owner === "player" ? player : enemy;
-  if (projectile.move !== "purple") {
+  if (!projectile.ultimateProjectile && projectile.move !== "purple" && projectile.move !== "worldSlash") {
     gainUltimate(ownerFighter, projectileDamageDealt * (blocked ? ULT_BLOCKED_DAMAGE_GAIN_SCALE : ULT_DAMAGE_GAIN_SCALE));
   }
   cancelRct(defender, true);
@@ -5119,8 +5445,9 @@ function applyProjectileHit(projectile, defender) {
   const kb = getTakenKnockback(defender, blocked ? projectile.knockback * (projectile.move === "purple" ? 0.48 : 0.35) : projectile.knockback);
   const aimX = Number.isFinite(Number(projectile.aimX)) ? Number(projectile.aimX) : projectile.dir;
   const aimY = Number.isFinite(Number(projectile.aimY)) ? Number(projectile.aimY) : 0;
-  const pushX = projectile.move === "blue" ? -aimX : aimX;
-  const pushY = projectile.move === "blue" ? -aimY : aimY;
+  const pullPushBoost = projectile.move === "blue" || projectile.move === "red" ? 1.22 : 1;
+  const pushX = (projectile.move === "blue" ? -aimX : aimX) * pullPushBoost;
+  const pushY = (projectile.move === "blue" ? -aimY : aimY) * pullPushBoost;
   const pushDir = Math.abs(pushX) > 0.08 ? Math.sign(pushX) : projectile.dir;
   const kbPower = Math.abs(kb);
   defender.vx = (Math.abs(pushX) > 0.12 ? pushX : pushDir * 0.12) * kbPower;
@@ -7662,6 +7989,110 @@ function renderTechniquePreviews() {
   drawTechniquePreview(techniquePreviewCanvases.shrine, "shrine");
 }
 
+
+function drawSukunaModelCleanup(f) {
+  if (!f || f.technique !== "shrine") return;
+
+  ctx.save();
+  const facing = f.dir || 1;
+  const centerX = f.x + f.w / 2;
+  const baseY = f.y;
+  ctx.translate(centerX, baseY);
+  ctx.scale(facing, 1);
+
+  const skin = "#e7b39e";
+  const tattoo = "#1b0610";
+  const pants = "#171019";
+  const pantsLight = "rgba(245, 245, 245, 0.24)";
+
+  // Cover any extra/old eye marks and redraw simpler face with no extra eyes.
+  ctx.fillStyle = skin;
+  ctx.beginPath();
+  ctx.roundRect(-15, 4, 30, 29, 9);
+  ctx.fill();
+
+  // Main eyes only: smaller and meaner.
+  ctx.strokeStyle = tattoo;
+  ctx.lineWidth = 2;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(-10, 16);
+  ctx.lineTo(-3, 14);
+  ctx.moveTo(10, 16);
+  ctx.lineTo(3, 14);
+  ctx.stroke();
+
+  // Sukuna-like facial tattoos: forehead mark, cheek/eye lines, chin marks.
+  ctx.lineWidth = 2.4;
+  ctx.beginPath();
+  ctx.moveTo(0, 7);
+  ctx.lineTo(0, 13);
+  ctx.moveTo(-6, 9);
+  ctx.quadraticCurveTo(-11, 10, -13, 14);
+  ctx.moveTo(6, 9);
+  ctx.quadraticCurveTo(11, 10, 13, 14);
+  ctx.moveTo(-13, 21);
+  ctx.quadraticCurveTo(-8, 19, -4, 21);
+  ctx.moveTo(13, 21);
+  ctx.quadraticCurveTo(8, 19, 4, 21);
+  ctx.moveTo(-4, 28);
+  ctx.lineTo(-1, 32);
+  ctx.moveTo(4, 28);
+  ctx.lineTo(1, 32);
+  ctx.stroke();
+
+  // Torso/arm tattoo bands.
+  ctx.lineWidth = 2.7;
+  ctx.beginPath();
+  ctx.moveTo(-16, 47);
+  ctx.quadraticCurveTo(-7, 52, 0, 47);
+  ctx.quadraticCurveTo(7, 52, 16, 47);
+  ctx.moveTo(-18, 62);
+  ctx.lineTo(-6, 68);
+  ctx.moveTo(18, 62);
+  ctx.lineTo(6, 68);
+  ctx.stroke();
+
+  // Remove shoe shapes by painting bare ankle/foot areas and then add foot outline.
+  ctx.fillStyle = skin;
+  ctx.beginPath();
+  ctx.ellipse(-12, 92, 13, 6, 0.05, 0, Math.PI * 2);
+  ctx.ellipse(13, 92, 13, 6, -0.05, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = tattoo;
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(-23, 92);
+  ctx.quadraticCurveTo(-14, 96, -3, 92);
+  ctx.moveTo(3, 92);
+  ctx.quadraticCurveTo(14, 96, 24, 92);
+  ctx.stroke();
+
+  // Detailed loose pants: waistband, folds, knees, lower-leg folds.
+  ctx.strokeStyle = pantsLight;
+  ctx.lineWidth = 2;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(-21, 66);
+  ctx.lineTo(21, 66);
+  ctx.moveTo(-17, 73);
+  ctx.quadraticCurveTo(-10, 78, -14, 89);
+  ctx.moveTo(-5, 69);
+  ctx.quadraticCurveTo(-2, 78, -6, 91);
+  ctx.moveTo(17, 73);
+  ctx.quadraticCurveTo(10, 78, 14, 89);
+  ctx.moveTo(5, 69);
+  ctx.quadraticCurveTo(2, 78, 6, 91);
+  ctx.moveTo(-18, 82);
+  ctx.lineTo(-5, 84);
+  ctx.moveTo(18, 82);
+  ctx.lineTo(5, 84);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
 function drawEffects() {
   drawGroundEraseEffects();
   drawWorldSlashEffects();
@@ -8357,26 +8788,48 @@ function drawProjectiles() {
     } else if (p.move === "worldSlash") {
       if (hasProjectileAngle) ctx.rotate(projectileAngle);
       else ctx.scale(p.dir, 1);
-      const pulse = 1 + Math.sin(frame * 0.3) * 0.045;
-      ctx.globalCompositeOperation = "lighter";
-      ctx.globalAlpha = 0.96;
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.96)";
-      ctx.lineWidth = 9;
+      const pulse = 1 + Math.sin(frame * 0.26) * 0.05;
       ctx.lineCap = "round";
+
+      // outer white outline
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = 0.98;
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.98)";
+      ctx.lineWidth = 11;
       ctx.beginPath();
-      ctx.arc(0, 0, p.radius * 1.25 * pulse, -Math.PI * 0.72, Math.PI * 0.72);
+      ctx.arc(-p.radius * 0.08, 0, p.radius * 1.34 * pulse, -Math.PI * 0.84, Math.PI * 0.16);
       ctx.stroke();
-      ctx.strokeStyle = "rgba(2, 6, 23, 0.98)";
-      ctx.lineWidth = 6;
+
+      // black crescent body
+      ctx.strokeStyle = "rgba(2, 6, 23, 0.995)";
+      ctx.lineWidth = 7.5;
       ctx.beginPath();
-      ctx.arc(4, 0, p.radius * 1.12 * pulse, -Math.PI * 0.68, Math.PI * 0.68);
+      ctx.arc(p.radius * 0.14, 0, p.radius * 1.15 * pulse, -Math.PI * 0.8, Math.PI * 0.12);
       ctx.stroke();
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.62)";
-      ctx.lineWidth = 2.5;
+
+      // inner dark fill streak to sell the slash shape
+      ctx.strokeStyle = "rgba(15, 23, 42, 0.92)";
+      ctx.lineWidth = 4.5;
       ctx.beginPath();
-      ctx.moveTo(-p.radius * 1.35, 0);
-      ctx.lineTo(-p.radius * 2.6, 0);
+      ctx.arc(p.radius * 0.24, 0, p.radius * 0.9 * pulse, -Math.PI * 0.72, Math.PI * 0.06);
       ctx.stroke();
+
+      // trailing white accent
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.72)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(-p.radius * 1.25, -p.radius * 0.06);
+      ctx.lineTo(-p.radius * 2.85, -p.radius * 0.02);
+      ctx.stroke();
+
+      // subtle trailing shadow
+      ctx.strokeStyle = "rgba(2, 6, 23, 0.6)";
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(-p.radius * 0.95, p.radius * 0.18);
+      ctx.lineTo(-p.radius * 2.4, p.radius * 0.26);
+      ctx.stroke();
+
       ctx.globalCompositeOperation = "source-over";
     } else if (p.move === "red") {
       if (hasProjectileAngle) ctx.rotate(projectileAngle);
@@ -8849,14 +9302,17 @@ window.addEventListener("keyup", (event) => {
     const active = gameMode === "online" && onlineRole === "p2" ? enemy : player;
     if (active?.fugaAiming) {
       startFuga(active, active?.techniqueAim || mouseAimWorld);
+      clearSpecialHoldState(active);
       if (gameMode === "online" && onlineRole === "p2") sendOnlineInput("fuga", active?.techniqueAim || mouseAimWorld);
       return;
     }
     if (active?.teleportAiming) {
       performTeleport(active, active?.techniqueAim || mouseAimWorld);
+      clearSpecialHoldState(active);
       if (gameMode === "online" && onlineRole === "p2") sendOnlineInput("teleport", active?.techniqueAim || mouseAimWorld);
       return;
     }
+    clearSpecialHoldState(active);
   }
   if ((key === "c" || code === "keyc") && !homeOpen && !paused && gameState === "playing") {
     const active = gameMode === "online" && onlineRole === "p2" ? enemy : player;
@@ -9040,3 +9496,27 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 requestAnimationFrame(loop);
+
+
+function drawHitStopAimPreviewOverlay() {
+  const fightersToCheck = [player, enemy];
+  fightersToCheck.forEach((f) => {
+    if (!f || !f.ultAiming && !f.isAimingTechnique) return;
+    const move = f.ultAiming ? "ultimate" : (f.aimingMove || f.currentAimMove || "projectile");
+    const origin = getTechniqueOrigin(f, move);
+    const vector = getTechniqueAimVector(f, move, f.techniqueAim || mouseAimWorld);
+    const maxRange = move === "ultimate" ? 900 : 520;
+    const end = getAimPreviewEndpointWithHitStop(f, move, origin, vector, maxRange);
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = f.technique === "shrine" ? "#ffffff" : "#8fd7ff";
+    ctx.lineWidth = 5;
+    ctx.setLineDash([18, 10]);
+    ctx.beginPath();
+    ctx.moveTo(origin.x, origin.y);
+    ctx.lineTo(end.x, end.y);
+    ctx.stroke();
+    ctx.restore();
+  });
+}
+
