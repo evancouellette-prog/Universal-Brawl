@@ -3148,16 +3148,20 @@ function updateExtraCooldownHud(container, f) {
   });
 }
 
-
 function setHudElementHidden(el, hidden) {
   if (el) el.classList.toggle("hidden", Boolean(hidden));
 }
 
 function updatePracticeDummyHudVisibility() {
   const hideDummyMeters = gameMode === "practice";
+
   setHudElementHidden(enemyCeEl ? enemyCeEl.closest(".ce-frame") : null, hideDummyMeters);
   setHudElementHidden(enemyUltimateEl ? enemyUltimateEl.closest(".ultimate-frame") : null, hideDummyMeters);
-  const enemyCtGrid = ctHud?.enemy?.[0]?.slot ? ctHud.enemy[0].slot.closest(".ct-cooldowns") : null;
+
+  const enemyCtGrid = ctHud?.enemy?.[0]?.slot
+    ? ctHud.enemy[0].slot.closest(".ct-cooldowns")
+    : null;
+
   setHudElementHidden(enemyCtGrid, hideDummyMeters);
   setHudElementHidden(enemyExtraCooldownsEl, hideDummyMeters);
 }
@@ -3188,8 +3192,8 @@ function updateHud() {
 
   updateExtraCooldownHud(playerExtraCooldownsEl, player);
   updateExtraCooldownHud(enemyExtraCooldownsEl, enemy);
-  updatePracticeDummyHudVisibility();
-}
+
+  updatePracticeDummyHudVisibility();}
 
 function finishRound(winner) {
   if (roundResolved) return;
@@ -4191,17 +4195,17 @@ function canStartRct(f) {
   return f.ce >= f.maxCe * RCT_MIN_CE_RATIO;
 }
 
-function cancelRct(f, forceReset = false) {
+function cancelRct(f, startCooldown = true) {
   if (!f) return;
+
   const wasHealing = Boolean(f.rctHealing || f.rctActive || f.rctHolding);
+
   f.rctHealing = false;
   f.rctActive = false;
   f.rctHolding = false;
   f.rctTicks = 0;
 
-  // Normal release/full-bar/empty-CE starts the 3 second cooldown.
-  // forceReset is for round cleanup and does not need to punish with cooldown.
-  if (!forceReset && wasHealing) {
+  if (startCooldown && wasHealing) {
     f.rctCooldown = Math.max(f.rctCooldown || 0, RCT_COOLDOWN_TICKS[f.technique] || 180);
   }
 }
@@ -4225,22 +4229,25 @@ function getCurrentHealthBarCeiling(f) {
 }
 
 function updateRct(f) {
-  // rctCooldown is decremented in updateFighter, not here.
   if (!f.rctHealing) return;
 
   const currentBarCeiling = getCurrentHealthBarCeiling(f);
+
   if (f.ko || f.health >= currentBarCeiling || f.ce <= 0) {
-    cancelRct(f, false);
+    cancelRct(f, true);
     return;
   }
 
   const ceCost = getRctCeCostPerTick(f);
   const affordable = ceCost > 0 ? Math.min(1, f.ce / ceCost) : 1;
+
   f.ce = Math.max(0, f.ce - ceCost);
   f.health = Math.min(currentBarCeiling, f.health + getRctHealPerTick(f) * affordable);
   f.delayedHealth = Math.max(f.delayedHealth || f.health, f.health);
 
-  if (f.ce <= 0 || f.health >= currentBarCeiling) cancelRct(f, false);
+  if (f.ce <= 0 || f.health >= currentBarCeiling) {
+    cancelRct(f, true);
+  }
 }
 
 function isHoldingShield(f) {
@@ -9625,6 +9632,9 @@ window.addEventListener("keyup", (event) => {
   const releaseAction = getTechniqueReleaseAction(key, code);
   keys.delete(event.key.toLowerCase());
   keys.delete(event.code.toLowerCase());
+  if (isEventForAction("rct", event.key, event.code)) {
+    cancelRct(player, true); // RCT_RELEASE_STOP_PATCH_EXACT
+  }
   keys.delete(event.key);
   keys.delete(event.code);
   if (isEventForAction("specialAim", key, code) && !homeOpen && !paused && gameState === "playing") {
