@@ -211,7 +211,7 @@ body {
 }
 
 .ce-frame {
-  height: 12px;
+  height: 16px;
   border: 2px solid #c7d2fe;
   background: #151a28;
   overflow: hidden;
@@ -226,21 +226,19 @@ body {
 }
 
 .ultimate-frame {
-  height: 12px;
+  height: 16px;
   border: 2px solid #f8fafc;
   background: #151a28;
   overflow: hidden;
-  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.32), 0 0 12px rgba(168, 85, 247, 0.16);
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.28), 0 0 12px rgba(168, 85, 247, 0.16);
 }
 
 .ultimate-fill {
   width: 0%;
   height: 100%;
-  background:
-    repeating-linear-gradient(90deg, #f8fafc 0 3%, transparent 3% 5%),
-    linear-gradient(90deg, #7c3aed, #e879f9 54%, #f8fafc);
+  background: linear-gradient(90deg, #7c3aed, #facc15);
   transition: width 120ms linear;
-  box-shadow: 0 0 14px rgba(232, 121, 249, 0.5);
+  box-shadow: 0 0 14px rgba(232, 121, 249, 0.45);
 }
 
 .fighter-panel.right .ultimate-fill {
