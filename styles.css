@@ -2984,3 +2984,27 @@ button.hidden {
 #pauseScreen #pauseSettingsButton:active {
   box-shadow: 0 2px 0 #7b5a18;
 }
+/* ADD THIS AT THE VERY BOTTOM OF styles.css */
+
+/* Strong pause menu Settings button override.
+   This targets ONLY the Settings button inside the pause menu. */
+#pauseScreen .pause-panel .home-actions #pauseSettingsButton.settings-button,
+#pauseScreen #pauseSettingsButton,
+button#pauseSettingsButton.settings-button {
+  background: #d6b84d !important;
+  color: #1a1a1d !important;
+  border-color: #edf2ff !important;
+  box-shadow: 0 4px 0 #7b5a18 !important;
+}
+
+#pauseScreen .pause-panel .home-actions #pauseSettingsButton.settings-button:hover:not(:disabled),
+#pauseScreen #pauseSettingsButton:hover:not(:disabled),
+button#pauseSettingsButton.settings-button:hover:not(:disabled) {
+  filter: brightness(1.08) saturate(1.08) !important;
+}
+
+#pauseScreen .pause-panel .home-actions #pauseSettingsButton.settings-button:active,
+#pauseScreen #pauseSettingsButton:active,
+button#pauseSettingsButton.settings-button:active {
+  box-shadow: 0 2px 0 #7b5a18 !important;
+}
