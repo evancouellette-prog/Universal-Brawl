@@ -150,6 +150,7 @@ let musicVolume = loadSavedMusicVolume();
 let musicMuted = false;
 let currentRadioTrackIndex = loadSavedTrackIndex();
 let lastMusicSeekStamp = 0;
+// MUSIC_CONTINUES_THROUGH_MATCH_START
 const battleMusic = new Audio();
 battleMusic.loop = false;
 battleMusic.preload = "auto";
@@ -401,11 +402,8 @@ function updateBattleMusicState(restart = false) {
     battleMusic.load();
     updateMusicProgressUi();
   } else if (restart) {
-    try {
-      battleMusic.currentTime = 0;
-    } catch (err) {
-      console.warn("Could not restart music:", err);
-    }
+    // Keep the same song playing from the same timestamp when a match starts.
+    // Manual track changes still restart because those change battleMusic.src.
     updateMusicProgressUi();
   }
 
@@ -424,29 +422,25 @@ function updateBattleMusicState(restart = false) {
   }
 }
 
-function setRadioTrack(index, autoplay = true) {
+function setRadioTrack(index, autoplay = true, restart = true) {
   currentRadioTrackIndex = normalizeTrackIndex(index);
   saveRadioTrackIndex();
-  const track = getCurrentRadioTrack();
-  if (track.type === "audio") {
-    const targetSrc = new URL(track.src, window.location.href).href;
-    if (battleMusic.src === targetSrc) battleMusic.currentTime = 0;
-  }
+
   musicStep = 0;
   if (uiAudioContext) nextMusicTime = uiAudioContext.currentTime + 0.05;
   updateMusicProgressUi();
   updateRadioUi();
-  updateBattleMusicState(true);
+  updateBattleMusicState(restart);
   updateMusicProgressUi();
   if (autoplay && !musicMuted) startBackgroundMusic();
 }
 
 function playNextSong() {
-  setRadioTrack(currentRadioTrackIndex + 1);
+  setRadioTrack(currentRadioTrackIndex + 1, true, true);
 }
 
 function playPreviousSong() {
-  setRadioTrack(currentRadioTrackIndex - 1);
+  setRadioTrack(currentRadioTrackIndex - 1, true, true);
 }
 
 function openRadioScreen() {
@@ -470,11 +464,14 @@ function seekMusicFromProgressTrack(event) {
   const fallbackX = rect.left + rect.width * 0.5;
   const clientX = Number.isFinite(event.clientX) && event.clientX > 0 ? event.clientX : fallbackX;
   const ratio = rect.width > 0 ? (clientX - rect.left) / rect.width : 0;
+  const wasPlaying = !battleMusic.paused && !musicMuted;
   battleMusic.currentTime = Math.max(0, Math.min(duration, ratio * duration));
   updateMusicProgressUi();
-  if (!musicMuted) {
-    startBackgroundMusic();
-    updateBattleMusicState();
+
+  // Seeking should jump to the chosen timestamp, not restart the song.
+  if (wasPlaying || backgroundMusicStarted) {
+    backgroundMusicStarted = true;
+    updateBattleMusicState(false);
   }
 }
 
@@ -812,10 +809,10 @@ const GOJO_BLUE_PUNCH_ACTIVE_TICKS = 10 * 60;
 const GOJO_BLUE_PUNCH_COOLDOWN_TICKS = 10 * 60;
 const GOJO_BLUE_PUNCH_MAX_CHASES = 3;
 const GOJO_LIGHT_FINISHER_COOLDOWN_TICKS = 5 * 60;
-const ULT_AIM_MIN_HOLD_TICKS = 60;
+const ULT_AIM_MIN_HOLD_TICKS = 150;
 const ULT_AIM_TOTAL_TICKS = 150;
-const ULT_AIM_HOLD_TICKS = 120;
-const ULT_FINAL_CHARGE_TICKS = 60;
+const ULT_AIM_HOLD_TICKS = 150;
+const ULT_FINAL_CHARGE_TICKS = 0;
 const ULT_AIM_PREVIEW_ALPHA = 0.5;
 const ULT_PLATFORM_BREAK_RADIUS = 70;
 const PRACTICE_DUMMY_AUTO_KNOCKBACK_DEFAULT = true;
@@ -2086,7 +2083,7 @@ function getOnlineInput() {
     block: isPressed("q", "keyq"),
     rct: isPressed("r", "keyr"),
     heavy: isPressed("e", "keye"),
-    bluePunch: isPressed("s", "keys")
+    bluePunch: isPressed("t", "keyt")
   };
 }
 
@@ -2097,6 +2094,7 @@ function getOnlineAction(key, code, repeat) {
   if ((key === " " || code === "space") && !repeat) return "jump";
   if ((key === "f" || code === "keyf") && !repeat && enemy?.technique === "limitless") return "infinity";
   if ((key === "c" || code === "keyc") && !repeat) return "ultimate-start";
+  if ((key === "s" || code === "keys") && !repeat) return enemy?.technique === "shrine" ? "fuga-start" : "teleport-start";
   return null;
 }
 
@@ -3553,7 +3551,7 @@ function getRctHealPerTick(f) {
 
 function canStartRct(f) {
   if (!f || gameOver || paused || isSpecialLocked(f) || f.ko || f.knockdown || f.stun > 0 || f.dodging > 0 || f.attacking || f.chargingTechnique) return false;
-  if (f.health >= f.maxHealth || f.rctCooldown > 0) return false;
+  if (f.health >= getCurrentHealthBarCeiling(f) || f.rctCooldown > 0) return false;
   return f.ce >= f.maxCe * RCT_MIN_CE_RATIO;
 }
 
@@ -3574,10 +3572,18 @@ function setRctHealing(f, wantsRct) {
   }
 }
 
+function getCurrentHealthBarCeiling(f) {
+  const bars = Math.max(1, Number(f.healthBars) || 1);
+  const barSize = f.maxHealth / bars;
+  const currentHealth = Math.max(0.001, Number(f.health) || 0.001);
+  return Math.min(f.maxHealth, Math.ceil(currentHealth / barSize) * barSize);
+}
+
 function updateRct(f) {
   if (f.rctCooldown > 0) f.rctCooldown -= 1;
   if (!f.rctHealing) return;
-  if (f.ko || f.knockdown || f.stun > 0 || f.dodging > 0 || f.attacking || f.chargingTechnique || f.health >= f.maxHealth || f.ce <= 0) {
+  const currentBarCeiling = getCurrentHealthBarCeiling(f);
+  if (f.ko || f.knockdown || f.stun > 0 || f.dodging > 0 || f.attacking || f.chargingTechnique || f.health >= currentBarCeiling || f.ce <= 0) {
     cancelRct(f, true);
     return;
   }
@@ -3585,9 +3591,9 @@ function updateRct(f) {
   const ceCost = getRctCeCostPerTick(f);
   const affordable = ceCost > 0 ? Math.min(1, f.ce / ceCost) : 1;
   f.ce = Math.max(0, f.ce - ceCost);
-  f.health = Math.min(f.maxHealth, f.health + getRctHealPerTick(f) * affordable);
+  f.health = Math.min(currentBarCeiling, f.health + getRctHealPerTick(f) * affordable);
   f.delayedHealth = Math.max(f.delayedHealth || f.health, f.health);
-  if (f.ce <= 0 || f.health >= f.maxHealth) cancelRct(f, true);
+  if (f.ce <= 0 || f.health >= currentBarCeiling) cancelRct(f, true);
 }
 
 function isHoldingShield(f) {
@@ -3723,9 +3729,7 @@ function spawnUltimateChargeEffect(f, kind) {
 }
 
 function startUltimate(f, aimPoint = null) {
-  if (!beginUltimateAim(f, aimPoint)) return false;
-  f.ultimateAimTicks = ULT_AIM_HOLD_TICKS;
-  return releaseUltimateAim(f, aimPoint || f.techniqueAim);
+  return beginUltimateAim(f, aimPoint);
 }
 
 
@@ -3772,15 +3776,15 @@ function releaseUltimateAim(f, aimPoint = null) {
   if (aim) setFighterTechniqueAim(f, aim);
   f.ultimateAimPoint = aim;
   f.ultimateAiming = false;
-  f.ultimateFinalCharge = ULT_FINAL_CHARGE_TICKS;
+  f.ultimateFinalCharge = 0;
   f.ultimateMeter = 0;
   f.ultimateHasReleased = false;
   f.blocking = false;
-  f.vx *= 0.2;
   ultimateFocusOwner = getFighterOwner(f);
-  cinematicZoomTicks = Math.max(cinematicZoomTicks, ULT_FINAL_CHARGE_TICKS + 18);
+  cinematicZoomTicks = Math.max(cinematicZoomTicks, 18);
   spawnUltimateChargeEffect(f, f.ultimateMove);
   playUltimateChargeSound(f.ultimateMove);
+  releaseUltimate(f);
   updateHud();
   return true;
 }
@@ -3790,7 +3794,6 @@ function updateUltimateState(f) {
   if (f.ultimateAiming) {
     f.ultimateAimTicks = Math.min(ULT_AIM_HOLD_TICKS, (f.ultimateAimTicks || 0) + 1);
     f.blocking = false;
-    f.vx *= 0.72;
     if (f.ultimateAimPoint) setFighterTechniqueAim(f, f.ultimateAimPoint);
     return;
   }
@@ -3911,9 +3914,7 @@ function applyWorldSlashHit(attacker, defender, slash) {
 
   const blocked = isBlockingAttack(defender, attacker.dir);
   const infinityFactor = isInfinityActive(defender) ? 0.82 : 1;
-  const baseDamage = blocked
-    ? Math.ceil(WORLD_SLASH_DAMAGE * WORLD_SLASH_BLOCK_CHIP)
-    : Math.ceil(WORLD_SLASH_DAMAGE * infinityFactor);
+  const baseDamage = blocked ? 0 : Math.ceil(WORLD_SLASH_DAMAGE * infinityFactor);
   const damage = getTakenDamage(defender, baseDamage);
   if (blocked) damageShield(defender, WORLD_SLASH_DAMAGE * 1.35);
   applyFighterDamage(defender, damage);
@@ -4890,7 +4891,7 @@ function applyHit(attacker, defender) {
   const gojoPushPullFinisher = attacker.technique === "limitless" && finalLightHit && !bluePunchActive && !blocked && (attacker.gojoPushPullCooldown || 0) <= 0;
   const rawAttackDamage = Math.ceil(attack.damage * getOutgoingDamageMultiplier(attacker));
   const scaledAttackDamage = blocked ? rawAttackDamage : Math.ceil(rawAttackDamage * getComboDamageScale(attacker));
-  const baseDamage = blocked ? Math.ceil(scaledAttackDamage * 0.28) : scaledAttackDamage;
+  const baseDamage = blocked ? 0 : scaledAttackDamage;
   const damage = getTakenDamage(defender, baseDamage);
   if (blocked) damageShield(defender, rawAttackDamage);
   const sukunaBarrageFinisher = attacker.technique === "shrine" && finalLightHit && !blocked;
@@ -5098,7 +5099,7 @@ function applyProjectileHit(projectile, defender) {
   if (pacifistBot && defender === enemy) markPracticeBotAttacked();
   const blocked = isBlockingAttack(defender, projectile.dir);
   const blockDamageScale = projectile.move === "purple" ? HOLLOW_PURPLE_BLOCK_CHIP : 0.3;
-  const baseDamage = blocked ? Math.ceil(projectile.damage * blockDamageScale) : projectile.damage;
+  const baseDamage = blocked ? 0 : projectile.damage;
   const damage = getTakenDamage(defender, baseDamage);
   if (blocked) damageShield(defender, projectile.damage);
   const projectileDamageDealt = applyFighterDamage(defender, damage);
@@ -5167,7 +5168,7 @@ function applyFugaExplosionDamage(projectile, defender) {
   const blocked = isBlockingAttack(defender, projectile.dir);
   const falloff = Math.max(0.35, 1 - distance / Math.max(1, radius) * 0.55);
   const baseDamage = Math.ceil(projectile.damage * 0.48 * falloff);
-  const damage = getTakenDamage(defender, blocked ? Math.ceil(baseDamage * 0.3) : baseDamage);
+  const damage = getTakenDamage(defender, blocked ? 0 : baseDamage);
   if (blocked) damageShield(defender, projectile.damage * 0.8);
   const explosionDamageDealt = applyFighterDamage(defender, damage);
   gainUltimate(projectile.owner === "player" ? player : enemy, explosionDamageDealt * (blocked ? ULT_BLOCKED_DAMAGE_GAIN_SCALE : ULT_DAMAGE_GAIN_SCALE));
@@ -5456,8 +5457,8 @@ function updateHitSparks() {
 
 function updatePlayer() {
   if (gameOver) return;
-  updateBluePunchCharge(player, isPressed("s", "keys"));
-  const canControl = player.stun <= 0 && !player.knockdown && !isSpecialLocked(player);
+  updateBluePunchCharge(player, isPressed("t", "keyt"));
+  const canControl = player.stun <= 0 && !player.knockdown && (!isSpecialLocked(player) || player.ultimateAiming);
   setShielding(player, isPressed("q", "keyq"));
   setRctHealing(player, isPressed("r", "keyr"));
 
@@ -5482,7 +5483,7 @@ function updatePlayer() {
 function updateRivalPlayer() {
   if (gameOver) return;
   updateBluePunchCharge(enemy, false);
-  const canControl = enemy.stun <= 0 && !enemy.knockdown && !isSpecialLocked(enemy);
+  const canControl = enemy.stun <= 0 && !enemy.knockdown && (!isSpecialLocked(enemy) || enemy.ultimateAiming);
   setShielding(enemy, isPressed("p", "keyp"));
 
   if (canControl && enemy.dodging <= 0 && !enemy.blocking) {
@@ -5505,7 +5506,7 @@ function updateRivalPlayer() {
 function applyRemoteRivalInput() {
   if (gameOver) return;
   updateBluePunchCharge(enemy, Boolean(remoteInput.bluePunch));
-  const canControl = enemy.stun <= 0 && !enemy.knockdown && !isSpecialLocked(enemy);
+  const canControl = enemy.stun <= 0 && !enemy.knockdown && (!isSpecialLocked(enemy) || enemy.ultimateAiming);
   setShielding(enemy, remoteInput.block);
   setRctHealing(enemy, remoteInput.rct);
 
@@ -5533,7 +5534,7 @@ function updateOnlineRivalSelf() {
   if (gameOver) return;
   const input = getOnlineInput();
   updateBluePunchCharge(enemy, Boolean(input.bluePunch));
-  const canControl = enemy.stun <= 0 && !enemy.knockdown && !isSpecialLocked(enemy);
+  const canControl = enemy.stun <= 0 && !enemy.knockdown && (!isSpecialLocked(enemy) || enemy.ultimateAiming);
   setShielding(enemy, input.block);
   setRctHealing(enemy, input.rct);
 
@@ -6105,7 +6106,6 @@ function updateFighter(f, opponent) {
   updateRct(f);
   if (f.fugaAiming) {
     f.fugaChargeTicks = Math.min(FUGA_CHARGE_TICKS, (f.fugaChargeTicks || 0) + 1);
-    f.vx *= f.stun > 0 || f.knockdown ? 0.92 : 0.78;
     f.blocking = false;
   }
   if (f.chargingTechnique) {
@@ -8220,31 +8220,37 @@ function drawShrineTechniqueShape(move, radius) {
 
 function getAimPreviewDistance(move, spec, chargeRatio, aimVector, attacker = null, radius = spec.radius) {
   const aimLimit = Number.isFinite(aimVector?.distance) ? Math.max(8, aimVector.distance) : Infinity;
+  const usesExactMouseEnd = move === "cleave" || move === "fuga";
   const domainSlashBoost = attacker && isDomainOwner(attacker, "malevolentShrine");
+
   const maxDistance = move === "cleave"
     ? domainSlashBoost ? 178 : 118
     : Math.max(120, spec.speed * (spec.life + (move === "blue" || move === "red" ? Math.round(chargeRatio * 10) : 0) + (domainSlashBoost && move === "slash" ? 34 : 0)));
-  const distances = [Math.min(maxDistance, aimLimit)];
 
   const target = attacker === player ? enemy : attacker === enemy ? player : null;
-  if (target && !target.ko) {
-    const targetRadius = move === "cleave" ? Math.max(20, spec.radius * 0.55) : radius;
-    distances.push(getRayRectHitDistance(aimVector, maxDistance, targetRadius, target));
-  }
 
-  if (move === "cleave") {
+  if (usesExactMouseEnd) {
+    const distances = [Math.min(maxDistance, aimLimit)];
+    if (target && !target.ko) {
+      const targetRadius = move === "cleave" ? Math.max(20, spec.radius * 0.55) : radius;
+      distances.push(getRayRectHitDistance(aimVector, maxDistance, targetRadius, target));
+    }
     return Math.max(8, Math.min(...distances.filter((distance) => Number.isFinite(distance) && distance > 0)));
   }
 
+  // Blue, Red, Dismantle, Hollow Purple, World Slash, and other ranged moves aim toward the mouse
+  // but do NOT stop at the mouse. They keep traveling until their own range/lifetime ends.
   const chargedLife = spec.life + (move === "blue" || move === "red" ? Math.round(chargeRatio * 10) : 0) + (domainSlashBoost && move === "slash" ? 34 : 0);
-  const fullTravel = Math.min(Math.max(120, spec.speed * chargedLife), aimLimit);
-  distances[0] = fullTravel;
+  const fullTravel = Math.max(120, spec.speed * chargedLife);
+  const distances = [fullTravel];
+
   distances.push(
     aimVector.x > 0.001 ? (STAGE_W - radius - aimVector.origin.x) / aimVector.x : Infinity,
     aimVector.x < -0.001 ? (radius - aimVector.origin.x) / aimVector.x : Infinity,
     aimVector.y > 0.001 ? (GROUND - radius - aimVector.origin.y) / aimVector.y : Infinity,
     aimVector.y < -0.001 ? (radius - aimVector.origin.y) / aimVector.y : Infinity
   );
+
   return Math.max(8, Math.min(...distances.filter((distance) => Number.isFinite(distance) && distance > 0)));
 }
 
@@ -8810,6 +8816,14 @@ window.addEventListener("keydown", (event) => {
   if ((key === "f" || code === "keyf") && !event.repeat) {
     if (player.technique === "limitless") toggleInfinity(player);
   }
+  if ((key === "s" || code === "keys") && !event.repeat && !homeOpen && !paused && gameState === "playing") {
+    const fighter = gameMode === "online" && onlineRole === "p2" ? enemy : player;
+    if (fighter?.technique === "shrine") {
+      if (prepareFuga(fighter, mouseAimWorld) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("fuga-start", mouseAimWorld);
+    } else if (fighter?.technique === "limitless") {
+      if (prepareTeleport(fighter, mouseAimWorld) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("teleport-start", mouseAimWorld);
+    }
+  }
   if ((key === "c" || code === "keyc") && !event.repeat) beginUltimateAim(player, mouseAimWorld);
   if (key === "shift" || code === "shiftleft" || code === "shiftright") startDodge(player, getPlayerDodgeVector());
   if ((key === " " || code === "space") && !event.repeat) jumpPlayer();
@@ -8831,6 +8845,19 @@ window.addEventListener("keyup", (event) => {
   const releaseAction = getTechniqueReleaseAction(key, code);
   keys.delete(event.key.toLowerCase());
   keys.delete(event.code.toLowerCase());
+  if ((key === "s" || code === "keys") && !homeOpen && !paused && gameState === "playing") {
+    const active = gameMode === "online" && onlineRole === "p2" ? enemy : player;
+    if (active?.fugaAiming) {
+      startFuga(active, active?.techniqueAim || mouseAimWorld);
+      if (gameMode === "online" && onlineRole === "p2") sendOnlineInput("fuga", active?.techniqueAim || mouseAimWorld);
+      return;
+    }
+    if (active?.teleportAiming) {
+      performTeleport(active, active?.techniqueAim || mouseAimWorld);
+      if (gameMode === "online" && onlineRole === "p2") sendOnlineInput("teleport", active?.techniqueAim || mouseAimWorld);
+      return;
+    }
+  }
   if ((key === "c" || code === "keyc") && !homeOpen && !paused && gameState === "playing") {
     const active = gameMode === "online" && onlineRole === "p2" ? enemy : player;
     const didRelease = releaseUltimateAim(active, active?.ultimateAimPoint || mouseAimWorld);
