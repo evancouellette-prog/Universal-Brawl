@@ -2962,3 +2962,14 @@ button.hidden {
   text-shadow: inherit !important;
   filter: none !important;
 }
+
+
+/* MATCH_MAIN_MENU_SETTINGS_BUTTON_TO_HOME_BUTTONS */
+.home-panel .start-actions .settings-button,
+.home-panel .settings-button {
+  background: linear-gradient(180deg, #f8fafc, #cbd5e1) !important;
+  color: #020617 !important;
+  box-shadow: 0 4px 0 #475569 !important;
+  text-shadow: none !important;
+  filter: none !important;
+}
