@@ -1,0 +1,164 @@
+name: Move HUD fix into real files
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  move-hud-fix:
+    runs-on: ubuntu-latest
+    if: ${{ !contains(github.event.head_commit.message, 'Move HUD fix into real files') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Patch real files and remove temporary HUD file
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          game = Path('game.js')
+          text = game.read_text(encoding='utf-8')
+
+          # Make the real generated label say Blue Amp.
+          text = text.replace('name: "AMP"', 'name: "Blue Amp"')
+          text = text.replace("name: 'AMP'", "name: 'Blue Amp'")
+          text = re.sub(r'\bAMP\b', 'Blue Amp', text)
+
+          # Put character classes on CT HUD boxes inside updateCtHud.
+          if 'gojo-cooldown' not in text:
+              text = text.replace(
+                  'hud.slot.classList.toggle("hidden", !move); if (!move) return;',
+                  'hud.slot.classList.toggle("hidden", !move); hud.slot.classList.toggle("gojo-cooldown", f.technique === "limitless"); hud.slot.classList.toggle("sukuna-cooldown", f.technique === "shrine"); if (!move) return;',
+                  1
+              )
+
+          # Put character classes on extra cooldown rows at creation time.
+          if 'extra-cooldown ct-slot ${ready ? "ready" : "cooling"} ${f.technique === "shrine" ? "sukuna-cooldown" : "gojo-cooldown"}' not in text:
+              text = text.replace(
+                  'row.className = `extra-cooldown ct-slot ${ready ? "ready" : "cooling"}`;',
+                  'row.className = `extra-cooldown ct-slot ${ready ? "ready" : "cooling"} ${f.technique === "shrine" ? "sukuna-cooldown" : "gojo-cooldown"}`;',
+                  1
+              )
+
+          game.write_text(text, encoding='utf-8')
+
+          css = Path('styles.css')
+          style = css.read_text(encoding='utf-8')
+          marker = '/* CHATGPT_REAL_CHARACTER_HUD_COLORS */'
+          block = '''
+
+/* CHATGPT_REAL_CHARACTER_HUD_COLORS */
+.ct-slot.gojo-cooldown,
+.ct-slot.gojo-cooldown.ready,
+.ct-slot.gojo-cooldown.cooling,
+.ct-slot.gojo-cooldown.low-ce,
+.ct-slot.gojo-cooldown.blocked,
+.extra-cooldown.gojo-cooldown,
+.extra-cooldown.gojo-cooldown.ready,
+.extra-cooldown.gojo-cooldown.cooling,
+.extra-cooldown.gojo-cooldown.low-ce,
+.extra-cooldown.gojo-cooldown.blocked {
+  background: linear-gradient(90deg, #1558ff, #38bdf8, #e0f2fe) !important;
+  border: 3px solid #e0f2fe !important;
+  box-shadow: 0 3px 0 #082f49, 0 0 14px rgba(56, 189, 248, 0.48) !important;
+  color: #ffffff !important;
+}
+
+.ct-slot.gojo-cooldown .ct-fill,
+.ct-slot.gojo-cooldown.ready .ct-fill,
+.ct-slot.gojo-cooldown.cooling .ct-fill,
+.ct-slot.gojo-cooldown.low-ce .ct-fill,
+.ct-slot.gojo-cooldown.blocked .ct-fill,
+.extra-cooldown.gojo-cooldown .ct-fill,
+.extra-cooldown.gojo-cooldown.ready .ct-fill,
+.extra-cooldown.gojo-cooldown.cooling .ct-fill,
+.extra-cooldown.gojo-cooldown.low-ce .ct-fill,
+.extra-cooldown.gojo-cooldown.blocked .ct-fill {
+  background: linear-gradient(90deg, #1558ff, #38bdf8, #e0f2fe) !important;
+}
+
+.ct-slot.sukuna-cooldown,
+.ct-slot.sukuna-cooldown.ready,
+.ct-slot.sukuna-cooldown.cooling,
+.ct-slot.sukuna-cooldown.low-ce,
+.ct-slot.sukuna-cooldown.blocked,
+.extra-cooldown.sukuna-cooldown,
+.extra-cooldown.sukuna-cooldown.ready,
+.extra-cooldown.sukuna-cooldown.cooling,
+.extra-cooldown.sukuna-cooldown.low-ce,
+.extra-cooldown.sukuna-cooldown.blocked {
+  background: linear-gradient(90deg, #991b1b, #ef4444, #fee2e2) !important;
+  border: 3px solid #fee2e2 !important;
+  box-shadow: 0 3px 0 #1f0505, 0 0 14px rgba(248, 113, 113, 0.48) !important;
+  color: #ffffff !important;
+}
+
+.ct-slot.sukuna-cooldown .ct-fill,
+.ct-slot.sukuna-cooldown.ready .ct-fill,
+.ct-slot.sukuna-cooldown.cooling .ct-fill,
+.ct-slot.sukuna-cooldown.low-ce .ct-fill,
+.ct-slot.sukuna-cooldown.blocked .ct-fill,
+.extra-cooldown.sukuna-cooldown .ct-fill,
+.extra-cooldown.sukuna-cooldown.ready .ct-fill,
+.extra-cooldown.sukuna-cooldown.cooling .ct-fill,
+.extra-cooldown.sukuna-cooldown.low-ce .ct-fill,
+.extra-cooldown.sukuna-cooldown.blocked .ct-fill {
+  background: linear-gradient(90deg, #991b1b, #ef4444, #fee2e2) !important;
+}
+
+.ct-slot.gojo-cooldown .ct-label,
+.ct-slot.gojo-cooldown .ct-status,
+.ct-slot.sukuna-cooldown .ct-label,
+.ct-slot.sukuna-cooldown .ct-status,
+.extra-cooldown.gojo-cooldown .ct-label,
+.extra-cooldown.gojo-cooldown .ct-status,
+.extra-cooldown.sukuna-cooldown .ct-label,
+.extra-cooldown.sukuna-cooldown .ct-status {
+  color: #ffffff !important;
+  font-size: 15px !important;
+  font-weight: 1000 !important;
+  text-shadow: 0 2px 0 #000, 0 0 8px #000, 0 0 13px #000 !important;
+  background: rgba(0, 0, 0, 0.78) !important;
+  border: 2px solid rgba(255, 255, 255, 0.7) !important;
+  border-radius: 9px !important;
+  padding: 2px 8px !important;
+  box-shadow: none !important;
+}
+'''
+          if marker not in style:
+              css.write_text(style.rstrip() + block, encoding='utf-8')
+
+          index = Path('index.html')
+          html = index.read_text(encoding='utf-8')
+          html = html.replace('  <script src="dummy-hud-fix.js"></script>\n', '')
+          html = html.replace('<script src="dummy-hud-fix.js"></script>\n', '')
+          index.write_text(html, encoding='utf-8')
+
+          for path in [
+              'dummy-hud-fix.js',
+              '.github/workflows/patch-hud-colors-real-files.yml',
+              '.github/workflows/move-hud-fix-into-real-files.yml'
+          ]:
+              p = Path(path)
+              if p.exists():
+                  p.unlink()
+          PY
+
+      - name: Commit changes
+        run: |
+          git config user.name "ChatGPT"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Move HUD fix into real files"
+            git push
+          fi
