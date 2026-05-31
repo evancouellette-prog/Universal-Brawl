@@ -135,20 +135,6 @@
       display: none !important;
       content: none !important;
     }
-
-    body.technique-charging #playerCt1Slot,
-    body.technique-charging #playerCt2Slot,
-    body.technique-charging #playerCt3Slot {
-      background: linear-gradient(90deg, #ea580c, #fb923c, #ffedd5) !important;
-      border-color: #ffedd5 !important;
-      box-shadow: 0 3px 0 #431407, 0 0 18px rgba(251, 146, 60, 0.62) !important;
-    }
-
-    body.technique-charging #playerCt1Slot .ct-fill,
-    body.technique-charging #playerCt2Slot .ct-fill,
-    body.technique-charging #playerCt3Slot .ct-fill {
-      background: linear-gradient(90deg, #ea580c, #fb923c, #ffedd5) !important;
-    }
   `;
   document.head.appendChild(style);
 
@@ -185,16 +171,6 @@
     document.body.classList.toggle("enemy-sukuna", panelIsSukuna("enemy"));
   }
 
-  function syncChargingHud() {
-    const playerStatuses = [
-      document.getElementById("playerCt1Status"),
-      document.getElementById("playerCt2Status"),
-      document.getElementById("playerCt3Status")
-    ];
-    const charging = playerStatuses.some((el) => /charge|hold|aim/i.test(el?.textContent || ""));
-    document.body.classList.toggle("technique-charging", charging);
-  }
-
   function cleanLabels() {
     document.querySelectorAll(".extra-cooldown").forEach((el) => {
       const text = String(el.textContent || "")
@@ -210,7 +186,6 @@
   function syncUi() {
     syncPracticeDummyHud();
     syncCharacterCooldownColors();
-    syncChargingHud();
     cleanLabels();
   }
 
