@@ -182,14 +182,14 @@ let musicMasterGain = null;
 const MUSIC_VOLUME_STORAGE_KEY = "jujutsuBrawlMusicVolume";
 const MUSIC_TRACK_STORAGE_KEY = "jujutsuBrawlMusicTrack";
 const RADIO_TRACKS = [
-  { title: "Judas", artist: "Lady Gaga", type: "audio", src: "assets/judas.mp3?v=12", style: "battle" },
-  { title: "If I Am With You", artist: "Yoshimasa Terui", type: "audio", src: "assets/if-i-am-with-you.mp3", style: "menu" },
-  { title: "Kaikai Kitan", artist: "Eve", type: "audio", src: "assets/kaikai-kitan.mp3", style: "battle" },
-  { title: "Inferno", artist: "Mrs. GREEN APPLE", type: "audio", src: "assets/inferno.mp3", style: "battle" },
-  { title: "Black Catcher", artist: "Vickeblanka", type: "audio", src: "assets/black-catcher.mp3", style: "battle" },
-  { title: "Paint It Black", artist: "London Symphony Orchestra", type: "audio", src: "assets/paint-it-black.mp3", style: "menu" },
-  { title: "Gurenge", artist: "LiSA", type: "audio", src: "assets/gurenge.mp3", style: "battle" },
-  { title: "More Than Words", artist: "Hitsujibungaku", type: "audio", src: "assets/more-than-words.mp3", style: "menu" }
+  { title: "Judas", artist: "Lady Gaga", type: "audio", src: "assets/judas.mp3?v=13", style: "battle" },
+  { title: "If I Am With You", artist: "Yoshimasa Terui", type: "audio", src: "assets/if-i-am-with-you.mp3?v=13", style: "menu" },
+  { title: "Kaikai Kitan", artist: "Eve", type: "audio", src: "assets/kaikai-kitan.mp3?v=13", style: "battle" },
+  { title: "Inferno", artist: "Mrs. GREEN APPLE", type: "audio", src: "assets/inferno.mp3?v=13", style: "battle" },
+  { title: "Black Catcher", artist: "Vickeblanka", type: "audio", src: "assets/black-catcher.mp3?v=13", style: "battle" },
+  { title: "Paint It Black", artist: "London Symphony Orchestra", type: "audio", src: "assets/paint-it-black.mp3?v=13", style: "menu" },
+  { title: "Gurenge", artist: "LiSA", type: "audio", src: "assets/gurenge.mp3?v=13", style: "battle" },
+  { title: "More Than Words", artist: "Hitsujibungaku", type: "audio", src: "assets/more-than-words.mp3?v=13", style: "menu" }
 ];
 let musicVolume = loadSavedMusicVolume();
 let musicMuted = false;
@@ -9814,7 +9814,11 @@ battleMusic.addEventListener("play", updateMusicProgressUi);
 battleMusic.addEventListener("pause", updateMusicProgressUi);
 battleMusic.addEventListener("error", () => {
   const track = getCurrentRadioTrack();
-  console.warn("Music failed to load, but auto-skip is disabled:", track?.title, track?.src, battleMusic.error);
+  console.warn("Music failed to load. Skipping:", track?.title, track?.src, battleMusic.error);
+
+  window.setTimeout(() => {
+    playNextSong();
+  }, 250);
 });
 techniqueButtons.forEach((button) => {
   button.addEventListener("click", () => finishTechniqueSelect(button.dataset.technique));
