@@ -3008,3 +3008,19 @@ button#pauseSettingsButton.settings-button:hover:not(:disabled) {
 button#pauseSettingsButton.settings-button:active {
   box-shadow: 0 2px 0 #7b5a18 !important;
 }
+/* Main/Home screen Settings button only */
+#homeScreen .settings-button {
+  background: #d6b84d !important;
+  color: #111827 !important;
+  border-color: #f8fafc !important;
+  box-shadow: 0 4px 0 #7b5a18 !important;
+}
+
+#homeScreen .settings-button:hover {
+  background: #e6c85a !important;
+}
+
+#homeScreen .settings-button:active {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 #7b5a18 !important;
+}
