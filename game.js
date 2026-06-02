@@ -793,19 +793,11 @@ function setRadioTrack(index, autoplay = true, restart = true) {
 }
 
 function playNextSong() {
-  currentRadioTrackIndex = normalizeTrackIndex(currentRadioTrackIndex + 1);
-  saveRadioTrackIndex();
-  updateRadioUi();
-  updateBattleMusicState(true);
-  if (!musicMuted) startBackgroundMusic();
+  setRadioTrack(currentRadioTrackIndex + 1, true, true);
 }
 
 function playPreviousSong() {
-  currentRadioTrackIndex = normalizeTrackIndex(currentRadioTrackIndex - 1);
-  saveRadioTrackIndex();
-  updateRadioUi();
-  updateBattleMusicState(true);
-  if (!musicMuted) startBackgroundMusic();
+  setRadioTrack(currentRadioTrackIndex - 1, true, true);
 }
 
 function openRadioScreen() {
@@ -2063,8 +2055,12 @@ function updateTechniqueCooldownHud(f, slots) {
         : state.lowCe ? "NO CE" : "READY";
     hud.slot.classList.toggle("ready", !state.cooling && !state.blocked && !state.lowCe && !state.charging);
     hud.slot.classList.toggle("cooling", state.cooling || state.charging);
+    hud.slot.classList.toggle("charging", state.charging);
     hud.slot.classList.toggle("low-ce", !state.cooling && !state.charging && state.lowCe);
     hud.slot.classList.toggle("blocked", !state.cooling && !state.charging && state.blocked);
+
+    hud.slot.classList.toggle("gojo-cooldown", f.technique === "limitless");
+    hud.slot.classList.toggle("sukuna-cooldown", f.technique === "shrine");
   });
 }
 
@@ -2402,21 +2398,12 @@ function sendOnlinePause(value) {
 }
 
 function setPaused(value, broadcast = true) {
-  if (homeOpen) return;
-
-  paused = Boolean(value);
-
-  if (pauseScreen) {
-    pauseScreen.classList.toggle("hidden", !paused);
-  }
-
+  if (homeOpen || roundEnding || gameOver || gameState !== "playing") return;
+  paused = value;
+  pauseScreen.classList.toggle("hidden", !paused);
   if (paused) keys.clear();
-
   updateBattleMusicState();
-
-  if (broadcast && typeof sendOnlinePause === "function") {
-    sendOnlinePause(paused);
-  }
+  if (broadcast) sendOnlinePause(paused);
 }
 
 function startOnlineGame(role) {
@@ -3091,7 +3078,7 @@ function getExtraCooldownItems(f) {
     const bluePunchMax = GOJO_BLUE_PUNCH_COOLDOWN_TICKS || 600;
     const stunComboMax = GOJO_PUSH_PULL_FINISHER_COOLDOWN_TICKS || GOJO_LIGHT_FINISHER_COOLDOWN_TICKS || 300;
 
-    items.push({ name: "AMP", current: f.bluePunchCooldown || 0, max: bluePunchMax });
+    items.push({ name: "BLUE AMP", current: f.bluePunchCooldown || 0, max: bluePunchMax });
     items.push({ name: "STUN COMBO", current: f.gojoPushPullCooldown || 0, max: stunComboMax });
   }
 
@@ -3116,7 +3103,7 @@ function updateExtraCooldownHud(container, f) {
     const ready = ratio <= 0;
 
     const row = document.createElement("div");
-    row.className = `extra-cooldown ct-slot ${ready ? "ready" : "cooling"}`;
+    row.className = `extra-cooldown ct-slot ${ready ? "ready" : "cooling"} ${f.technique === "shrine" ? "sukuna-cooldown" : "gojo-cooldown"}`;
 
     const label = document.createElement("span");
     label.className = "extra-cooldown-label ct-label";
@@ -9827,11 +9814,7 @@ battleMusic.addEventListener("play", updateMusicProgressUi);
 battleMusic.addEventListener("pause", updateMusicProgressUi);
 battleMusic.addEventListener("error", () => {
   const track = getCurrentRadioTrack();
-  console.warn("Music failed to load:", track?.title, track?.src, battleMusic.error);
-
-  if (RADIO_TRACKS.length > 1) {
-    window.setTimeout(() => playNextSong(), 150);
-  }
+  console.warn("Music failed to load, but auto-skip is disabled:", track?.title, track?.src, battleMusic.error);
 });
 techniqueButtons.forEach((button) => {
   button.addEventListener("click", () => finishTechniqueSelect(button.dataset.technique));
@@ -10564,4 +10547,45 @@ function drawWorldSlashEffects() {
   } else {
     startPatch();
   }
+})();
+// CLEAN PAUSE BUTTON FIX
+(function () {
+  const pauseBtn = document.getElementById("pauseButton");
+  const resumeBtn = document.getElementById("resumeButton");
+  const pauseScreenEl = document.getElementById("pauseScreen");
+
+  function openPause() {
+    if (typeof paused !== "undefined") paused = true;
+    if (pauseScreenEl) pauseScreenEl.classList.remove("hidden");
+  }
+
+  function closePause() {
+    if (typeof paused !== "undefined") paused = false;
+    if (pauseScreenEl) pauseScreenEl.classList.add("hidden");
+  }
+
+  if (pauseBtn) {
+    pauseBtn.onclick = function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      openPause();
+    };
+  }
+
+  if (resumeBtn) {
+    resumeBtn.onclick = function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      closePause();
+    };
+  }
+
+  document.addEventListener("keydown", function (event) {
+    if (event.code !== "Escape") return;
+    if (!pauseScreenEl) return;
+
+    const isOpen = !pauseScreenEl.classList.contains("hidden");
+    if (isOpen) closePause();
+    else openPause();
+  });
 })();
