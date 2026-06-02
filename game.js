@@ -9936,8 +9936,6 @@ document.addEventListener("click", (event) => {
 // ONLINE_NAME_FALLBACK_HANDLER
 
 
-
-// SAFE_BUTTON_AND_KEYBIND_RECOVERY_PATCH
 window.addEventListener("error", (event) => {
   console.error("Game runtime error:", event.message, event.filename, event.lineno, event.colno);
 });
@@ -9980,7 +9978,6 @@ document.addEventListener("click", (event) => {
 
 
 
-// RUNTIME_ERROR_VISIBLE_BOX_PATCH
 window.addEventListener("error", (event) => {
   const existing = document.getElementById("runtimeErrorBox");
   const box = existing || document.createElement("pre");
@@ -9991,7 +9988,6 @@ window.addEventListener("error", (event) => {
 });
 
 
-// RELIABLE_BATTLE_BUTTONS_FIX
 document.addEventListener("click", (event) => {
   const button = event.target.closest("button");
   if (!button || button.disabled) return;
@@ -10354,9 +10350,6 @@ function drawWorldSlashEffects() {
     ctx.restore();
   }
 }
-// PRACTICE_DUMMY_HUD_AND_SETTINGS_PATCH
-// Put this at the very bottom of game.js.
-// No extra dummy-hud-fix.js file needed.
 
 (function () {
   const PRACTICE_SETTINGS_STORAGE_KEY = "jujutsuBrawlPracticeSettingsV1";
@@ -10550,4 +10543,45 @@ function drawWorldSlashEffects() {
   } else {
     startPatch();
   }
+})();
+// CLEAN PAUSE BUTTON FIX
+(function () {
+  const pauseBtn = document.getElementById("pauseButton");
+  const resumeBtn = document.getElementById("resumeButton");
+  const pauseScreenEl = document.getElementById("pauseScreen");
+
+  function openPause() {
+    if (typeof paused !== "undefined") paused = true;
+    if (pauseScreenEl) pauseScreenEl.classList.remove("hidden");
+  }
+
+  function closePause() {
+    if (typeof paused !== "undefined") paused = false;
+    if (pauseScreenEl) pauseScreenEl.classList.add("hidden");
+  }
+
+  if (pauseBtn) {
+    pauseBtn.onclick = function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      openPause();
+    };
+  }
+
+  if (resumeBtn) {
+    resumeBtn.onclick = function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      closePause();
+    };
+  }
+
+  document.addEventListener("keydown", function (event) {
+    if (event.code !== "Escape") return;
+    if (!pauseScreenEl) return;
+
+    const isOpen = !pauseScreenEl.classList.contains("hidden");
+    if (isOpen) closePause();
+    else openPause();
+  });
 })();
