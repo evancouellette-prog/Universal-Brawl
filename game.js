@@ -10354,3 +10354,200 @@ function drawWorldSlashEffects() {
     ctx.restore();
   }
 }
+// PRACTICE_DUMMY_HUD_AND_SETTINGS_PATCH
+// Put this at the very bottom of game.js.
+// No extra dummy-hud-fix.js file needed.
+
+(function () {
+  const PRACTICE_SETTINGS_STORAGE_KEY = "jujutsuBrawlPracticeSettingsV1";
+
+  function isPracticeActive() {
+    return (
+      gameMode === "practice" ||
+      pacifistBot === true ||
+      !practiceSettingsButton?.classList.contains("hidden")
+    );
+  }
+
+  function getBarContainer(el) {
+    return el?.closest?.(".ce-frame, .ultimate-frame, .extra-cooldowns") || el;
+  }
+
+  function setHudVisible(el, visible) {
+    const container = getBarContainer(el);
+    if (!container) return;
+    container.classList.toggle("hidden", !visible);
+    container.style.display = visible ? "" : "none";
+  }
+
+  function applyDummyHud() {
+    const hideDummyHud = isPracticeActive();
+
+    // Hide dummy resource bars, keep dummy HP visible.
+    setHudVisible(enemyCeEl, !hideDummyHud);
+    setHudVisible(enemyUltimateEl, !hideDummyHud);
+    setHudVisible(enemyExtraCooldownsEl, !hideDummyHud);
+
+    if (enemyStarsEl) {
+      enemyStarsEl.classList.toggle("hidden", hideDummyHud);
+      enemyStarsEl.style.display = hideDummyHud ? "none" : "";
+    }
+
+    movePracticeSettingsButton();
+  }
+
+  function loadPracticeSettings() {
+    if (typeof practiceSettings === "undefined" || !practiceSettings) return;
+
+    let loaded = false;
+
+    try {
+      const saved = JSON.parse(localStorage.getItem(PRACTICE_SETTINGS_STORAGE_KEY) || "null");
+      if (saved && typeof saved === "object") {
+        Object.keys(practiceSettings).forEach((key) => {
+          if (typeof saved[key] === "boolean") {
+            practiceSettings[key] = saved[key];
+          }
+        });
+        loaded = true;
+      }
+    } catch (err) {}
+
+    // First-time default: stationary dummy OFF.
+    if (!loaded) {
+      practiceSettings.stationaryDummy = false;
+    }
+  }
+
+  function savePracticeSettings() {
+    if (typeof practiceSettings === "undefined" || !practiceSettings) return;
+
+    try {
+      localStorage.setItem(PRACTICE_SETTINGS_STORAGE_KEY, JSON.stringify(practiceSettings));
+    } catch (err) {}
+  }
+
+  function refreshPracticeButtons() {
+    if (typeof updatePracticeSettingsButtons === "function") {
+      updatePracticeSettingsButtons();
+    }
+
+    if (typeof updatePracticeSettingsUi === "function") {
+      updatePracticeSettingsUi();
+    }
+
+    // Backup UI sync if your game uses data-practice-setting buttons.
+    document.querySelectorAll(".practice-setting-button").forEach((button) => {
+      const key = button.dataset.practiceSetting || button.dataset.setting;
+      const value = button.dataset.value;
+
+      if (!key || !(key in practiceSettings)) return;
+
+      const pressed =
+        (value === "on" && practiceSettings[key]) ||
+        (value === "off" && !practiceSettings[key]);
+
+      button.setAttribute("aria-pressed", pressed ? "true" : "false");
+      button.classList.toggle("active", pressed);
+    });
+  }
+
+  function installPracticeButtonStyle() {
+    if (document.getElementById("practice-dummy-button-style")) return;
+
+    const style = document.createElement("style");
+    style.id = "practice-dummy-button-style";
+    style.textContent = `
+      #practiceSettingsButton.practice-under-dummy-hp {
+        position: static !important;
+        display: block !important;
+        width: 100% !important;
+        margin: 7px 0 6px 0 !important;
+        padding: 6px 10px !important;
+        border-radius: 10px !important;
+        font-size: 0.82rem !important;
+        font-weight: 900 !important;
+        text-align: center !important;
+        transform: none !important;
+        z-index: auto !important;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function movePracticeSettingsButton() {
+    if (!practiceSettingsButton || !enemyHealthEl) return;
+
+    const active = isPracticeActive();
+
+    practiceSettingsButton.classList.toggle("practice-under-dummy-hp", active);
+
+    if (!active) return;
+
+    // Put the button directly under the dummy HP bar.
+    if (enemyHealthEl.nextElementSibling !== practiceSettingsButton) {
+      enemyHealthEl.insertAdjacentElement("afterend", practiceSettingsButton);
+    }
+  }
+
+  function setupPracticeSettingSaving() {
+    document.addEventListener(
+      "click",
+      (event) => {
+        const button = event.target.closest(".practice-setting-button");
+        if (!button) return;
+
+        const key = button.dataset.practiceSetting || button.dataset.setting;
+        const value = button.dataset.value;
+
+        if (!key || typeof practiceSettings === "undefined" || !(key in practiceSettings)) {
+          return;
+        }
+
+        // Run after the game's normal click code, then force the intended on/off value.
+        setTimeout(() => {
+          if (value === "on") practiceSettings[key] = true;
+          if (value === "off") practiceSettings[key] = false;
+
+          savePracticeSettings();
+          refreshPracticeButtons();
+          applyDummyHud();
+        }, 0);
+      },
+      true
+    );
+  }
+
+  function patchUpdateHud() {
+    if (typeof updateHud !== "function" || updateHud.practiceDummyPatchApplied) return;
+
+    const oldUpdateHud = updateHud;
+
+    updateHud = function patchedUpdateHud() {
+      oldUpdateHud();
+      applyDummyHud();
+    };
+
+    updateHud.practiceDummyPatchApplied = true;
+  }
+
+  function startPatch() {
+    loadPracticeSettings();
+    installPracticeButtonStyle();
+    setupPracticeSettingSaving();
+    refreshPracticeButtons();
+    patchUpdateHud();
+    applyDummyHud();
+
+    setInterval(() => {
+      applyDummyHud();
+      refreshPracticeButtons();
+    }, 300);
+  }
+
+  if (document.readyState === "loading") {
+    window.addEventListener("DOMContentLoaded", startPatch);
+  } else {
+    startPatch();
+  }
+})();
