@@ -2437,6 +2437,40 @@ homeOpen = false;
   scoreInfoEl.textContent = role === "p1" ? "Online P1" : role === "p2" ? "Online P2" : "Spectator";
 }
 
+
+function syncRemoteDamageToLocalJoiner(remoteEnemy) {
+  if (!remoteEnemy || !enemy) return;
+
+  // Keep identity/stat fields in sync without touching local combo/attack timing.
+  if (isValidTechnique(remoteEnemy.technique)) onlineTechniqueChoices.p2 = remoteEnemy.technique;
+  enemy.maxHealth = Number.isFinite(Number(remoteEnemy.maxHealth)) ? Number(remoteEnemy.maxHealth) : enemy.maxHealth;
+  enemy.healthBars = Number.isFinite(Number(remoteEnemy.healthBars)) ? Number(remoteEnemy.healthBars) : enemy.healthBars;
+  enemy.maxCe = Number.isFinite(Number(remoteEnemy.maxCe)) ? Number(remoteEnemy.maxCe) : enemy.maxCe;
+  enemy.damageTakenMultiplier = Number.isFinite(Number(remoteEnemy.damageTakenMultiplier)) ? Number(remoteEnemy.damageTakenMultiplier) : enemy.damageTakenMultiplier;
+  enemy.knockbackTakenMultiplier = Number.isFinite(Number(remoteEnemy.knockbackTakenMultiplier)) ? Number(remoteEnemy.knockbackTakenMultiplier) : enemy.knockbackTakenMultiplier;
+  enemy.outgoingDamageMultiplier = Number.isFinite(Number(remoteEnemy.outgoingDamageMultiplier)) ? Number(remoteEnemy.outgoingDamageMultiplier) : enemy.outgoingDamageMultiplier;
+
+  // Health from the host matters, because host-side Player 1 can damage Player 2.
+  if (Number.isFinite(Number(remoteEnemy.health))) {
+    enemy.health = Math.max(0, Math.min(enemy.maxHealth, Number(remoteEnemy.health)));
+    enemy.delayedHealth = Math.min(enemy.delayedHealth || enemy.health, enemy.health);
+  }
+
+  // Only take host stun/knockdown when the host says P2 is being hit.
+  // This avoids deleting P2's own attacks every network frame.
+  const remotelyHit = (remoteEnemy.hurt || 0) > 0 || (remoteEnemy.stun || 0) > 0 || Boolean(remoteEnemy.knockdown);
+  if (remotelyHit && !enemy.attacking && !isBarrageActive(enemy) && !isGrabThrowActive(enemy)) {
+    enemy.hurt = Math.max(enemy.hurt || 0, remoteEnemy.hurt || 0);
+    enemy.stun = Math.max(enemy.stun || 0, remoteEnemy.stun || 0);
+    enemy.knockdown = Boolean(remoteEnemy.knockdown);
+    enemy.knockdownTimer = Math.max(enemy.knockdownTimer || 0, remoteEnemy.knockdownTimer || 0);
+    if (Number.isFinite(Number(remoteEnemy.vx))) enemy.vx = Number(remoteEnemy.vx);
+    if (Number.isFinite(Number(remoteEnemy.vy))) enemy.vy = Number(remoteEnemy.vy);
+  }
+
+  enemy.ko = Boolean(remoteEnemy.ko);
+}
+
 function connectOnline(room = onlineRoom, side = onlineSide) {
   if (onlineSocket) onlineSocket.close();
   onlineRoom = cleanRoomCode(room);
@@ -2531,8 +2565,17 @@ if (data.type === "role") {
     }
 
     if (onlineRole !== "p1" && data.type === "state") {
+      // P2 controls `enemy` locally. Do NOT blindly overwrite enemy with the
+      // host snapshot every frame, or the joiner loses the tiny combo windows
+      // needed for Gojo's stun finisher and Sukuna's barrage.
       Object.assign(player, data.player);
-      Object.assign(enemy, data.enemy);
+
+      if (onlineRole === "p2") {
+        syncRemoteDamageToLocalJoiner(data.enemy);
+      } else {
+        Object.assign(enemy, data.enemy);
+      }
+
       if (data.player && isValidTechnique(data.player.technique)) {
         onlineTechniqueChoices.p1 = data.player.technique;
       }
