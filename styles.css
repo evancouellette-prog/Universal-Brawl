@@ -3024,3 +3024,69 @@ button#pauseSettingsButton.settings-button:active {
   transform: translateY(2px);
   box-shadow: 0 2px 0 #7b5a18 !important;
 }
+/* SAME COOLDOWN COLORS FOR EVERY CHARACTER */
+.ct-slot,
+.ct-slot.ready,
+.ct-slot.cooling,
+.ct-slot.low-ce,
+.ct-slot.blocked,
+.extra-cooldown,
+.extra-cooldown.ready,
+.extra-cooldown.cooling,
+.extra-cooldown.low-ce,
+.extra-cooldown.blocked {
+  background: linear-gradient(90deg, #1558ff, #38bdf8, #e0f2fe) !important;
+  border: 3px solid #e0f2fe !important;
+  box-shadow: 0 3px 0 #082f49, 0 0 14px rgba(56, 189, 248, 0.45) !important;
+  color: white !important;
+}
+
+/* Fill bars inside cooldown boxes should also be blue */
+.ct-slot .ct-fill,
+.ct-slot.ready .ct-fill,
+.ct-slot.cooling .ct-fill,
+.ct-slot.low-ce .ct-fill,
+.ct-slot.blocked .ct-fill,
+.extra-cooldown .ct-fill,
+.extra-cooldown.ready .ct-fill,
+.extra-cooldown.cooling .ct-fill,
+.extra-cooldown.low-ce .ct-fill,
+.extra-cooldown.blocked .ct-fill {
+  background: linear-gradient(90deg, #1558ff, #38bdf8, #e0f2fe) !important;
+}
+
+/* Make the words readable */
+.ct-slot .ct-label,
+.ct-slot .ct-status,
+.extra-cooldown,
+.extra-cooldown * {
+  color: white !important;
+  font-weight: 900 !important;
+  text-shadow: 0 2px 0 #000, 0 0 8px #000 !important;
+}
+
+/* Orange only when charging / aiming / holding */
+.ct-slot.charging,
+.ct-slot.aiming,
+.ct-slot.holding,
+.ct-slot.active,
+.extra-cooldown.charging,
+.extra-cooldown.aiming,
+.extra-cooldown.holding,
+.extra-cooldown.active {
+  background: linear-gradient(90deg, #c2410c, #fb923c, #ffedd5) !important;
+  border-color: #ffedd5 !important;
+  box-shadow: 0 3px 0 #431407, 0 0 16px rgba(251, 146, 60, 0.55) !important;
+}
+
+/* Fill bars become orange while charging too */
+.ct-slot.charging .ct-fill,
+.ct-slot.aiming .ct-fill,
+.ct-slot.holding .ct-fill,
+.ct-slot.active .ct-fill,
+.extra-cooldown.charging .ct-fill,
+.extra-cooldown.aiming .ct-fill,
+.extra-cooldown.holding .ct-fill,
+.extra-cooldown.active .ct-fill {
+  background: linear-gradient(90deg, #c2410c, #fb923c, #ffedd5) !important;
+}
