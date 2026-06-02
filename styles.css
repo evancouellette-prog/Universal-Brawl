@@ -3090,3 +3090,140 @@ button#pauseSettingsButton.settings-button:active {
 .extra-cooldown.active .ct-fill {
   background: linear-gradient(90deg, #c2410c, #fb923c, #ffedd5) !important;
 }
+
+/* FINAL COOLDOWN READABILITY + SUKUNA RED BLACK PATCH */
+
+/* Home screen Settings button only */
+#homeScreen .settings-button {
+  background: #d6b84d !important;
+  color: #111827 !important;
+  border-color: #f8fafc !important;
+  box-shadow: 0 4px 0 #7b5a18 !important;
+}
+
+#homeScreen .settings-button:hover {
+  background: #e6c85a !important;
+}
+
+#homeScreen .settings-button:active {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 #7b5a18 !important;
+}
+
+/* Base cooldown readability */
+.ct-slot,
+.extra-cooldown.ct-slot {
+  min-height: 46px !important;
+  padding: 7px 9px !important;
+  border-radius: 5px !important;
+  overflow: hidden !important;
+}
+
+/* Make the cooldown fill visible */
+.ct-slot .ct-meter,
+.extra-cooldown.ct-slot .ct-meter {
+  position: absolute !important;
+  inset: 2px !important;
+  z-index: 0 !important;
+  border-radius: 3px !important;
+  background: rgba(2, 6, 23, 0.92) !important;
+  border: 1px solid rgba(248, 250, 252, 0.5) !important;
+}
+
+.ct-slot .ct-fill,
+.extra-cooldown.ct-slot .ct-fill,
+.extra-cooldown-fill.ct-fill {
+  height: 100% !important;
+  opacity: 1 !important;
+  border-radius: 3px !important;
+}
+
+/* Gojo cooldown scheme: blue */
+.ct-slot.gojo-cooldown,
+.extra-cooldown.gojo-cooldown {
+  background: #061a36 !important;
+  border: 3px solid #dbeafe !important;
+  box-shadow: 0 3px 0 #082f49, 0 0 14px rgba(56, 189, 248, 0.48) !important;
+}
+
+.ct-slot.gojo-cooldown .ct-fill,
+.extra-cooldown.gojo-cooldown .ct-fill,
+.extra-cooldown.gojo-cooldown .extra-cooldown-fill {
+  background: linear-gradient(90deg, #1558ff, #38bdf8, #e0f2fe) !important;
+}
+
+/* Sukuna cooldown scheme: red/black */
+.ct-slot.sukuna-cooldown,
+.extra-cooldown.sukuna-cooldown {
+  background: #080202 !important;
+  border: 3px solid #ef4444 !important;
+  box-shadow: 0 3px 0 #000000, 0 0 15px rgba(220, 38, 38, 0.58) !important;
+}
+
+.ct-slot.sukuna-cooldown .ct-fill,
+.extra-cooldown.sukuna-cooldown .ct-fill,
+.extra-cooldown.sukuna-cooldown .extra-cooldown-fill {
+  background: linear-gradient(90deg, #050505, #7f1d1d, #ef4444) !important;
+}
+
+/* Gojo charging becomes orange. Sukuna stays red/black. */
+.ct-slot.gojo-cooldown.charging,
+.extra-cooldown.gojo-cooldown.charging {
+  background: #431407 !important;
+  border-color: #ffedd5 !important;
+  box-shadow: 0 3px 0 #431407, 0 0 16px rgba(251, 146, 60, 0.6) !important;
+}
+
+.ct-slot.gojo-cooldown.charging .ct-fill,
+.extra-cooldown.gojo-cooldown.charging .ct-fill {
+  background: linear-gradient(90deg, #c2410c, #fb923c, #ffedd5) !important;
+}
+
+/* Bigger, clearer cooldown text */
+.ct-label,
+.ct-status,
+.extra-cooldown-label.ct-label,
+.extra-cooldown-status.ct-status {
+  position: relative !important;
+  z-index: 2 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+
+  color: #ffffff !important;
+  background: rgba(0, 0, 0, 0.84) !important;
+  border: 2px solid rgba(255, 255, 255, 0.75) !important;
+  border-radius: 8px !important;
+  padding: 4px 8px !important;
+
+  font-family: Impact, Haettenschweiler, "Arial Black", Arial, sans-serif !important;
+  font-size: 16px !important;
+  font-weight: 900 !important;
+  line-height: 1 !important;
+  letter-spacing: 0.02em !important;
+  text-shadow: 0 2px 0 #000, 0 0 8px #000, 0 0 13px #000 !important;
+
+  white-space: nowrap !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  box-shadow: none !important;
+}
+
+.ct-status,
+.extra-cooldown-status.ct-status {
+  font-size: 14px !important;
+  min-width: max-content !important;
+}
+
+.extra-cooldown-label.ct-label {
+  font-size: 15px !important;
+  max-width: none !important;
+}
+
+/* Stop old cooling colors from overriding text */
+.extra-cooldown.cooling .extra-cooldown-status.ct-status,
+.ct-slot.cooling .ct-status {
+  background: rgba(0, 0, 0, 0.84) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.75) !important;
+}
