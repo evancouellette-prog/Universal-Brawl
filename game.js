@@ -793,11 +793,19 @@ function setRadioTrack(index, autoplay = true, restart = true) {
 }
 
 function playNextSong() {
-  setRadioTrack(currentRadioTrackIndex + 1, true, true);
+  currentRadioTrackIndex = normalizeTrackIndex(currentRadioTrackIndex + 1);
+  saveRadioTrackIndex();
+  updateRadioUi();
+  updateBattleMusicState(true);
+  if (!musicMuted) startBackgroundMusic();
 }
 
 function playPreviousSong() {
-  setRadioTrack(currentRadioTrackIndex - 1, true, true);
+  currentRadioTrackIndex = normalizeTrackIndex(currentRadioTrackIndex - 1);
+  saveRadioTrackIndex();
+  updateRadioUi();
+  updateBattleMusicState(true);
+  if (!musicMuted) startBackgroundMusic();
 }
 
 function openRadioScreen() {
@@ -2394,12 +2402,21 @@ function sendOnlinePause(value) {
 }
 
 function setPaused(value, broadcast = true) {
-  if (homeOpen || roundEnding || gameOver || gameState !== "playing") return;
-  paused = value;
-  pauseScreen.classList.toggle("hidden", !paused);
+  if (homeOpen) return;
+
+  paused = Boolean(value);
+
+  if (pauseScreen) {
+    pauseScreen.classList.toggle("hidden", !paused);
+  }
+
   if (paused) keys.clear();
+
   updateBattleMusicState();
-  if (broadcast) sendOnlinePause(paused);
+
+  if (broadcast && typeof sendOnlinePause === "function") {
+    sendOnlinePause(paused);
+  }
 }
 
 function startOnlineGame(role) {
@@ -9810,7 +9827,11 @@ battleMusic.addEventListener("play", updateMusicProgressUi);
 battleMusic.addEventListener("pause", updateMusicProgressUi);
 battleMusic.addEventListener("error", () => {
   const track = getCurrentRadioTrack();
-  console.warn("Music failed to load, but auto-skip is disabled:", track?.title, track?.src, battleMusic.error);
+  console.warn("Music failed to load:", track?.title, track?.src, battleMusic.error);
+
+  if (RADIO_TRACKS.length > 1) {
+    window.setTimeout(() => playNextSong(), 150);
+  }
 });
 techniqueButtons.forEach((button) => {
   button.addEventListener("click", () => finishTechniqueSelect(button.dataset.technique));
@@ -10543,45 +10564,4 @@ function drawWorldSlashEffects() {
   } else {
     startPatch();
   }
-})();
-// CLEAN PAUSE BUTTON FIX
-(function () {
-  const pauseBtn = document.getElementById("pauseButton");
-  const resumeBtn = document.getElementById("resumeButton");
-  const pauseScreenEl = document.getElementById("pauseScreen");
-
-  function openPause() {
-    if (typeof paused !== "undefined") paused = true;
-    if (pauseScreenEl) pauseScreenEl.classList.remove("hidden");
-  }
-
-  function closePause() {
-    if (typeof paused !== "undefined") paused = false;
-    if (pauseScreenEl) pauseScreenEl.classList.add("hidden");
-  }
-
-  if (pauseBtn) {
-    pauseBtn.onclick = function (event) {
-      event.preventDefault();
-      event.stopPropagation();
-      openPause();
-    };
-  }
-
-  if (resumeBtn) {
-    resumeBtn.onclick = function (event) {
-      event.preventDefault();
-      event.stopPropagation();
-      closePause();
-    };
-  }
-
-  document.addEventListener("keydown", function (event) {
-    if (event.code !== "Escape") return;
-    if (!pauseScreenEl) return;
-
-    const isOpen = !pauseScreenEl.classList.contains("hidden");
-    if (isOpen) closePause();
-    else openPause();
-  });
 })();
