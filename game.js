@@ -1352,6 +1352,7 @@ let readyCountdownValue = 0;
 let lastRoundWinner = null;
 let lastOnlineReadySent = 0;
 let lastOnlineNameSent = 0;
+let joinerLocalHitLockTicks = 0;
 const mouseTechniqueHeld = { ct1: false, ct2: false, teleport: false, fuga: false };
 
 
@@ -2468,7 +2469,92 @@ function syncRemoteDamageToLocalJoiner(remoteEnemy) {
     if (Number.isFinite(Number(remoteEnemy.vy))) enemy.vy = Number(remoteEnemy.vy);
   }
 
+
   enemy.ko = Boolean(remoteEnemy.ko);
+}
+
+function protectJoinerLocalHitState() {
+  if (gameMode !== "online" || onlineRole !== "p2") return false;
+  return (
+    joinerLocalHitLockTicks > 0 ||
+    isBarrageActive(enemy) ||
+    isGrabThrowActive(enemy) ||
+    enemy.attacking === "barrage" ||
+    enemy.attacking === "grabThrow" ||
+    player.barrageHeldBy === "enemy" ||
+    player.grabHeldBy === "enemy" ||
+    (player.barrageHeldTimer || 0) > 0 ||
+    (player.grabHeldTimer || 0) > 0 ||
+    (player.hurt || 0) > 0 ||
+    (player.stun || 0) > 0
+  );
+}
+
+function syncHostPlayerToJoiner(remotePlayer) {
+  if (!remotePlayer || !player) return;
+
+  if (!protectJoinerLocalHitState()) {
+    Object.assign(player, remotePlayer);
+    return;
+  }
+
+  const local = {
+    x: player.x,
+    y: player.y,
+    vx: player.vx,
+    vy: player.vy,
+    hurt: player.hurt,
+    stun: player.stun,
+    knockdown: player.knockdown,
+    knockdownTimer: player.knockdownTimer,
+    grounded: player.grounded,
+    barrageHeldTimer: player.barrageHeldTimer,
+    barrageHeldBy: player.barrageHeldBy,
+    barrageLockY: player.barrageLockY,
+    grabHeldTimer: player.grabHeldTimer,
+    grabHeldBy: player.grabHeldBy,
+    grabLockY: player.grabLockY,
+    attacking: player.attacking,
+    attackFrame: player.attackFrame,
+    hasHit: player.hasHit
+  };
+  const localHealth = player.health;
+
+  Object.assign(player, remotePlayer);
+
+  // While P2's combo is actively hitting P1, do not let the host's last
+  // 16ms-old snapshot erase the local stun/hold frames before the damage packet
+  // reaches the host and comes back in the next state update.
+  Object.assign(player, local);
+  if (Number.isFinite(Number(remotePlayer.health))) {
+    player.health = Math.min(localHealth, Number(remotePlayer.health));
+  }
+}
+
+function applyJoinerFighterStateOnHost(remoteFighter) {
+  if (!remoteFighter || !enemy || gameMode !== "online" || onlineRole !== "p1") return;
+
+  // P2 is the owner of `enemy`. Use their fighter packet for short combat
+  // windows that are easy to miss through plain key-input messages.
+  const fields = [
+    "x", "y", "vx", "vy", "dir", "grounded", "jumpsUsed", "onPlatform",
+    "attacking", "attackFrame", "hasHit", "queuedAttack", "pendingPunchCooldown", "punchCooldown",
+    "comboCount", "comboTimer", "comboChainTimer", "comboLightsUsed", "comboHeavyUsed", "lastAttackType",
+    "blocking", "rctHealing", "chargingTechnique", "chargeTicks", "techniqueAim",
+    "barrageTimer", "barrageDuration", "barrageHitsDone", "barrageDamageRemaining", "barrageKnockback", "barrageDir", "barrageTarget", "barrageLockX", "barrageLockY",
+    "grabThrowTimer", "grabThrowDuration", "grabThrowDir", "grabThrowTarget", "grabThrowAim", "grabThrowLockX", "grabThrowLockY",
+    "bluePunchHoldTicks", "bluePunchActiveTicks", "bluePunchCooldown", "bluePunchChases", "bluePunchFlash",
+    "teleportAiming", "teleportCooldown", "fugaAiming", "fugaChargeTicks", "fugaCooldown", "fugaCooldownMax", "ultimateAiming", "ultimateAimPoint"
+  ];
+
+  fields.forEach((field) => {
+    if (Object.prototype.hasOwnProperty.call(remoteFighter, field)) enemy[field] = remoteFighter[field];
+  });
+
+  if (isValidTechnique(remoteFighter.technique)) {
+    enemy.technique = remoteFighter.technique;
+    onlineTechniqueChoices.p2 = remoteFighter.technique;
+  }
 }
 
 function connectOnline(room = onlineRoom, side = onlineSide) {
@@ -2556,6 +2642,7 @@ if (data.type === "role") {
       if (data.fighter && data.fighter.technique) {
         applyOnlineTechniqueChoice("p2", data.fighter.technique, "fighter state");
       }
+      applyJoinerFighterStateOnHost(data.fighter);
       return;
     }
 
@@ -2565,10 +2652,10 @@ if (data.type === "role") {
     }
 
     if (onlineRole !== "p1" && data.type === "state") {
-      // P2 controls `enemy` locally. Do NOT blindly overwrite enemy with the
-      // host snapshot every frame, or the joiner loses the tiny combo windows
-      // needed for Gojo's stun finisher and Sukuna's barrage.
-      Object.assign(player, data.player);
+      // P2 controls `enemy` locally. Do NOT blindly overwrite local combat timing
+      // from the host snapshot every frame.
+      if (onlineRole === "p2") syncHostPlayerToJoiner(data.player);
+      else Object.assign(player, data.player);
 
       if (onlineRole === "p2") {
         syncRemoteDamageToLocalJoiner(data.enemy);
@@ -2810,10 +2897,23 @@ function getFighterNetworkState(f) {
     technique: f.technique,
     techniqueCooldown: f.techniqueCooldown,
     techniqueCooldownMax: f.techniqueCooldownMax,
+    comboCount: f.comboCount,
+    comboTimer: f.comboTimer,
+    comboChainTimer: f.comboChainTimer,
+    comboLightsUsed: f.comboLightsUsed,
+    comboHeavyUsed: f.comboHeavyUsed,
+    lastAttackType: f.lastAttackType,
+    queuedAttack: f.queuedAttack,
+    pendingPunchCooldown: f.pendingPunchCooldown,
+    punchCooldown: f.punchCooldown,
     barrageTimer: f.barrageTimer,
     barrageDuration: f.barrageDuration,
     barrageHitsDone: f.barrageHitsDone,
     barrageDir: f.barrageDir,
+    barrageDamageRemaining: f.barrageDamageRemaining,
+    barrageKnockback: f.barrageKnockback,
+    barrageTarget: f.barrageTarget,
+    barrageLockX: f.barrageLockX,
     barrageHeldTimer: f.barrageHeldTimer,
     barrageHeldBy: f.barrageHeldBy,
     barrageLockY: f.barrageLockY,
@@ -2858,6 +2958,9 @@ function sendOnlineFighterState() {
 
 function sendOnlineDamage(hit) {
   if (!onlineSocket || onlineSocket.readyState !== WebSocket.OPEN || onlineRole !== "p2") return;
+  const holdLock = hit && (hit.barrageHold || hit.grabHold);
+  const bigLock = hit && (hit.knockdown || hit.gojoPushPull || hit.gojoRedHeavy || hit.blueChase);
+  joinerLocalHitLockTicks = Math.max(joinerLocalHitLockTicks || 0, holdLock ? 55 : bigLock ? 42 : 24);
   onlineSocket.send(JSON.stringify({ type: "damage", ...hit }));
 }
 
@@ -9522,6 +9625,7 @@ function drawUltimateScreenEffects() {
 
 function fixedUpdate() {
   frame += 1;
+  if (joinerLocalHitLockTicks > 0) joinerLocalHitLockTicks -= 1;
   if (hitStopTicks > 0) {
     hitStopTicks -= 1;
     updateHitSparks();
