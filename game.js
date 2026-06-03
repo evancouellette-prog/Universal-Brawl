@@ -421,6 +421,7 @@ function updateControlsPanelKeybindLabels() {
       <span><kbd>Right Click</kbd> Red / Dismantle</span>
       <span>${makeControlKbd(controlKeyLabel("specialAim"))} Teleport / Fuga aim</span>
       <span>${makeControlKbd(controlKeyLabel("ultimate"))} Ultimate aim</span>
+      <span><kbd>X</kbd> Domain Expansion</span>
       <span>${makeControlKbd(controlKeyLabel("infinity"))} Infinity</span>
       <span>${makeControlKbd(controlKeyLabel("bluePunch"))} Blue Amp</span>
       <span>${makeControlKbd(controlKeyLabel("rct"))} hold RCT</span>
@@ -1266,7 +1267,7 @@ const DOMAIN_CLASH_TICKS = 180;
 const DOMAIN_CT_LOCK_TICKS = 15 * 60;
 const UNLIMITED_VOID_TICKS = 10 * 60;
 const MALEVOLENT_SHRINE_TICKS = 12 * 60;
-const MALEVOLENT_SLASH_INTERVAL = 34;
+const MALEVOLENT_SLASH_INTERVAL = 27;
 const MALEVOLENT_CLEAVE_INTERVAL = 180;
 const PRACTICE_BOT_RETURN_TICKS = 300;
 const TECHNIQUE_STATS = {
@@ -2624,6 +2625,7 @@ if (data.type === "role") {
       if (data.action === "dodge") startDodge(enemy, getVectorFromInput(remoteInput));
       if (data.action === "jump") jumpFighterWithMove(enemy, (remoteInput.right ? 1 : 0) - (remoteInput.left ? 1 : 0));
       if (data.action === "infinity") toggleInfinity(enemy);
+      if (data.action === "domain") startDomainExpansion(enemy);
       if (data.action === "ultimate") startUltimate(enemy);
       if (data.action === "ultimate-start") beginUltimateAim(enemy, data.aim);
       if (data.action === "ultimate-release") releaseUltimateAim(enemy, data.aim);
@@ -2703,6 +2705,9 @@ if (data.type === "role") {
       readyCountdownValue = data.readyCountdownValue || 0;
       setCountdownOverlay(readyCountdownValue);
       lastRoundWinner = data.lastRoundWinner || lastRoundWinner;
+      activeDomain = data.activeDomain || null;
+      pendingDomain = data.pendingDomain || null;
+      domainClash = data.domainClash || null;
       setPaused(Boolean(data.paused), false);
       syncOnlineRoundMessage();
       updateControlsVisibility();
@@ -2737,6 +2742,7 @@ function getOnlineAction(key, code, repeat) {
   if (isEventForAction("dodge", key, code)) return "dodge";
   if (isEventForAction("jump", key, code) && !repeat) return "jump";
   if (isEventForAction("infinity", key, code) && !repeat && enemy?.technique === "limitless") return "infinity";
+  if ((key === "x" || code === "keyx") && !repeat) return "domain";
   if (isEventForAction("ultimate", key, code) && !repeat) return "ultimate-start";
   if (isEventForAction("specialAim", key, code) && !repeat) return enemy?.technique === "shrine" ? "fuga-start" : "teleport-start";
   return null;
@@ -2993,6 +2999,9 @@ function sendOnlineState() {
     player2Ready,
     readyCountdownValue,
     lastRoundWinner,
+    activeDomain,
+    pendingDomain,
+    domainClash,
     projectiles: projectiles.filter((p) => p.owner === "player")
   }));
 }
@@ -3216,6 +3225,10 @@ function getExtraCooldownItems(f) {
   if (gameMode === "practice" && f === enemy) return [];
 
   const items = [];
+
+  if ((f.ctLockTimer || 0) > 0) {
+    items.push({ name: "CT LOCK", current: f.ctLockTimer || 0, max: DOMAIN_CT_LOCK_TICKS || 900 });
+  }
 
   const rctMax = RCT_COOLDOWN_TICKS[f.technique] || 180;
   items.push({ name: "RCT", current: f.rctCooldown || 0, max: rctMax });
@@ -3589,6 +3602,7 @@ function getMaxComboLights(f) {
 }
 
 function getPunchHitLimit(f) {
+  if (f?.technique === "shrine" && isDomainOwner(f, "malevolentShrine")) return 2;
   return 3;
 }
 
@@ -4787,7 +4801,7 @@ function isDomainVictim(f, type = null) {
 function getDomainMovementMultiplier(f) {
   if (isDomainVictim(f, "unlimitedVoid")) return 0.1;
   if (isDomainOwner(f, "unlimitedVoid")) return 1.3;
-  if (isDomainOwner(f, "malevolentShrine")) return 1.18;
+  if (isDomainOwner(f, "malevolentShrine")) return 1.3;
   return 1;
 }
 
@@ -7013,6 +7027,101 @@ function drawCity() {
 
   ctx.fillStyle = "rgba(255, 255, 255, 0.12)";
   ctx.fillRect(0, GROUND - 2, STAGE_W, 2);
+}
+
+
+function drawActiveDomainBackdrop() {
+  if (!activeDomain && !pendingDomain && !domainClash) return;
+  const type = activeDomain?.type || pendingDomain?.type || "domainClash";
+  const activeRatio = activeDomain ? 1 - Math.max(0, Math.min(1, activeDomain.ticks / Math.max(1, activeDomain.maxTicks))) : 0;
+  const pulse = 0.5 + 0.5 * Math.sin(frame * 0.12);
+
+  ctx.save();
+  ctx.globalCompositeOperation = "source-over";
+
+  if (domainClash) {
+    ctx.fillStyle = "rgba(2, 6, 23, 0.52)";
+    ctx.fillRect(0, 0, STAGE_W, H);
+    ctx.fillStyle = "rgba(56, 189, 248, 0.17)";
+    ctx.fillRect(0, 0, STAGE_W / 2, H);
+    ctx.fillStyle = "rgba(185, 28, 28, 0.20)";
+    ctx.fillRect(STAGE_W / 2, 0, STAGE_W / 2, H);
+    ctx.strokeStyle = `rgba(255,255,255,${0.35 + pulse * 0.35})`;
+    ctx.lineWidth = 5;
+    for (let i = 0; i < 8; i += 1) {
+      const x = STAGE_W / 2 + Math.sin(frame * 0.08 + i) * 70;
+      ctx.beginPath();
+      ctx.moveTo(x - 90 + i * 8, 20 + i * 52);
+      ctx.lineTo(x + 110 - i * 5, 110 + i * 50);
+      ctx.stroke();
+    }
+    ctx.restore();
+    return;
+  }
+
+  if (type === "unlimitedVoid") {
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, "#030712");
+    grad.addColorStop(0.5, "#101a3a");
+    grad.addColorStop(1, "#020617");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, STAGE_W, H);
+    ctx.fillStyle = `rgba(125, 211, 252, ${0.08 + pulse * 0.05})`;
+    for (let i = 0; i < 90; i += 1) {
+      const x = (i * 137 + frame * (0.3 + (i % 4) * 0.12)) % STAGE_W;
+      const y = 30 + ((i * 83 + frame * (0.5 + (i % 3) * 0.16)) % (GROUND - 60));
+      const r = 1.2 + (i % 5) * 0.7;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.strokeStyle = `rgba(191, 219, 254, ${0.12 + pulse * 0.08})`;
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 9; i += 1) {
+      const y = 65 + i * 38 + Math.sin(frame * 0.05 + i) * 9;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(STAGE_W, y + Math.sin(i) * 35);
+      ctx.stroke();
+    }
+  } else {
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, "#2b0505");
+    grad.addColorStop(0.5, "#4c0519");
+    grad.addColorStop(1, "#111827");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, STAGE_W, H);
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.fillRect(0, GROUND, STAGE_W, H - GROUND);
+    ctx.fillStyle = "rgba(127, 29, 29, 0.84)";
+    ctx.fillRect(STAGE_W / 2 - 95, GROUND - 155, 190, 155);
+    ctx.fillStyle = "rgba(2, 6, 23, 0.86)";
+    ctx.fillRect(STAGE_W / 2 - 45, GROUND - 105, 90, 105);
+    ctx.fillStyle = `rgba(249, 115, 22, ${0.12 + pulse * 0.08})`;
+    for (let i = 0; i < 45; i += 1) {
+      const x = (i * 97 + frame * 3) % STAGE_W;
+      const y = 80 + ((i * 41 + frame * 2) % (GROUND - 90));
+      ctx.fillRect(x, y, 3 + (i % 4), 12 + (i % 8));
+    }
+    ctx.strokeStyle = `rgba(248, 250, 252, ${0.16 + pulse * 0.14})`;
+    ctx.lineWidth = 3;
+    for (let i = 0; i < 11; i += 1) {
+      const y = 55 + i * 35 + Math.sin(frame * 0.15 + i) * 16;
+      ctx.beginPath();
+      ctx.moveTo(-50, y);
+      ctx.lineTo(STAGE_W + 50, y - 60 + (i % 4) * 26);
+      ctx.stroke();
+    }
+  }
+
+  if (activeDomain) {
+    const remaining = Math.ceil(activeDomain.ticks / 60);
+    ctx.fillStyle = "rgba(255,255,255,0.88)";
+    ctx.font = "bold 24px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(`${getDomainDisplayName(activeDomain.type)}: ${remaining}s`, cameraX + W / (2 * cameraZoom), 44);
+  }
+  ctx.restore();
 }
 
 function drawPlatforms() {
@@ -9577,6 +9686,7 @@ function draw() {
   ctx.scale(cameraZoom, cameraZoom);
   ctx.translate(-cameraX, 0);
   drawCity();
+  drawActiveDomainBackdrop();
   drawEffects();
   drawFighter(player, getPlayerLabel(), getPlayerLabelColor());
   drawFighter(enemy, getEnemyLabel(), getEnemyLabelColor());
@@ -9590,7 +9700,54 @@ function drawUltimateScreenEffects() {
   const t = ultimateScreenEffect.ticks / Math.max(1, ultimateScreenEffect.maxTicks);
   const age = 1 - t;
   ctx.save();
-  if (ultimateScreenEffect.kind === "hollowPurple") {
+  if (ultimateScreenEffect.kind === "domainVoid") {
+    ctx.fillStyle = `rgba(2, 6, 23, ${0.64 * t})`;
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = `rgba(125, 211, 252, ${0.8 * t})`;
+    ctx.lineWidth = 4;
+    for (let i = 0; i < 9; i += 1) {
+      ctx.beginPath();
+      ctx.arc(W / 2, H / 2, 45 + i * 42 + age * 120, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.fillStyle = `rgba(255,255,255,${0.9 * t})`;
+    ctx.font = "bold 46px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("DOMAIN EXPANSION", W / 2, H * 0.42);
+    ctx.font = "bold 34px system-ui, sans-serif";
+    ctx.fillText("UNLIMITED VOID", W / 2, H * 0.52);
+  } else if (ultimateScreenEffect.kind === "domainShrine") {
+    ctx.fillStyle = `rgba(69, 10, 10, ${0.66 * t})`;
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = `rgba(248, 250, 252, ${0.85 * t})`;
+    ctx.lineWidth = 5;
+    for (let i = 0; i < 10; i += 1) {
+      const y = H * (0.12 + i * 0.08);
+      ctx.beginPath();
+      ctx.moveTo(W * -0.05, y + age * 45);
+      ctx.lineTo(W * 1.05, y - 80 + i * 11);
+      ctx.stroke();
+    }
+    ctx.fillStyle = `rgba(255,255,255,${0.9 * t})`;
+    ctx.font = "bold 46px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("DOMAIN EXPANSION", W / 2, H * 0.42);
+    ctx.font = "bold 34px system-ui, sans-serif";
+    ctx.fillText("MALEVOLENT SHRINE", W / 2, H * 0.52);
+  } else if (ultimateScreenEffect.kind === "domainClash") {
+    ctx.fillStyle = `rgba(2, 6, 23, ${0.68 * t})`;
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = `rgba(56, 189, 248, ${0.22 * t})`;
+    ctx.fillRect(0, 0, W / 2, H);
+    ctx.fillStyle = `rgba(185, 28, 28, ${0.26 * t})`;
+    ctx.fillRect(W / 2, 0, W / 2, H);
+    ctx.fillStyle = `rgba(255,255,255,${0.95 * t})`;
+    ctx.font = "bold 44px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("DOMAIN CLASH", W / 2, H * 0.48);
+    ctx.font = "bold 22px system-ui, sans-serif";
+    ctx.fillText("Mash X", W / 2, H * 0.56);
+  } else if (ultimateScreenEffect.kind === "hollowPurple") {
     ctx.fillStyle = `rgba(2, 6, 23, ${0.44 * Math.sin(Math.PI * t) + 0.08 * t})`;
     ctx.fillRect(0, 0, W, H);
     const glow = ctx.createRadialGradient(W / 2, H / 2, 20, W / 2, H / 2, W * 0.6);
@@ -9714,8 +9871,8 @@ window.addEventListener("keydown", (event) => {
   if (event.target && ["INPUT", "TEXTAREA"].includes(event.target.tagName)) return;
   const key = event.key.toLowerCase();
   const code = event.code.toLowerCase();
-  const handledKeys = ["a", "d", "w", "e", "q", "r", "f", "s", "c", " ", "shift", "tab", "arrowleft", "arrowright", "arrowup", "arrowdown", "p", "n", "m", "/", "escape"];
-  const handledCodes = ["keya", "keyd", "keyw", "keye", "keyq", "keyr", "keyf", "keys", "keyc", "space", "shiftleft", "shiftright", "tab", "arrowleft", "arrowright", "arrowup", "arrowdown", "keyp", "keyn", "keym", "slash", "escape"];
+  const handledKeys = ["a", "d", "w", "e", "q", "r", "f", "s", "c", "x", " ", "shift", "tab", "arrowleft", "arrowright", "arrowup", "arrowdown", "p", "n", "m", "/", "escape"];
+  const handledCodes = ["keya", "keyd", "keyw", "keye", "keyq", "keyr", "keyf", "keys", "keyc", "keyx", "space", "shiftleft", "shiftright", "tab", "arrowleft", "arrowright", "arrowup", "arrowdown", "keyp", "keyn", "keym", "slash", "escape"];
   if (handledKeys.includes(key) || handledCodes.includes(code)) event.preventDefault();
   if (key === "escape" && !homeOpen) {
     setPaused(!paused);
@@ -9746,6 +9903,7 @@ window.addEventListener("keydown", (event) => {
     if (action === "dodge") startDodge(enemy, getVectorFromInput(getOnlineInput()));
     if (action === "jump") jumpFighterWithMove(enemy, (getOnlineInput().right ? 1 : 0) - (getOnlineInput().left ? 1 : 0));
     if (action === "infinity") toggleInfinity(enemy);
+    if (action === "domain") startDomainExpansion(enemy);
     if (action === "ultimate") startUltimate(enemy);
     if (action === "ultimate-start") beginUltimateAim(enemy, enemy.techniqueAim || mouseAimWorld);
     sendOnlineInput(action);
@@ -9758,6 +9916,10 @@ window.addEventListener("keydown", (event) => {
   if (!event.repeat && isEventForAction("heavy", key, code)) startAttack(player, "heavy");
   if ((key === "f" || code === "keyf") && !event.repeat) {
     if (player.technique === "limitless") toggleInfinity(player);
+  }
+  if ((key === "x" || code === "keyx") && !event.repeat) {
+    startDomainExpansion(player);
+    return;
   }
   if (isEventForAction("specialAim", key, code) && !event.repeat && !homeOpen && !paused && gameState === "playing") {
     const fighter = gameMode === "online" && onlineRole === "p2" ? enemy : player;
