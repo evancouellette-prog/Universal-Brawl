@@ -1476,9 +1476,9 @@ const HOLLOW_PURPLE_STARTUP_TICKS = 150;
 const HOLLOW_PURPLE_RECOVERY_TICKS = 52;
 const WORLD_SLASH_STARTUP_TICKS = 150;
 const WORLD_SLASH_RECOVERY_TICKS = 52;
-const HOLLOW_PURPLE_DAMAGE = 118;
+const HOLLOW_PURPLE_DAMAGE = 145;
 const HOLLOW_PURPLE_BLOCK_CHIP = 0.56;
-const WORLD_SLASH_DAMAGE = 118;
+const WORLD_SLASH_DAMAGE = 152;
 const WORLD_SLASH_BLOCK_CHIP = 0.62;
 const DOMAIN_CE_REQUIREMENT_RATIO = 0.9;
 const DOMAIN_STARTUP_TICKS = 120;
@@ -1564,6 +1564,49 @@ let lastOnlineStateSent = 0;
 let lastOnlineInputSent = 0;
 let lastOnlineInputKey = "";
 let lastOnlineFighterSent = 0;
+
+// ONLINE_LAG_FIX_PATCH
+// The old online code sent giant 60-times-per-second packets.
+// That creates lag fast, especially because the host sent full player/enemy objects.
+const ONLINE_STATE_SEND_MS = 50;       // host snapshots, about 20/sec
+const ONLINE_FIGHTER_SEND_MS = 50;     // joiner fighter snapshots, about 20/sec
+const ONLINE_INPUT_ACTIVE_MS = 33;     // movement input, about 30/sec
+const ONLINE_INPUT_IDLE_MS = 120;      // idle heartbeat, about 8/sec
+const ONLINE_SOCKET_BACKPRESSURE_LIMIT = 120000;
+
+function canSendOnlinePacket() {
+  return Boolean(
+    onlineSocket &&
+    onlineSocket.readyState === WebSocket.OPEN &&
+    (onlineSocket.bufferedAmount || 0) < ONLINE_SOCKET_BACKPRESSURE_LIMIT
+  );
+}
+
+function compactProjectileForNetwork(p) {
+  return {
+    owner: p.owner,
+    move: p.move,
+    x: Math.round(p.x),
+    y: Math.round(p.y),
+    vx: Number((p.vx || 0).toFixed(2)),
+    vy: Number((p.vy || 0).toFixed(2)),
+    radius: Math.round(p.radius || 0),
+    damage: Math.round(p.damage || 0),
+    knockback: Math.round(p.knockback || 0),
+    dir: p.dir,
+    aimX: Number((p.aimX || 0).toFixed(2)),
+    aimY: Number((p.aimY || 0).toFixed(2)),
+    angle: Number((p.angle || 0).toFixed(3)),
+    maxTravel: Number.isFinite(p.maxTravel) ? Math.round(p.maxTravel) : p.maxTravel,
+    traveled: Math.round(p.traveled || 0),
+    life: Math.round(p.life || 0),
+    hit: Boolean(p.hit),
+    ultimateProjectile: Boolean(p.ultimateProjectile),
+    domainAuto: Boolean(p.domainAuto),
+    noUltimateGain: Boolean(p.noUltimateGain),
+    visualOnly: true
+  };
+}
 let remoteInput = { left: false, right: false, up: false, down: false, block: false, rct: false, heavy: false, bluePunch: false };
 let onlineReady = { p1: false, p2: false };
 let onlinePlayerNames = { p1: "Player 1", p2: "Player 2" };
@@ -2027,6 +2070,7 @@ let worldSlashEffects = [];
 let groundEraseEffects = [];
 let ultimateChargeEffects = [];
 let ultimateScreenEffect = { ticks: 0, maxTicks: 0, kind: "" };
+let actionWarning = { text: "", ticks: 0, maxTicks: 0 };
 let cinematicZoomTicks = 0;
 let ultimateFocusOwner = null;
 let pendingDomain = null;
@@ -2465,7 +2509,7 @@ function updateControlsPanel() {
 }
 
 function broadcastFullBattleRestart() {
-  if (!onlineSocket || onlineSocket.readyState !== WebSocket.OPEN || gameMode !== "online") return;
+  if (!canSendOnlinePacket() || gameMode !== "online") return;
   onlineSocket.send(JSON.stringify({ type: "restart-full", role: onlineRole || "local", stamp: Date.now() }));
 }
 
@@ -2694,7 +2738,7 @@ function applyOnlineTechniqueChoice(role, technique, reason = "") {
 }
 
 function sendOnlineTechniqueChoice() {
-  if (!onlineSocket || onlineSocket.readyState !== WebSocket.OPEN || gameMode !== "online") return;
+  if (!canSendOnlinePacket() || gameMode !== "online") return;
   if (onlineRole !== "p1" && onlineRole !== "p2") return;
   const technique = onlineTechniqueChoices[onlineRole] || selectedTechnique;
   if (!isValidTechnique(technique)) return;
@@ -2702,7 +2746,7 @@ function sendOnlineTechniqueChoice() {
 }
 
 function sendOnlinePause(value) {
-  if (!onlineSocket || onlineSocket.readyState !== WebSocket.OPEN || gameMode !== "online") return;
+  if (!canSendOnlinePacket() || gameMode !== "online") return;
   onlineSocket.send(JSON.stringify({ type: "pause", paused: value }));
 }
 
@@ -3156,7 +3200,7 @@ function clearSpecialHoldState(f = null) {
 }
 
 function sendOnlineInput(action = null, aim = null) {
-  if (!onlineSocket || onlineSocket.readyState !== WebSocket.OPEN || onlineRole !== "p2") return;
+  if (!canSendOnlinePacket() || onlineRole !== "p2") return;
   lastOnlineInputKey = JSON.stringify(getOnlineInput());
   lastOnlineInputSent = performance.now();
   const aimPoint = sanitizeAimPoint(aim);
@@ -3185,12 +3229,16 @@ function sendOnlineInput(action = null, aim = null) {
 }
 
 function sendOnlineInputTick(force = false) {
-  if (!onlineSocket || onlineSocket.readyState !== WebSocket.OPEN || onlineRole !== "p2" || paused || homeOpen || gameState !== "playing") return;
+  if (!canSendOnlinePacket() || onlineRole !== "p2" || paused || homeOpen || gameState !== "playing") return;
   const input = getOnlineInput();
   const key = JSON.stringify(input);
   const now = performance.now();
   const activeInput = input.left || input.right || input.up || input.down || input.block || input.rct || input.heavy || input.bluePunch;
-  if (!force && key === lastOnlineInputKey && now - lastOnlineInputSent < (activeInput ? 16 : 50)) return;
+
+  // Send active movement less often than rendering. Actions still send instantly through sendOnlineInput().
+  const interval = activeInput ? ONLINE_INPUT_ACTIVE_MS : ONLINE_INPUT_IDLE_MS;
+  if (!force && key === lastOnlineInputKey && now - lastOnlineInputSent < interval) return;
+
   lastOnlineInputKey = key;
   lastOnlineInputSent = now;
   const aim = (mouseTechniqueHeld.ct1 || mouseTechniqueHeld.ct2 || mouseTechniqueHeld.teleport || mouseTechniqueHeld.fuga) ? sanitizeAimPoint(mouseAimWorld) : null;
@@ -3292,15 +3340,15 @@ function getFighterNetworkState(f) {
 }
 
 function sendOnlineFighterState() {
-  if (!onlineSocket || onlineSocket.readyState !== WebSocket.OPEN || onlineRole !== "p2" || gameState !== "playing") return;
+  if (!canSendOnlinePacket() || onlineRole !== "p2" || gameState !== "playing") return;
   const now = performance.now();
-  if (now - lastOnlineFighterSent < 16) return;
+  if (now - lastOnlineFighterSent < ONLINE_FIGHTER_SEND_MS) return;
   lastOnlineFighterSent = now;
   onlineSocket.send(JSON.stringify({ type: "fighter", fighter: getFighterNetworkState(enemy) }));
 }
 
 function sendOnlineDamage(hit) {
-  if (!onlineSocket || onlineSocket.readyState !== WebSocket.OPEN || onlineRole !== "p2") return;
+  if (!canSendOnlinePacket() || onlineRole !== "p2") return;
 
   const holdLock = hit && (hit.barrageHold || hit.grabHold);
   const bigLock = hit && (hit.knockdown || hit.gojoPushPull || hit.gojoRedHeavy || hit.blueChase);
@@ -3328,21 +3376,31 @@ function sendOnlineDamage(hit) {
 }
 
 function sendOnlineReady() {
-  if (!onlineSocket || onlineSocket.readyState !== WebSocket.OPEN || !isOnlinePlayerRole()) return;
+  if (!canSendOnlinePacket() || !isOnlinePlayerRole()) return;
   lastOnlineReadySent = performance.now();
   console.log("[ready send]", { role: onlineRole, phase: gameState, round: currentRound });
   onlineSocket.send(JSON.stringify({ type: "ready", role: onlineRole, phase: gameState, round: currentRound }));
 }
 
 function sendOnlineState() {
-  if (!onlineSocket || onlineSocket.readyState !== WebSocket.OPEN || onlineRole !== "p1") return;
+  if (!canSendOnlinePacket() || onlineRole !== "p1") return;
   const now = performance.now();
-  if (now - lastOnlineStateSent < 16) return;
+  if (now - lastOnlineStateSent < ONLINE_STATE_SEND_MS) return;
   lastOnlineStateSent = now;
+
+  // Send compact fighter states instead of giant live objects.
+  // This removes a lot of online lag from JSON stringify + websocket traffic.
+  const playerState = getFighterNetworkState(player);
+  const enemyState = getFighterNetworkState(enemy);
+  const hostProjectiles = projectiles
+    .filter((p) => p.owner === "player")
+    .slice(-10)
+    .map(compactProjectileForNetwork);
+
   onlineSocket.send(JSON.stringify({
     type: "state",
-    player,
-    enemy,
+    player: playerState,
+    enemy: enemyState,
     currentRound,
     playerRounds,
     enemyRounds,
@@ -3359,7 +3417,7 @@ function sendOnlineState() {
     activeDomain,
     pendingDomain,
     domainClash,
-    projectiles: projectiles.filter((p) => p.owner === "player")
+    projectiles: hostProjectiles
   }));
 }
 
@@ -4844,6 +4902,23 @@ function isUltimateLocked(f) {
   return Boolean(f && ((f.ultimateAiming || false) || (f.ultimateFinalCharge || 0) > 0 || (f.ultimateStartup || 0) > 0 || (f.ultimateRecovery || 0) > 0));
 }
 
+function showActionWarning(text, ticks = 90) {
+  actionWarning = { text, ticks, maxTicks: ticks };
+}
+
+function getDomainFailureMessage(f) {
+  if (!f) return "";
+  if ((f.ultimateMeter || 0) < MAX_ULTIMATE) return "Not Enough Charge";
+  if (f.ce < f.maxCe * DOMAIN_CE_REQUIREMENT_RATIO) return "Not Enough Cursed Energy";
+  return "";
+}
+
+function getUltimateFailureMessage(f) {
+  if (!f) return "";
+  if ((f.ultimateMeter || 0) < MAX_ULTIMATE) return "Not Enough Charge";
+  return "";
+}
+
 function canStartUltimate(f) {
   return Boolean(
     f &&
@@ -4907,7 +4982,11 @@ function startUltimate(f, aimPoint = null) {
 
 
 function beginUltimateAim(f, aimPoint = null) {
-  if (!canStartUltimate(f)) return false;
+  if (!canStartUltimate(f)) {
+    const warning = getUltimateFailureMessage(f);
+    if (warning) showActionWarning(warning);
+    return false;
+  }
   const kind = f.technique === "shrine" ? "worldSlash" : "hollowPurple";
   const aim = sanitizeAimPoint(aimPoint) || sanitizeAimPoint(f.techniqueAim) || mouseAimWorld;
   f.ultimateMove = kind;
@@ -5004,8 +5083,8 @@ function releaseHollowPurple(f) {
   const center = getFighterCenter(f);
   const aimVector = getTechniqueAimVector(f, "blue", f.ultimateAimPoint || f.techniqueAim);
   if (Math.abs(aimVector.x) > 0.08) f.dir = aimVector.dir;
-  const speed = 10.8;
-  const radius = 48;
+  const speed = 13.4;
+  const radius = 52;
   const origin = { x: center.x + aimVector.x * 54, y: center.y - 14 + aimVector.y * 22 };
   projectiles.push({
     owner: f === player ? "player" : "enemy",
@@ -5019,7 +5098,7 @@ function releaseHollowPurple(f) {
     baseVy: aimVector.y * speed,
     radius,
     damage: Math.ceil(HOLLOW_PURPLE_DAMAGE * getOutgoingDamageMultiplier(f)),
-    knockback: 43,
+    knockback: 50,
     dir: aimVector.dir,
     aimX: aimVector.x,
     aimY: aimVector.y,
@@ -5028,9 +5107,9 @@ function releaseHollowPurple(f) {
     rangeStartY: origin.y,
     rangeEndX: origin.x + aimVector.x * STAGE_W,
     rangeEndY: origin.y + aimVector.y * STAGE_W,
-    maxTravel: STAGE_W * 1.05,
+    maxTravel: STAGE_W * 1.18,
     traveled: 0,
-    life: 170,
+    life: 190,
     charge: 1,
     hit: false
   });
@@ -5044,8 +5123,8 @@ function releaseWorldCuttingSlash(f) {
   const center = getFighterCenter(f);
   const aimVector = getTechniqueAimVector(f, "slash", f.ultimateAimPoint || f.techniqueAim);
   if (Math.abs(aimVector.x) > 0.08) f.dir = aimVector.dir;
-  const speed = 11.2;
-  const radius = 42;
+  const speed = 15.8;
+  const radius = 50;
   const origin = { x: center.x + aimVector.x * 48, y: center.y - 8 + aimVector.y * 18 };
   projectiles.push({
     owner: f === player ? "player" : "enemy",
@@ -5059,7 +5138,7 @@ function releaseWorldCuttingSlash(f) {
     baseVy: aimVector.y * speed,
     radius,
     damage: Math.ceil(WORLD_SLASH_DAMAGE * getOutgoingDamageMultiplier(f)),
-    knockback: 44,
+    knockback: 52,
     dir: aimVector.dir,
     aimX: aimVector.x,
     aimY: aimVector.y,
@@ -5068,15 +5147,32 @@ function releaseWorldCuttingSlash(f) {
     rangeStartY: origin.y,
     rangeEndX: origin.x + aimVector.x * STAGE_W,
     rangeEndY: origin.y + aimVector.y * STAGE_W,
-    maxTravel: STAGE_W * 1.05,
+    maxTravel: STAGE_W * 1.18,
     traveled: 0,
-    life: 160,
+    life: 190,
     charge: 1,
     hit: false
   });
+  // PURPLE_WCS_BUFF_PATCH: extra space-tear trail at cast time.
+  for (let i = 0; i < 5; i += 1) {
+    const offset = (i - 2) * 18;
+    worldSlashEffects.push({
+      x1: origin.x - aimVector.x * (120 + i * 18) - aimVector.y * offset,
+      y1: origin.y - aimVector.y * (120 + i * 18) + aimVector.x * offset,
+      x2: origin.x + aimVector.x * (210 + i * 30) - aimVector.y * offset,
+      y2: origin.y + aimVector.y * (210 + i * 30) + aimVector.x * offset,
+      radius: 18 + i * 3,
+      dir: aimVector.dir,
+      life: 30 + i * 3,
+      maxLife: 30 + i * 3,
+      splitDelay: 3,
+      branches: []
+    });
+  }
+
   f.ultimateRecovery = WORLD_SLASH_RECOVERY_TICKS;
   f.ultimateAimPoint = null;
-  shake = Math.max(shake, 12);
+  shake = Math.max(shake, 16);
   spawnHitSpark(origin.x, origin.y, aimVector.dir, "slash");
 }
 
@@ -5273,7 +5369,11 @@ function lockFighterForDomainStart(f, type) {
 
 function startDomainExpansion(f) {
   if (domainClash) return handleDomainClashMash(f);
-  if (!canStartDomain(f)) return false;
+  if (!canStartDomain(f)) {
+    const warning = getDomainFailureMessage(f);
+    if (warning) showActionWarning(warning);
+    return false;
+  }
   const attempt = createDomainAttempt(f);
   spendDomainCost(f);
   lockFighterForDomainStart(f, attempt.type);
@@ -10373,49 +10473,77 @@ function drawProjectiles() {
     } else if (p.move === "worldSlash") {
       if (hasProjectileAngle) ctx.rotate(projectileAngle);
       else ctx.scale(p.dir, 1);
-      const pulse = 1 + Math.sin(frame * 0.26) * 0.05;
+
+      // PURPLE_WCS_BUFF_PATCH
+      // World Cutting Slash: a wide white space wound with a black void core
+      // and red cursed-energy fractures.
+      const pulse = 1 + Math.sin(frame * 0.32) * 0.055;
+      const slashLength = p.radius * 4.8;
+      const slashHeight = p.radius * 0.82 * pulse;
       ctx.lineCap = "round";
+      ctx.lineJoin = "round";
 
-      // outer white outline
       ctx.globalCompositeOperation = "lighter";
-      ctx.globalAlpha = 0.98;
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.98)";
-      ctx.lineWidth = 11;
+      ctx.globalAlpha = 0.9;
+
+      // red cursed glow behind the cut
+      ctx.strokeStyle = "rgba(239, 68, 68, 0.36)";
+      ctx.lineWidth = p.radius * 0.82;
       ctx.beginPath();
-      ctx.arc(-p.radius * 0.08, 0, p.radius * 1.34 * pulse, -Math.PI * 0.84, Math.PI * 0.16);
+      ctx.moveTo(-slashLength * 0.72, slashHeight * 0.28);
+      ctx.bezierCurveTo(-slashLength * 0.25, -slashHeight * 0.8, slashLength * 0.25, slashHeight * 0.72, slashLength * 0.82, -slashHeight * 0.2);
       ctx.stroke();
 
-      // black crescent body
-      ctx.strokeStyle = "rgba(2, 6, 23, 0.995)";
-      ctx.lineWidth = 7.5;
+      // bright white outer tear
+      ctx.strokeStyle = "rgba(255,255,255,0.98)";
+      ctx.lineWidth = p.radius * 0.38;
       ctx.beginPath();
-      ctx.arc(p.radius * 0.14, 0, p.radius * 1.15 * pulse, -Math.PI * 0.8, Math.PI * 0.12);
+      ctx.moveTo(-slashLength * 0.85, slashHeight * 0.18);
+      ctx.bezierCurveTo(-slashLength * 0.28, -slashHeight * 0.52, slashLength * 0.25, slashHeight * 0.5, slashLength * 0.92, -slashHeight * 0.12);
       ctx.stroke();
 
-      // inner dark fill streak to sell the slash shape
-      ctx.strokeStyle = "rgba(15, 23, 42, 0.92)";
-      ctx.lineWidth = 4.5;
+      // black void core
+      ctx.globalCompositeOperation = "source-over";
+      ctx.strokeStyle = "rgba(0,0,0,0.96)";
+      ctx.lineWidth = p.radius * 0.24;
       ctx.beginPath();
-      ctx.arc(p.radius * 0.24, 0, p.radius * 0.9 * pulse, -Math.PI * 0.72, Math.PI * 0.06);
+      ctx.moveTo(-slashLength * 0.8, slashHeight * 0.17);
+      ctx.bezierCurveTo(-slashLength * 0.25, -slashHeight * 0.42, slashLength * 0.22, slashHeight * 0.38, slashLength * 0.84, -slashHeight * 0.1);
       ctx.stroke();
 
-      // trailing white accent
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.72)";
-      ctx.lineWidth = 3;
+      // razor center line
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = "rgba(255,255,255,0.92)";
+      ctx.lineWidth = 2.8;
       ctx.beginPath();
-      ctx.moveTo(-p.radius * 1.25, -p.radius * 0.06);
-      ctx.lineTo(-p.radius * 2.85, -p.radius * 0.02);
+      ctx.moveTo(-slashLength * 0.95, slashHeight * 0.06);
+      ctx.lineTo(slashLength * 0.95, -slashHeight * 0.04);
       ctx.stroke();
 
-      // subtle trailing shadow
-      ctx.strokeStyle = "rgba(2, 6, 23, 0.6)";
+      // parallel fracture lines
+      ctx.strokeStyle = "rgba(255,255,255,0.55)";
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 4; i += 1) {
+        const off = (i - 1.5) * p.radius * 0.22;
+        ctx.beginPath();
+        ctx.moveTo(-slashLength * (0.55 + i * 0.05), off + slashHeight * 0.34);
+        ctx.lineTo(slashLength * (0.45 + i * 0.08), off - slashHeight * 0.28);
+        ctx.stroke();
+      }
+
+      // dark trailing tears
+      ctx.globalCompositeOperation = "source-over";
+      ctx.strokeStyle = "rgba(0,0,0,0.75)";
       ctx.lineWidth = 5;
       ctx.beginPath();
-      ctx.moveTo(-p.radius * 0.95, p.radius * 0.18);
-      ctx.lineTo(-p.radius * 2.4, p.radius * 0.26);
+      ctx.moveTo(-slashLength * 1.05, slashHeight * 0.34);
+      ctx.lineTo(-slashLength * 0.5, slashHeight * 0.22);
+      ctx.moveTo(-slashLength * 0.9, -slashHeight * 0.24);
+      ctx.lineTo(-slashLength * 0.38, -slashHeight * 0.16);
       ctx.stroke();
 
       ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = 1;
     } else if (p.move === "red") {
       if (hasProjectileAngle) ctx.rotate(projectileAngle);
       else ctx.scale(p.dir, 1);
@@ -10696,6 +10824,37 @@ function draw() {
   drawShieldBreakEffects();
   ctx.restore();
   drawUltimateScreenEffects();
+  drawActionWarning();
+}
+
+function drawActionWarning() {
+  if (!actionWarning || actionWarning.ticks <= 0 || !actionWarning.text) return;
+  const t = actionWarning.ticks / Math.max(1, actionWarning.maxTicks || 1);
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, Math.min(1, t));
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = "900 28px system-ui, sans-serif";
+
+  const x = W / 2;
+  const y = 96;
+  const paddingX = 28;
+  const boxW = Math.min(W - 80, ctx.measureText(actionWarning.text).width + paddingX * 2);
+  const boxH = 48;
+
+  ctx.fillStyle = "rgba(2, 6, 23, 0.78)";
+  ctx.strokeStyle = "rgba(248, 250, 252, 0.62)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(x - boxW / 2, y - boxH / 2, boxW, boxH, 14);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.shadowColor = "rgba(239, 68, 68, 0.8)";
+  ctx.shadowBlur = 12;
+  ctx.fillStyle = "#fff7ed";
+  ctx.fillText(actionWarning.text, x, y);
+  ctx.restore();
 }
 
 function drawUltimateScreenEffects() {
@@ -10785,6 +10944,7 @@ function drawUltimateScreenEffects() {
 
 function fixedUpdate() {
   frame += 1;
+  if (actionWarning && actionWarning.ticks > 0) actionWarning.ticks -= 1;
 
   // DOMAIN_RUNTIME_FIX
   // The domain system was defined but never ticked. That meant pending domains
