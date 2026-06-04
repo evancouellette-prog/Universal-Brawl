@@ -1315,7 +1315,7 @@ const DOMAIN_CT_LOCK_TICKS = 15 * 60;
 const UNLIMITED_VOID_TICKS = 10 * 60;
 const MALEVOLENT_SHRINE_TICKS = 12 * 60;
 const MALEVOLENT_SLASH_INTERVAL = 27;
-const MALEVOLENT_CLEAVE_INTERVAL = 180;
+const MALEVOLENT_CLEAVE_INTERVAL = 240;
 const PRACTICE_BOT_RETURN_TICKS = 300;
 const TECHNIQUE_STATS = {
   limitless: {
@@ -1692,9 +1692,10 @@ function getAttackSpec(f, type = f.attacking) {
     }
   }
   if (isDomainVictim(f, "unlimitedVoid") && type !== "backThrow") {
-    attack.windup = Math.ceil(attack.windup * 2.55);
-    attack.recovery = Math.ceil(attack.recovery * 2.45);
-    attack.active = Math.max(2, Math.ceil(attack.active * 0.72));
+    // Stronger Unlimited Void overload: bigger stun and much slower attacks.
+    attack.windup = Math.ceil(attack.windup * 3.35);
+    attack.recovery = Math.ceil(attack.recovery * 3.1);
+    attack.active = Math.max(2, Math.ceil(attack.active * 0.62));
   }
   if (isDomainOwner(f, "malevolentShrine") && type !== "backThrow") {
     attack.recovery = Math.max(4, Math.ceil(attack.recovery * 0.72));
@@ -2632,7 +2633,7 @@ if (data.type === "role") {
       if (data.action === "backThrow") startBackThrow(enemy, false);
       if (data.action === "dodge") startDodge(enemy, getVectorFromInput(remoteInput));
       if (data.action === "jump") jumpFighterWithMove(enemy, (remoteInput.right ? 1 : 0) - (remoteInput.left ? 1 : 0));
-      if (data.action === "infinity") toggleInfinity(enemy);
+      if (data.action === "infinity" && !hasCtLock(enemy)) toggleInfinity(enemy);
       if (data.action === "domain") {
         if (Number.isFinite(Number(data.domainPreCe))) enemy.ce = Math.max(enemy.ce || 0, Number(data.domainPreCe));
         if (Number.isFinite(Number(data.domainPreUltimate))) enemy.ultimateMeter = Math.max(enemy.ultimateMeter || 0, Number(data.domainPreUltimate));
@@ -3959,6 +3960,7 @@ function canStartTechnique(f) {
 }
 
 function startTechniqueCharge(f, slot, aimPoint = null) {
+  if (hasCtLock(f)) return;
   if (!canStartTechnique(f) || f.chargingTechnique) return;
   const move = getTechniqueMoveKey(f, slot);
   if (hasCtLock(f) || f.ce < getTechniqueCost(f, move)) return;
@@ -4353,6 +4355,7 @@ function isInfinityActive(f) {
 }
 
 function toggleInfinity(f) {
+  if (hasCtLock(f)) return;
   if (!f || f.technique !== "limitless") return;
   if (f.infinityActive) {
     f.infinityActive = false;
@@ -4865,14 +4868,14 @@ function isDomainVictim(f, type = null) {
 }
 
 function getDomainMovementMultiplier(f) {
-  if (isDomainVictim(f, "unlimitedVoid")) return 0.1;
+  if (isDomainVictim(f, "unlimitedVoid")) return 0.07;
   if (isDomainOwner(f, "unlimitedVoid")) return 1.3;
   if (isDomainOwner(f, "malevolentShrine")) return 1.3;
   return 1;
 }
 
 function getDomainJumpMultiplier(f) {
-  if (isDomainVictim(f, "unlimitedVoid")) return 0.42;
+  if (isDomainVictim(f, "unlimitedVoid")) return 0.28;
   if (isDomainOwner(f, "unlimitedVoid")) return 1.08;
   if (isDomainOwner(f, "malevolentShrine")) return 1.08;
   return 1;
@@ -4886,7 +4889,7 @@ function getDomainCeRegenMultiplier(f) {
 
 function getCtCostMultiplier(f) {
   if (hasCtLock(f)) return Infinity;
-  if (isDomainVictim(f, "unlimitedVoid")) return 2.5;
+  if (isDomainVictim(f, "unlimitedVoid")) return 3;
   if (isDomainOwner(f, "unlimitedVoid")) return 0.62;
   return 1;
 }
@@ -5100,9 +5103,9 @@ function endActiveDomain() {
 function applyDomainCleave(ownerFighter, target) {
   if (!ownerFighter || !target || target.ko || target.dodging > 0) return;
   const blocked = isBlockingAttack(target, ownerFighter.dir);
-  const rawDamage = blocked ? 6 : 18;
+  const rawDamage = blocked ? 4 : 12;
   const damage = getTakenDamage(target, Math.ceil(rawDamage * getOutgoingDamageMultiplier(ownerFighter)));
-  if (blocked) damageShield(target, 38);
+  if (blocked) damageShield(target, 24);
   applyFighterDamage(target, damage);
   cancelRct(target, false);
   target.hurt = Math.max(target.hurt, blocked ? 6 : 16);
@@ -5147,7 +5150,7 @@ function spawnDomainDismantle(ownerFighter, target) {
     vy: aimY / length * speed,
     baseVx: aimX / length * speed,
     baseVy: aimY / length * speed,
-    radius: 20,
+    radius: 15,
     damage: Math.ceil(11 * getOutgoingDamageMultiplier(ownerFighter)),
     knockback: 14,
     dir: fromLeft ? 1 : -1,
@@ -5174,10 +5177,11 @@ function applyActiveDomainTick() {
     // repeated info-shock sparks while their movement/attacks/CT are slowed.
     if (target?.blocking) damageShield(target, 1.35);
 
-    if (target && activeDomain.pulse % 24 === 0) {
+    if (target && activeDomain.pulse % 18 === 0) {
       const center = getFighterCenter(target);
-      spawnHitSpark(center.x + (Math.random() - 0.5) * 45, center.y + (Math.random() - 0.5) * 55, ownerFighter?.dir || 1, "blue");
-      target.hurt = Math.max(target.hurt || 0, 2);
+      spawnHitSpark(center.x + (Math.random() - 0.5) * 50, center.y + (Math.random() - 0.5) * 62, ownerFighter?.dir || 1, "blue");
+      target.hurt = Math.max(target.hurt || 0, 5);
+      target.stun = Math.max(target.stun || 0, 10);
     }
   }
 
@@ -5189,7 +5193,7 @@ function applyActiveDomainTick() {
     if (activeDomain.slashTimer <= 0) {
       activeDomain.slashTimer = MALEVOLENT_SLASH_INTERVAL;
       spawnDomainDismantle(ownerFighter, target);
-      if (Math.random() < 0.55) spawnDomainDismantle(ownerFighter, target);
+      if (Math.random() < 0.2) spawnDomainDismantle(ownerFighter, target);
     }
     if (activeDomain.cleaveTimer <= 0) {
       activeDomain.cleaveTimer = MALEVOLENT_CLEAVE_INTERVAL;
@@ -5288,6 +5292,7 @@ function canChargeBluePunch(f) {
 }
 
 function activateBluePunch(f) {
+  if (hasCtLock(f)) return;
   f.bluePunchActiveTicks = GOJO_BLUE_PUNCH_ACTIVE_TICKS;
   
   f.bluePunchCooldown = Math.max(f.bluePunchCooldown || 0, GOJO_BLUE_PUNCH_COOLDOWN_TICKS);
@@ -9954,6 +9959,15 @@ function fixedUpdate() {
   // never activated, active domain effects never ran, and the caster could stay
   // stuck in domainStartup forever.
   updateDomainSystem();
+
+  // CT_LOCK_TIMER_FIX
+  // Post-domain CT lock always ticks down here. This prevents it from getting
+  // stuck after online sync, hitstop, or special animation states.
+  [player, enemy].forEach((fighter) => {
+    if (fighter && Number.isFinite(Number(fighter.ctLockTimer)) && fighter.ctLockTimer > 0) {
+      fighter.ctLockTimer = Math.max(0, fighter.ctLockTimer - 1);
+    }
+  });
 
   if (joinerLocalHitLockTicks > 0) joinerLocalHitLockTicks -= 1;
   if (hitStopTicks > 0) {
