@@ -1503,8 +1503,8 @@ const MALEVOLENT_CLEAVE_INTERVAL = 240;
 const PRACTICE_BOT_RETURN_TICKS = 300;
 const TECHNIQUE_STATS = {
   limitless: {
-    maxHealth: 360,
-    healthBars: 4,
+    maxHealth: 540,
+    healthBars: 6,
     maxCe: MAX_CE,
     damageTakenMultiplier: 1,
     knockbackTakenMultiplier: 1,
@@ -1512,8 +1512,8 @@ const TECHNIQUE_STATS = {
     ceLowRegenBonus: CE_LOW_REGEN_BONUS + 0.02
   },
   shrine: {
-    maxHealth: 490,
-    healthBars: 5,
+    maxHealth: 686,
+    healthBars: 7,
     maxCe: 125,
     damageTakenMultiplier: 0.9,
     knockbackTakenMultiplier: 0.9,
@@ -3606,6 +3606,58 @@ function getOutgoingDamageMultiplier(f) {
   return (f?.outgoingDamageMultiplier || 1) * getSukunaPassiveDamageMultiplier(f) * simpleDomainBonus;
 }
 
+function installHealthBarSizePatch() {
+  if (document.getElementById("twoMoreHpBarsStyle")) return;
+
+  const style = document.createElement("style");
+  style.id = "twoMoreHpBarsStyle";
+  style.textContent = `
+    .health-bar,
+    .health-meter,
+    .hud-health,
+    #playerHealth,
+    #enemyHealth {
+      display: flex !important;
+      align-items: center !important;
+      gap: 4px !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+      overflow: hidden !important;
+    }
+
+    .health-main {
+      flex: 1 1 auto !important;
+      min-width: 72px !important;
+      max-width: none !important;
+      overflow: hidden !important;
+    }
+
+    .health-stack {
+      flex: 0 0 auto !important;
+      display: flex !important;
+      align-items: center !important;
+      gap: 3px !important;
+      min-width: 0 !important;
+    }
+
+    .health-stock {
+      flex: 0 0 15px !important;
+      width: 15px !important;
+      min-width: 15px !important;
+      max-width: 15px !important;
+      height: 100% !important;
+      box-sizing: border-box !important;
+    }
+  `;
+
+  document.head.appendChild(style);
+}
+
+installHealthBarSizePatch();
+window.addEventListener("DOMContentLoaded", installHealthBarSizePatch);
+window.setTimeout(installHealthBarSizePatch, 0);
+
+// TWO_MORE_HP_BARS_PATCH
 function getLayeredHealthState(health, maxHealth, barCount) {
   const safeBarCount = Math.max(1, Math.round(barCount || 1));
   const safeMaxHealth = Math.max(1, maxHealth || 1);
@@ -9437,6 +9489,142 @@ function drawSimpleDomainEffect(f) {
 }
 
 
+function clamp01(value) {
+  return Math.max(0, Math.min(1, Number(value) || 0));
+}
+
+function getFighterShadowSurface(f) {
+  const centerX = f.x + f.w / 2;
+  const feetY = f.y + f.h;
+  let bestSurface = { y: GROUND, type: "ground" };
+  let bestDistance = GROUND - feetY;
+
+  for (const platform of getActivePlatforms()) {
+    const horizontallyOverPlatform =
+      centerX >= platform.x - f.w * 0.35 &&
+      centerX <= platform.x + platform.w + f.w * 0.35;
+
+    if (!horizontallyOverPlatform) continue;
+
+    // Only cast to a platform if the fighter is above/on it, not below it.
+    const platformTop = platform.y;
+    const distanceToPlatform = platformTop - feetY;
+    if (distanceToPlatform < -8) continue;
+
+    if (distanceToPlatform <= bestDistance) {
+      bestSurface = { y: platformTop, type: "platform" };
+      bestDistance = distanceToPlatform;
+    }
+  }
+
+  return {
+    ...bestSurface,
+    distance: Math.max(0, bestSurface.y - feetY)
+  };
+}
+
+function getProjectileShadowSurface(p) {
+  const x = p.x;
+  const y = p.y;
+  let bestSurface = { y: GROUND, type: "ground" };
+  let bestDistance = GROUND - y;
+
+  for (const platform of getActivePlatforms()) {
+    const horizontallyOverPlatform =
+      x >= platform.x - Math.max(16, (p.radius || 16) * 0.7) &&
+      x <= platform.x + platform.w + Math.max(16, (p.radius || 16) * 0.7);
+
+    if (!horizontallyOverPlatform) continue;
+
+    const platformTop = platform.y;
+    const distanceToPlatform = platformTop - y;
+
+    // Projectile is below this platform, so it should not cast shadow onto it.
+    if (distanceToPlatform < -8) continue;
+
+    if (distanceToPlatform <= bestDistance) {
+      bestSurface = { y: platformTop, type: "platform" };
+      bestDistance = distanceToPlatform;
+    }
+  }
+
+  return {
+    ...bestSurface,
+    distance: Math.max(0, bestSurface.y - y)
+  };
+}
+
+function getProjectileShadowSize(p) {
+  const r = Math.max(10, p.radius || 16);
+
+  if (p.move === "purple") return { w: r * 1.55, h: 10 };
+  if (p.move === "worldSlash") return { w: r * 2.9, h: 9 };
+  if (p.move === "fuga") return { w: r * 1.2, h: 8 };
+  if (p.move === "slash") return { w: r * 1.8, h: 7 };
+  if (p.move === "cleave") return { w: r * 1.35, h: 8 };
+  if (p.move === "red" || p.move === "blue") return { w: r * 1.25, h: 7 };
+
+  return { w: r * 1.25, h: 7 };
+}
+
+function drawProjectileShadow(p) {
+  if (!p || p.visualOnly || p.hit) return;
+
+  const surface = getProjectileShadowSurface(p);
+  const heightAboveSurface = surface.distance;
+
+  // PROJECTILE_SHADOWS_PATCH
+  // Projectiles now cast shadows onto the closest platform/ground under them.
+  // The shadow gets smaller and lighter the higher the projectile is.
+  const scale = Math.max(0.22, 1 - Math.min(heightAboveSurface, 420) / 420 * 0.78);
+  const alpha = Math.max(0.04, 0.25 * scale);
+  const size = getProjectileShadowSize(p);
+
+  ctx.save();
+  ctx.globalCompositeOperation = "source-over";
+  ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
+  ctx.beginPath();
+  ctx.ellipse(
+    p.x,
+    surface.y + 4,
+    Math.max(4, size.w * scale),
+    Math.max(2.5, size.h * scale),
+    0,
+    0,
+    Math.PI * 2
+  );
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawProjectileShadows() {
+  for (const p of projectiles) {
+    drawProjectileShadow(p);
+  }
+}
+
+
+function drawFighterShadow(f) {
+  if (!f || f.ko || f.lying) return;
+
+  const surface = getFighterShadowSurface(f);
+  const heightAboveSurface = surface.distance;
+
+  // SHADOW_PLATFORM_HEIGHT_FIX:
+  // Shadow now casts onto the closest platform under the fighter.
+  // It also shrinks/fades the higher the fighter is above that surface.
+  const scale = Math.max(0.28, 1 - Math.min(heightAboveSurface, 390) / 390 * 0.72);
+  const alpha = Math.max(0.08, 0.34 * scale);
+  const shadowW = Math.max(12, f.w * 0.95 * scale);
+  const shadowH = Math.max(3.5, 12 * scale);
+
+  ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
+  ctx.beginPath();
+  ctx.ellipse(f.x + f.w / 2, surface.y + 4, shadowW, shadowH, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+
 function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   const flash = f.hurt > 0 && Math.floor(frame / 3) % 2 === 0;
   const dodgeAlpha = f.dodging > 0 ? 0.48 : 1;
@@ -9479,12 +9667,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   ctx.save();
   ctx.globalAlpha = dodgeAlpha;
 
-  if (!f.onPlatform) {
-    ctx.fillStyle = "rgba(0, 0, 0, 0.34)";
-    ctx.beginPath();
-    ctx.ellipse(f.x + f.w / 2, GROUND + 4, f.w * 0.95, 12, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  drawFighterShadow(f);
 
   if (f.ko || f.lying) {
     ctx.translate(f.x + f.w / 2, f.y + f.h);
@@ -10318,6 +10501,7 @@ function drawEffects() {
   drawUltimateChargeEffects();
   if (player.attacking && !player.hasHit) drawHitboxHint(player);
   if (enemy.attacking && !enemy.hasHit) drawHitboxHint(enemy);
+  drawProjectileShadows();
   drawProjectiles();
   drawProjectileDisperses();
   drawFugaExplosions();
