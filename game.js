@@ -4996,8 +4996,8 @@ function isUltimateLocked(f) {
   return Boolean(f && ((f.ultimateAiming || false) || (f.ultimateFinalCharge || 0) > 0 || (f.ultimateStartup || 0) > 0 || (f.ultimateRecovery || 0) > 0));
 }
 
-function showActionWarning(text, ticks = 90) {
-  actionWarning = { text, ticks, maxTicks: ticks };
+function showActionWarning(text, ticks = 90, noFade = false) {
+  actionWarning = { text, ticks, maxTicks: ticks, noFade };
 }
 
 function getDomainFailureMessage(f) {
@@ -5413,7 +5413,7 @@ function openBindingVowChoice(f) {
     return false;
   }
   f.bindingVowChoiceTicks = BINDING_VOW_CHOICE_TICKS;
-  showActionWarning("Binding Vow: U Dismantle / I Cleave / O Fuga / P Domain", 150);
+  showActionWarning("Binding Vow: U Dismantle / I Cleave / O Fuga / P Domain", BINDING_VOW_CHOICE_TICKS, true);
   return true;
 }
 
@@ -5426,7 +5426,14 @@ function activateBindingVow(f, type) {
   f.bindingVowQuote = getBindingVowLabel(type);
   f.bindingVowQuoteTicks = BINDING_VOW_QUOTE_TICKS;
   f.bindingVowFlash = 20;
-  showActionWarning(`Sukuna: ${getBindingVowLabel(type)}`, BINDING_VOW_QUOTE_TICKS);
+
+  // BINDING_VOW_POPUP_FIX:
+  // Do not show the extra small popup "Sukuna: X" after selecting.
+  // The large vow-word quote is enough.
+  if (actionWarning?.text?.startsWith("Binding Vow:")) {
+    actionWarning = { text: "", ticks: 0, maxTicks: 0, noFade: false };
+  }
+
   const center = getFighterCenter(f);
   spawnHitSpark(center.x, center.y, f.dir, "slash");
   spawnHitSpark(center.x - f.dir * 28, center.y + 18, -f.dir, "slash");
@@ -11266,12 +11273,106 @@ function draw() {
   drawEffects();
   drawFighter(player, getPlayerLabel(), getPlayerLabelColor());
   drawFighter(enemy, getEnemyLabel(), getEnemyLabelColor());
+  drawTechniqueAimSizePreview();
   drawShieldBreakEffects();
   ctx.restore();
   drawUltimateScreenEffects();
   drawBindingVowQuote();
   drawActionWarning();
 }
+
+
+function drawTechniqueAimSizePreview() {
+  if (homeOpen || paused || gameState !== "playing") return;
+
+  const active = getActiveMouseTechniqueFighter();
+  if (!active || active.ko) return;
+
+  let move = null;
+  if (active.technique === "shrine") {
+    if (mouseTechniqueHeld.ct2) move = "cleave";
+    else if (mouseTechniqueHeld.fuga) move = "fuga";
+    else if (mouseTechniqueHeld.ct1) move = "slash";
+  } else if (active.technique === "limitless") {
+    if (mouseTechniqueHeld.ct1) move = "blue";
+    else if (mouseTechniqueHeld.ct2) move = "red";
+  }
+
+  if (!move || !techniqueMoves[move]) return;
+
+  const aimPoint = sanitizeAimPoint(active.techniqueAim || mouseAimWorld);
+  const spec = techniqueMoves[move];
+  const origin = getTechniqueOrigin(active, move);
+  const aimVector = getTechniqueAimVector(active, move, aimPoint);
+  const previewDistance = getAimPreviewDistance(move, spec, 0, aimVector, active, spec.radius);
+  const endX = origin.x + aimVector.x * previewDistance;
+  const endY = origin.y + aimVector.y * previewDistance;
+
+  ctx.save();
+
+  // Draw aiming line.
+  ctx.globalAlpha = 0.88;
+  ctx.lineWidth = move === "cleave" ? 3.5 : 2.5;
+  ctx.setLineDash(move === "cleave" ? [14, 10] : [10, 8]);
+  ctx.strokeStyle = active.technique === "shrine" ? "rgba(255, 233, 233, 0.92)" : "rgba(173, 216, 255, 0.9)";
+  ctx.beginPath();
+  ctx.moveTo(origin.x, origin.y);
+  ctx.lineTo(endX, endY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Draw endpoint marker.
+  ctx.fillStyle = active.technique === "shrine" ? "rgba(255,255,255,0.95)" : "rgba(191,219,254,0.95)";
+  ctx.beginPath();
+  ctx.arc(endX, endY, 4.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (move === "cleave") {
+    const vowBoost = hasBindingVow(active, "cleave");
+    const finalRadius =
+      spec.radius *
+      getDomainProjectileSizeMultiplier(active, move) *
+      (vowBoost ? 1.45 : 1);
+
+    const previewRadius = Math.max(24, finalRadius * (vowBoost ? 0.95 : 0.55));
+
+    // Main preview ring so the player can see the real size.
+    ctx.globalCompositeOperation = "lighter";
+    ctx.fillStyle = vowBoost ? "rgba(248, 113, 113, 0.16)" : "rgba(248, 113, 113, 0.09)";
+    ctx.beginPath();
+    ctx.arc(endX, endY, previewRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = vowBoost ? "rgba(255, 214, 214, 0.98)" : "rgba(248, 113, 113, 0.88)";
+    ctx.lineWidth = vowBoost ? 4 : 3;
+    ctx.beginPath();
+    ctx.arc(endX, endY, previewRadius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Inner ring for readability.
+    ctx.strokeStyle = vowBoost ? "rgba(127, 29, 29, 0.85)" : "rgba(127, 29, 29, 0.6)";
+    ctx.lineWidth = 1.75;
+    ctx.beginPath();
+    ctx.arc(endX, endY, Math.max(12, previewRadius - 8), 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Add a label so it's obvious the vow made it larger.
+    if (vowBoost) {
+      ctx.globalCompositeOperation = "source-over";
+      ctx.font = "bold 14px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      ctx.fillStyle = "rgba(255, 241, 242, 0.95)";
+      ctx.strokeStyle = "rgba(68, 10, 10, 0.88)";
+      ctx.lineWidth = 4;
+      ctx.strokeText("CLEAVE VOW SIZE", endX, endY - previewRadius - 10);
+      ctx.fillText("CLEAVE VOW SIZE", endX, endY - previewRadius - 10);
+    }
+  }
+
+  ctx.restore();
+}
+
 
 function drawBindingVowQuote() {
   const speakers = [player, enemy].filter((f) => f && (f.bindingVowQuoteTicks || 0) > 0 && f.bindingVowQuote);
@@ -11299,7 +11400,7 @@ function drawBindingVowQuote() {
 
 function drawActionWarning() {
   if (!actionWarning || actionWarning.ticks <= 0 || !actionWarning.text) return;
-  const t = actionWarning.ticks / Math.max(1, actionWarning.maxTicks || 1);
+  const t = actionWarning.noFade ? 1 : actionWarning.ticks / Math.max(1, actionWarning.maxTicks || 1);
   ctx.save();
   ctx.globalAlpha = Math.max(0, Math.min(1, t));
   ctx.textAlign = "center";
