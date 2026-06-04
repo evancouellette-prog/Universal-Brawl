@@ -1487,7 +1487,9 @@ const DOMAIN_CLASH_TICKS = 180;
 const DOMAIN_CT_LOCK_TICKS = 15 * 60;
 const SIMPLE_DOMAIN_TICKS = 6 * 60;
 const BINDING_VOW_TICKS = 12 * 60;
-const BINDING_VOW_COOLDOWN_TICKS = 20 * 60;
+const SIMPLE_DOMAIN_COOLDOWN_TICKS = 7 * 60;
+const BINDING_VOW_COOLDOWN_TICKS = 7 * 60;
+const SUKUNA_THROW_COMBO_COOLDOWN_TICKS = GOJO_PUSH_PULL_FINISHER_COOLDOWN_TICKS;
 const BINDING_VOW_CHOICE_TICKS = 4 * 60;
 const BINDING_VOW_QUOTE_TICKS = 96;
 const SIMPLE_DOMAIN_CE_COST_RATIO = 0.32;
@@ -2198,6 +2200,7 @@ function makeFighter(config) {
     grabThrowDir: config.dir,
     grabThrowTarget: null,
     grabThrowAim: null,
+    sukunaThrowComboCooldown: 0,
     grabHeldTimer: 0,
     grabHeldBy: null,
     grabLockY: null,
@@ -2500,6 +2503,7 @@ function applyPracticeSettingsTick() {
     player.shieldCooldown = 0;
     player.simpleDomainCooldown = 0;
     player.bindingVowCooldown = 0;
+    player.sukunaThrowComboCooldown = 0;
   }
   pinStationaryPracticeDummy(enemy);
 }
@@ -2526,7 +2530,7 @@ function getTechniqueControlHtml(technique) {
 
 function getExtraBattleControlHtml(technique) {
   if (technique === "shrine") {
-    return '<span><kbd>X</kbd> Domain Expansion</span><span><kbd>Z</kbd> Simple Domain</span><span><kbd>T</kbd> Binding Vow</span><span><kbd>U</kbd> Dismantle Vow</span><span><kbd>I</kbd> Cleave Vow</span><span><kbd>O</kbd> Fuga Vow</span><span><kbd>P</kbd> Domain Vow</span>';
+    return '<span><kbd>X</kbd> Domain Expansion</span><span><kbd>Z</kbd> Simple Domain</span><span><kbd>Toward</kbd><kbd>Tab</kbd> Throw Combo</span><span><kbd>T</kbd> Binding Vow</span><span><kbd>U</kbd> Dismantle Vow</span><span><kbd>I</kbd> Cleave Vow</span><span><kbd>O</kbd> Fuga Vow</span><span><kbd>P</kbd> Domain Vow</span>';
   }
   return '<span><kbd>X</kbd> Domain Expansion</span><span><kbd>Z</kbd> Simple Domain</span>';
 }
@@ -2894,7 +2898,7 @@ function applyJoinerFighterStateOnHost(remoteFighter) {
     "bluePunchHoldTicks", "bluePunchActiveTicks", "bluePunchCooldown", "bluePunchChases", "bluePunchFlash",
     "teleportAiming", "teleportCooldown", "fugaAiming", "fugaChargeTicks", "fugaCooldown", "fugaCooldownMax", "ultimateAiming", "ultimateAimPoint",
     "ce", "maxCe", "ultimateMeter", "domainStartup", "domainAttemptType", "simpleDomainTicks", "simpleDomainFlash", "simpleDomainCooldown",
-    "bindingVowType", "bindingVowTicks", "bindingVowCooldown", "bindingVowChoiceTicks", "bindingVowQuote", "bindingVowQuoteTicks", "bindingVowFlash", "ctLockTimer"
+    "bindingVowType", "bindingVowTicks", "bindingVowCooldown", "bindingVowChoiceTicks", "bindingVowQuote", "bindingVowQuoteTicks", "bindingVowFlash", "sukunaThrowComboCooldown", "ctLockTimer"
   ];
 
   fields.forEach((field) => {
@@ -3352,6 +3356,7 @@ function getFighterNetworkState(f) {
     grabThrowDir: f.grabThrowDir,
     grabThrowTarget: f.grabThrowTarget,
     grabThrowAim: f.grabThrowAim,
+    sukunaThrowComboCooldown: f.sukunaThrowComboCooldown,
     grabHeldTimer: f.grabHeldTimer,
     grabHeldBy: f.grabHeldBy,
     grabLockY: f.grabLockY,
@@ -3701,10 +3706,12 @@ function getExtraCooldownItems(f) {
   if ((f.simpleDomainTicks || 0) > 0) {
     items.push({ name: "SIMPLE DOMAIN", current: f.simpleDomainTicks || 0, max: SIMPLE_DOMAIN_TICKS });
   } else {
-    items.push({ name: "SIMPLE DOMAIN", current: f.simpleDomainCooldown || 0, max: SIMPLE_DOMAIN_TICKS + 180 });
+    items.push({ name: "SIMPLE DOMAIN", current: f.simpleDomainCooldown || 0, max: SIMPLE_DOMAIN_COOLDOWN_TICKS });
   }
 
   if (f.technique === "shrine") {
+    items.push({ name: "THROW COMBO", current: f.sukunaThrowComboCooldown || 0, max: SUKUNA_THROW_COMBO_COOLDOWN_TICKS });
+
     if ((f.bindingVowTicks || 0) > 0) {
       items.push({ name: `VOW: ${getBindingVowLabel(f.bindingVowType)}`, current: f.bindingVowTicks || 0, max: BINDING_VOW_TICKS });
     } else if ((f.bindingVowChoiceTicks || 0) > 0) {
@@ -4642,11 +4649,17 @@ function startTechnique(f, slot, chargeRatio = 0, aimPoint = null, releasingChar
     rangeStartY: aimVector.origin.y,
     rangeEndX: aimVector.origin.x + aimVector.x * previewDistance,
     rangeEndY: aimVector.origin.y + aimVector.y * previewDistance,
-    rangeRadius: move === "cleave" ? Math.max(20, spec.radius * 0.55) : finalRadius,
+    // CLEAVE_VOW_RADIUS_FIX
+    // Cleave's real hitbox uses rangeRadius, not just projectile.radius.
+    // Use finalRadius so the Binding Vow size boost actually affects the hit area.
+    rangeRadius: move === "cleave"
+      ? Math.max(24, finalRadius * (hasBindingVow(f, "cleave") ? 0.95 : 0.55))
+      : finalRadius,
     maxTravel: move === "cleave" ? Infinity : travelDistance,
     traveled: 0,
     life: spec.life + (chargedLimitless ? Math.round(finalCharge * 10) : 0) + (shrineBoost && move === "slash" ? 34 : 0),
     charge: finalCharge,
+    bindingVowCleave: move === "cleave" && hasBindingVow(f, "cleave"),
     hit: false
   });
   updateHud();
@@ -5408,7 +5421,7 @@ function activateBindingVow(f, type) {
   if (!f || f.technique !== "shrine" || !type) return false;
   f.bindingVowType = type;
   f.bindingVowTicks = BINDING_VOW_TICKS;
-  f.bindingVowCooldown = BINDING_VOW_COOLDOWN_TICKS;
+  f.bindingVowCooldown = 0;
   f.bindingVowChoiceTicks = 0;
   f.bindingVowQuote = getBindingVowLabel(type);
   f.bindingVowQuoteTicks = BINDING_VOW_QUOTE_TICKS;
@@ -5428,10 +5441,18 @@ function updateBindingVow(f) {
   if (f.bindingVowChoiceTicks > 0) f.bindingVowChoiceTicks -= 1;
   if (f.bindingVowTicks > 0) {
     f.bindingVowTicks -= 1;
-    if (f.bindingVowTicks <= 0) f.bindingVowType = null;
+    if (f.bindingVowTicks <= 0) {
+      f.bindingVowType = null;
+      f.bindingVowCooldown = BINDING_VOW_COOLDOWN_TICKS;
+    }
   }
   if (f.bindingVowQuoteTicks > 0) f.bindingVowQuoteTicks -= 1;
   if (f.bindingVowFlash > 0) f.bindingVowFlash -= 1;
+}
+
+function updateSukunaThrowComboCooldown(f) {
+  if (!f) return;
+  if (f.sukunaThrowComboCooldown > 0) f.sukunaThrowComboCooldown -= 1;
 }
 
 function hasSimpleDomain(f) {
@@ -5451,6 +5472,7 @@ function canStartSimpleDomain(f) {
     !f.rctHealing &&
     !isSpecialLocked(f) &&
     (f.simpleDomainCooldown || 0) <= 0 &&
+    (f.simpleDomainTicks || 0) <= 0 &&
     f.ce >= Math.ceil(f.maxCe * SIMPLE_DOMAIN_CE_COST_RATIO)
   );
 }
@@ -5464,7 +5486,7 @@ function startSimpleDomain(f) {
   f.ce = Math.max(0, f.ce - Math.ceil(f.maxCe * SIMPLE_DOMAIN_CE_COST_RATIO));
   f.simpleDomainTicks = SIMPLE_DOMAIN_TICKS;
   f.simpleDomainFlash = 18;
-  f.simpleDomainCooldown = SIMPLE_DOMAIN_TICKS + 180;
+  f.simpleDomainCooldown = 0;
   f.blocking = false;
   f.rctHealing = false;
 
@@ -5478,7 +5500,10 @@ function startSimpleDomain(f) {
 
 function updateSimpleDomain(f) {
   if (!f) return;
-  if (f.simpleDomainTicks > 0) f.simpleDomainTicks -= 1;
+  if (f.simpleDomainTicks > 0) {
+    f.simpleDomainTicks -= 1;
+    if (f.simpleDomainTicks <= 0) f.simpleDomainCooldown = SIMPLE_DOMAIN_COOLDOWN_TICKS;
+  }
   if (f.simpleDomainFlash > 0) f.simpleDomainFlash -= 1;
   if (f.simpleDomainCooldown > 0) f.simpleDomainCooldown -= 1;
 }
@@ -6234,6 +6259,12 @@ function lockGrabThrowTarget(attacker, defender) {
 }
 
 function startSukunaGrabThrow(attacker, defender, damage, knockback) {
+  if ((attacker.sukunaThrowComboCooldown || 0) > 0) {
+    showActionWarning(`Throw Combo Cooldown: ${Math.ceil(attacker.sukunaThrowComboCooldown / 60)}s`);
+    return false;
+  }
+
+  attacker.sukunaThrowComboCooldown = SUKUNA_THROW_COMBO_COOLDOWN_TICKS;
   attacker.attacking = "grabThrow";
   attacker.attackFrame = 0;
   attacker.hasHit = true;
@@ -6288,6 +6319,7 @@ function startSukunaGrabThrow(attacker, defender, damage, knockback) {
       playerHealth: defender.health
     });
   }
+  return true;
 }
 
 function updateSukunaGrabThrow(attacker, defender) {
@@ -7797,6 +7829,7 @@ function updateFighter(f, opponent) {
   f.rctCooldown = Math.max(0, (f.rctCooldown || 0) - 1);
   updateSimpleDomain(f);
   updateBindingVow(f);
+  updateSukunaThrowComboCooldown(f);
 
   if (!f.ko) f.dir = f.x + f.w / 2 < opponent.x + opponent.w / 2 ? 1 : -1;
   updateBluePunchTimers(f);
