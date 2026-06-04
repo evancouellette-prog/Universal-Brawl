@@ -10164,6 +10164,14 @@ function draw() {
   ctx.translate(-cameraX, 0);
   drawCity();
   drawActiveDomainBackdrop();
+
+  // DOMAIN_PLATFORM_VISIBILITY_PATCH
+  // Domains replace the arena background, but the actual platforms should still
+  // be visible and readable because they still affect gameplay.
+  if (activeDomain || pendingDomain || domainClash) {
+    drawPlatforms();
+  }
+
   drawEffects();
   drawFighter(player, getPlayerLabel(), getPlayerLabelColor());
   drawFighter(enemy, getEnemyLabel(), getEnemyLabelColor());
