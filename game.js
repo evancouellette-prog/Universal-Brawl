@@ -860,7 +860,7 @@ function closeRadioScreen() {
 }
 
 function getEventClientX(event) {
-  if (Number.isFinite(event?.clientX) && event.clientX > 0) return event.clientX;
+  if (Number.isFinite(event?.clientX)) return event.clientX;
   if (event?.touches && event.touches[0] && Number.isFinite(event.touches[0].clientX)) return event.touches[0].clientX;
   if (event?.changedTouches && event.changedTouches[0] && Number.isFinite(event.changedTouches[0].clientX)) return event.changedTouches[0].clientX;
   return NaN;
@@ -868,31 +868,29 @@ function getEventClientX(event) {
 
 function getRadioSeekTrackFromEvent(event) {
   const target = event?.target;
+
   if (target && target.closest) {
-    const direct = target.closest(".music-progress-track, .music-progress-fill, .music-time-current, .music-time-duration");
-    if (direct) return direct.classList.contains("music-progress-track") ? direct : direct.closest(".music-progress-track");
+    const direct = target.closest(".music-progress-track");
+    if (direct) return direct;
   }
 
-  // Last fallback: use pointer coordinates to find the visible bar under the cursor.
   const clientX = getEventClientX(event);
   const clientY = Number.isFinite(event?.clientY) ? event.clientY : NaN;
   if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return null;
 
-  const tracks = Array.from(document.querySelectorAll(".music-progress-track"));
-  return tracks.find((track) => {
+  return Array.from(document.querySelectorAll(".music-progress-track")).find((track) => {
     const rect = track.getBoundingClientRect();
     return rect.width > 0 &&
       rect.height > 0 &&
       clientX >= rect.left &&
       clientX <= rect.right &&
-      clientY >= rect.top - 10 &&
-      clientY <= rect.bottom + 10;
+      clientY >= rect.top - 12 &&
+      clientY <= rect.bottom + 12;
   }) || null;
 }
 
-function getBestMusicDuration() {
-  const duration = getMusicDuration();
-  if (duration > 0) return duration;
+function getSeekableMusicDuration() {
+  if (Number.isFinite(battleMusic.duration) && battleMusic.duration > 0) return battleMusic.duration;
 
   try {
     if (battleMusic.seekable && battleMusic.seekable.length > 0) {
@@ -904,17 +902,21 @@ function getBestMusicDuration() {
   return 0;
 }
 
-function forceSeekBattleMusic(seekTime) {
-  const duration = getBestMusicDuration();
+let pendingMusicSeekRatio = null;
+
+function applyMusicSeekRatio(ratio) {
+  const duration = getSeekableMusicDuration();
   if (duration <= 0) return false;
 
-  const safeTime = Math.max(0, Math.min(duration - 0.05, seekTime));
+  const seekTime = Math.max(0, Math.min(duration - 0.08, ratio * duration));
 
+  // IMPORTANT: do not call battleMusic.load() or updateBattleMusicState() here.
+  // Both can restart the song. Seeking should only change currentTime.
   try {
-    battleMusic.currentTime = safeTime;
+    battleMusic.currentTime = seekTime;
   } catch (err) {
     try {
-      if (typeof battleMusic.fastSeek === "function") battleMusic.fastSeek(safeTime);
+      if (typeof battleMusic.fastSeek === "function") battleMusic.fastSeek(seekTime);
       else return false;
     } catch (err2) {
       return false;
@@ -922,10 +924,14 @@ function forceSeekBattleMusic(seekTime) {
   }
 
   updateMusicProgressUi();
+
+  if (!musicMuted && backgroundMusicStarted) {
+    const playPromise = battleMusic.play();
+    if (playPromise) playPromise.catch(() => {});
+  }
+
   return true;
 }
-
-let pendingMusicSeekRatio = null;
 
 function seekMusicFromProgressTrack(event) {
   const track = event.currentTarget?.classList?.contains("music-progress-track")
@@ -943,49 +949,32 @@ function seekMusicFromProgressTrack(event) {
   if (!Number.isFinite(clientX) || rect.width <= 0) return;
 
   const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-  const duration = getBestMusicDuration();
+  pendingMusicSeekRatio = ratio;
 
-  // If metadata is not loaded yet, remember the click and apply it once it is.
-  if (duration <= 0) {
-    pendingMusicSeekRatio = ratio;
-    battleMusic.preload = "auto";
-    try { battleMusic.load(); } catch (err) {}
+  if (applyMusicSeekRatio(ratio)) {
+    pendingMusicSeekRatio = null;
     return;
   }
 
-  pendingMusicSeekRatio = null;
-  const wasPlaying = !battleMusic.paused && !musicMuted;
-  const seekTime = ratio * duration;
-
-  if (forceSeekBattleMusic(seekTime) && (wasPlaying || backgroundMusicStarted)) {
-    backgroundMusicStarted = true;
-    const playPromise = battleMusic.play();
-    if (playPromise) playPromise.catch(() => {});
-  }
+  // Metadata is not ready yet. Do NOT call load(); that restarts audio.
+  // Just make sure the current track source exists and apply the seek when metadata arrives.
+  updateBattleMusicState(false);
 }
 
 battleMusic.addEventListener("loadedmetadata", () => {
   if (pendingMusicSeekRatio === null) return;
-  const duration = getBestMusicDuration();
-  if (duration <= 0) return;
-  const ratio = pendingMusicSeekRatio;
-  pendingMusicSeekRatio = null;
-  forceSeekBattleMusic(ratio * duration);
+  if (applyMusicSeekRatio(pendingMusicSeekRatio)) pendingMusicSeekRatio = null;
 });
 
 battleMusic.addEventListener("durationchange", () => {
   if (pendingMusicSeekRatio === null) return;
-  const duration = getBestMusicDuration();
-  if (duration <= 0) return;
-  const ratio = pendingMusicSeekRatio;
-  pendingMusicSeekRatio = null;
-  forceSeekBattleMusic(ratio * duration);
+  if (applyMusicSeekRatio(pendingMusicSeekRatio)) pendingMusicSeekRatio = null;
 });
 
 
 // RADIO_SEEK_BAR_PATCH
 // Click or drag on the radio song time bar to jump to that exact point.
-// Capture-phase listeners are used because the game has global pointer handlers.
+// This version only seeks once per pointer event and never calls audio.load().
 let musicSeekingPointerDown = false;
 
 function installRadioSeekListeners() {
@@ -993,12 +982,17 @@ function installRadioSeekListeners() {
   tracks.forEach((track) => {
     if (track.dataset.seekInstalled === "1") return;
     track.dataset.seekInstalled = "1";
+
     track.style.cursor = "pointer";
     track.style.pointerEvents = "auto";
     track.setAttribute("title", "Click to seek");
 
-    const fill = track.querySelector(".music-progress-fill");
-    if (fill) fill.style.pointerEvents = "none";
+    const fills = track.querySelectorAll(".music-progress-fill, *");
+    fills.forEach((el) => {
+      if (el.classList && el.classList.contains("music-progress-fill")) {
+        el.style.pointerEvents = "none";
+      }
+    });
 
     track.addEventListener("pointerdown", (event) => {
       musicSeekingPointerDown = true;
@@ -1016,17 +1010,14 @@ function installRadioSeekListeners() {
       seekMusicFromProgressTrack(event);
     }, true);
 
-    track.addEventListener("click", seekMusicFromProgressTrack, true);
+    track.addEventListener("click", (event) => {
+      seekMusicFromProgressTrack(event);
+    }, true);
   });
 }
 
-document.addEventListener("pointerdown", (event) => {
-  const track = getRadioSeekTrackFromEvent(event);
-  if (!track) return;
-  musicSeekingPointerDown = true;
-  seekMusicFromProgressTrack(event);
-}, true);
-
+// Document fallback is only for drags after the pointer leaves the bar.
+// Initial clicks are handled by the bar itself, preventing double-seek/restart bugs.
 document.addEventListener("pointermove", (event) => {
   if (!musicSeekingPointerDown) return;
   seekMusicFromProgressTrack(event);
@@ -1042,18 +1033,11 @@ document.addEventListener("pointercancel", () => {
   musicSeekingPointerDown = false;
 }, true);
 
-document.addEventListener("click", (event) => {
-  if (!getRadioSeekTrackFromEvent(event)) return;
-  seekMusicFromProgressTrack(event);
-}, true);
-
 installRadioSeekListeners();
 window.addEventListener("DOMContentLoaded", installRadioSeekListeners);
 window.addEventListener("load", installRadioSeekListeners);
 window.setTimeout(installRadioSeekListeners, 0);
 window.setInterval(installRadioSeekListeners, 1000);
-
-
 
 
 // RADIO_SEEK_CLICK_AREA_STYLE_PATCH
@@ -1064,6 +1048,26 @@ window.setTimeout(() => {
   style.textContent = `
     .music-progress-track {
       min-height: 14px !important;
+      cursor: pointer !important;
+      pointer-events: auto !important;
+      position: relative;
+    }
+    .music-progress-fill {
+      pointer-events: none !important;
+    }
+  `;
+  document.head.appendChild(style);
+}, 0);
+
+
+// RADIO_SEEK_CLICK_AREA_STYLE_PATCH
+window.setTimeout(() => {
+  if (document.getElementById("radioSeekClickAreaStyle")) return;
+  const style = document.createElement("style");
+  style.id = "radioSeekClickAreaStyle";
+  style.textContent = `
+    .music-progress-track {
+      min-height: 18px !important;
       cursor: pointer !important;
       pointer-events: auto !important;
       position: relative;
