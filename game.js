@@ -229,14 +229,14 @@ let musicMasterGain = null;
 const MUSIC_VOLUME_STORAGE_KEY = "jujutsuBrawlMusicVolume";
 const MUSIC_TRACK_STORAGE_KEY = "jujutsuBrawlMusicTrack";
 const RADIO_TRACKS = [
-  { title: "Judas", artist: "Lady Gaga", type: "audio", src: "assets/judas.mp3", style: "battle" },
-  { title: "If I Am With You", artist: "Yoshimasa Terui", type: "audio", src: "assets/if-i-am-with-you.mp3", style: "menu" },
-  { title: "Kaikai Kitan", artist: "Eve", type: "audio", src: "assets/kaikai-kitan.mp3", style: "battle" },
-  { title: "Inferno", artist: "Mrs. GREEN APPLE", type: "audio", src: "assets/inferno.mp3", style: "battle" },
-  { title: "Black Catcher", artist: "Vickeblanka", type: "audio", src: "assets/black-catcher.mp3", style: "battle" },
-  { title: "Paint It Black", artist: "London Symphony Orchestra", type: "audio", src: "assets/paint-it-black.mp3", style: "menu" },
-  { title: "Gurenge", artist: "LiSA", type: "audio", src: "assets/gurenge.mp3", style: "battle" },
-  { title: "More Than Words", artist: "Hitsujibungaku", type: "audio", src: "assets/more-than-words.mp3", style: "menu" }
+  { title: "Judas", artist: "Lady Gaga", type: "audio", src: "assets/judas.mp3?v=14?v=14", style: "battle" },
+  { title: "If I Am With You", artist: "Yoshimasa Terui", type: "audio", src: "assets/if-i-am-with-you.mp3?v=14", style: "menu" },
+  { title: "Kaikai Kitan", artist: "Eve", type: "audio", src: "assets/kaikai-kitan.mp3?v=14", style: "battle" },
+  { title: "Inferno", artist: "Mrs. GREEN APPLE", type: "audio", src: "assets/inferno.mp3?v=14", style: "battle" },
+  { title: "Black Catcher", artist: "Vickeblanka", type: "audio", src: "assets/black-catcher.mp3?v=14", style: "battle" },
+  { title: "Paint It Black", artist: "London Symphony Orchestra", type: "audio", src: "assets/paint-it-black.mp3?v=14", style: "menu" },
+  { title: "Gurenge", artist: "LiSA", type: "audio", src: "assets/gurenge.mp3?v=14", style: "battle" },
+  { title: "More Than Words", artist: "Hitsujibungaku", type: "audio", src: "assets/more-than-words.mp3?v=14", style: "menu" }
 ];
 let musicVolume = loadSavedMusicVolume();
 let musicMuted = false;
@@ -296,7 +296,11 @@ const gameSfx = {
 };
 
 const gruntSfxKeys = ["grunt1", "grunt2", "grunt3"];
-let walkingSfxLastActiveFrame = -9999;
+
+// RADIO_SAFE_WALKING_SFX_FIX:
+// walking.wav is now one loop that plays only while a fighter is walking.
+// This patch does not touch radio/music-player code.
+let walkingSfxActiveThisFrame = false;
 let walkingSfxPlaying = false;
 
 function refreshGameSfxVolumes() {
@@ -330,6 +334,7 @@ function playGameSfx(name, options = {}) {
 function stopGameSfx(name) {
   const entry = gameSfx[name];
   if (!entry || !entry.pool.length) return;
+
   entry.pool.forEach((sound) => {
     try {
       sound.pause();
@@ -376,10 +381,9 @@ function playRoundResultSfx(attacker, defender) {
 
 function playLandingSfx(f, impactSpeed = 0) {
   if (!f || f.ko) return;
-  if (impactSpeed < 1.2) return;
+  if (impactSpeed < 1.1) return;
 
-  const volume = Math.max(0.45, Math.min(1, impactSpeed / 16));
-  playGameSfx("landing", { volume });
+  playGameSfx("landing", { volume: Math.max(0.45, Math.min(1, impactSpeed / 15)) });
 }
 
 function isWalkingForSfx(f) {
@@ -396,14 +400,17 @@ function isWalkingForSfx(f) {
 }
 
 function startWalkingLoopSfx() {
+  if (walkingSfxPlaying) return;
+
   const entry = gameSfx.walking;
-  if (!entry || !entry.pool.length || walkingSfxPlaying) return;
+  if (!entry || !entry.pool.length) return;
+
+  refreshGameSfxVolumes();
 
   const sound = entry.pool[0];
   try {
-    refreshGameSfxVolumes();
     sound.loop = true;
-    sound.volume = Math.max(0, Math.min(1, entry.volume * gameSfxVolume * 0.65));
+    sound.volume = Math.max(0, Math.min(1, entry.volume * gameSfxVolume * 0.72));
     sound.currentTime = 0;
     const promise = sound.play();
     if (promise) promise.catch(() => {});
@@ -413,34 +420,36 @@ function startWalkingLoopSfx() {
 
 function stopWalkingLoopSfx() {
   if (!walkingSfxPlaying) return;
+
   const entry = gameSfx.walking;
-  if (entry?.pool?.[0]) {
-    try {
-      entry.pool[0].pause();
-      entry.pool[0].currentTime = 0;
-    } catch (err) {}
-  }
+  const sound = entry?.pool?.[0];
+
+  try {
+    if (sound) {
+      sound.pause();
+      sound.currentTime = 0;
+    }
+  } catch (err) {}
+
   walkingSfxPlaying = false;
 }
 
 function updateWalkingSfx(f) {
   if (!isWalkingForSfx(f)) return;
-  walkingSfxLastActiveFrame = frame;
-  startWalkingLoopSfx();
+  walkingSfxActiveThisFrame = true;
 }
 
 function finalizeWalkingSfx() {
-  // WALKING_SFX_LOOP_FIX:
-  // walking.wav now loops only while at least one fighter is actively walking.
-  // It stops immediately when nobody is walking, instead of playing repeated one-shots.
   if (gameState !== "playing" || paused || gameOver) {
     stopWalkingLoopSfx();
+    walkingSfxActiveThisFrame = false;
     return;
   }
 
-  if (frame - walkingSfxLastActiveFrame > 1) {
-    stopWalkingLoopSfx();
-  }
+  if (walkingSfxActiveThisFrame) startWalkingLoopSfx();
+  else stopWalkingLoopSfx();
+
+  walkingSfxActiveThisFrame = false;
 }
 
 
@@ -967,17 +976,17 @@ function updateBattleMusicState(restart = false) {
 
   const targetSrc = new URL(track.src, window.location.href).href;
 
-  // GAME_JS_ONLY_MUSIC_PATCH:
-  // Only change src when the actual track changes.
-  // Do not call load()/currentTime=0 during normal updates, because that restarts seeking.
   if (battleMusic.src !== targetSrc) {
     battleMusic.pause();
     battleMusic.src = targetSrc;
     battleMusic.preload = "metadata";
     battleMusic.currentTime = 0;
+    battleMusic.load();
     updateMusicProgressUi();
-    if (typeof installRadioSeekListeners === "function") installRadioSeekListeners();
+    installRadioSeekListeners();
   } else if (restart) {
+    // Keep the same song playing from the same timestamp when a match starts.
+    // Manual track changes still restart because those change battleMusic.src.
     updateMusicProgressUi();
   }
 
@@ -997,7 +1006,6 @@ function updateBattleMusicState(restart = false) {
 }
 
 function setRadioTrack(index, autoplay = true, restart = true) {
-  const previousIndex = currentRadioTrackIndex;
   currentRadioTrackIndex = normalizeTrackIndex(index);
   saveRadioTrackIndex();
 
@@ -1005,10 +1013,7 @@ function setRadioTrack(index, autoplay = true, restart = true) {
   if (uiAudioContext) nextMusicTime = uiAudioContext.currentTime + 0.05;
   updateMusicProgressUi();
   updateRadioUi();
-
-  // Only restart when the selected track actually changes.
-  updateBattleMusicState(restart && currentRadioTrackIndex !== previousIndex);
-
+  updateBattleMusicState(restart);
   updateMusicProgressUi();
   if (autoplay && !musicMuted) startBackgroundMusic();
 }
@@ -2772,7 +2777,6 @@ function restartWholeBattle(broadcast = true) {
     }
 
     if (broadcast) broadcastFullBattleRestart();
-    finalizeWalkingSfx();
     updateHud();
     return;
   }
@@ -4301,7 +4305,7 @@ function getTakenKnockback(defender, rawKnockback, options = {}) {
 
 function resolvePlatformCollisions(f, prevX, prevY) {
   let landed = false;
-  const wasGroundedBeforeCollision = Boolean(f.grounded);
+  const wasGroundedBeforePlatformCheck = Boolean(f.grounded);
   const incomingVy = Number(f.vy) || 0;
   f.onPlatform = false;
   for (const platform of getActivePlatforms()) {
@@ -4322,15 +4326,15 @@ function resolvePlatformCollisions(f, prevX, prevY) {
       top < platform.y
     ) {
       f.y = platform.y - f.h;
-      f.vy = 0;
 
-      // LANDING_SFX_PLATFORM_FIX:
-      // Only play landing when the fighter actually falls onto the platform.
-      // Do not replay every frame while standing on it.
-      if (!wasGroundedBeforeCollision && incomingVy > 1.2 && prevBottom < platform.y - 2) {
+      // RADIO_SAFE_PLATFORM_LANDING_FIX:
+      // Only play landing when falling onto the platform, not every frame
+      // while standing on it.
+      if (!wasGroundedBeforePlatformCheck && incomingVy > 1.1) {
         playLandingSfx(f, incomingVy);
       }
 
+      f.vy = 0;
       f.grounded = true;
       f.onPlatform = true;
       f.jumpsUsed = 0;
@@ -8364,7 +8368,7 @@ function updateFighter(f, opponent) {
   if (f.y + f.h >= GROUND) {
     const landedFromKnockdown = f.knockdown && !wasGrounded;
     const groundImpactSpeed = Number(f.vy) || 0;
-    if (!wasGrounded && groundImpactSpeed > 1.2) playLandingSfx(f, groundImpactSpeed);
+    if (!wasGrounded && groundImpactSpeed > 1.1) playLandingSfx(f, groundImpactSpeed);
     f.y = GROUND - f.h;
     f.vy = 0;
     f.grounded = true;
@@ -12002,6 +12006,7 @@ function drawUltimateScreenEffects() {
 
 function fixedUpdate() {
   frame += 1;
+  walkingSfxActiveThisFrame = false;
   if (actionWarning && actionWarning.ticks > 0) actionWarning.ticks -= 1;
 
   // DOMAIN_RUNTIME_FIX
@@ -12031,6 +12036,7 @@ function fixedUpdate() {
     if (gameMode === "online" && onlineRole === "p2" && (gameState === "lobby" || gameState === "roundOver") && player2Ready && readyCountdownValue <= 0 && performance.now() - lastOnlineReadySent > 500) {
       sendOnlineReady();
     }
+    finalizeWalkingSfx();
     updateHud();
     return;
   }
@@ -12398,180 +12404,6 @@ techniqueButtons.forEach((button) => {
 resumeButton.addEventListener("click", () => setPaused(false));
 pauseRestartButton.addEventListener("click", () => restartWholeBattle(true));
 pauseHomeButton.addEventListener("click", openHomeScreen);
-
-
-// GAME_JS_ONLY_MUSIC_UI_PATCH
-// This makes music editable/fixable from game.js only.
-// If the HTML has no radio/music UI, this creates one.
-// If the HTML already has one, this still wires the buttons/progress bar dynamically.
-function installGameJsOnlyMusicUi() {
-  if (!document.getElementById("gameSong")) {
-    const audio = document.createElement("audio");
-    audio.id = "gameSong";
-    audio.preload = "metadata";
-    audio.style.display = "none";
-    document.body.appendChild(audio);
-    battleMusic = audio;
-  }
-
-  if (!document.getElementById("gameJsOnlyMusicStyle")) {
-    const style = document.createElement("style");
-    style.id = "gameJsOnlyMusicStyle";
-    style.textContent = `
-      #gameJsOnlyMusicPlayer {
-        position: fixed;
-        left: 14px;
-        bottom: 14px;
-        z-index: 9999;
-        width: min(390px, calc(100vw - 28px));
-        padding: 10px 12px;
-        border: 1px solid rgba(148, 163, 184, 0.35);
-        border-radius: 14px;
-        background: rgba(2, 6, 23, 0.82);
-        color: #f8fafc;
-        font-family: system-ui, sans-serif;
-        box-shadow: 0 12px 35px rgba(0,0,0,0.4);
-        backdrop-filter: blur(8px);
-      }
-
-      #gameJsOnlyMusicPlayer .gamejs-music-title {
-        font-size: 0.86rem;
-        font-weight: 900;
-        overflow: hidden;
-        white-space: nowrap;
-        text-overflow: ellipsis;
-      }
-
-      #gameJsOnlyMusicPlayer .gamejs-music-artist {
-        font-size: 0.72rem;
-        opacity: 0.75;
-        margin-bottom: 6px;
-        overflow: hidden;
-        white-space: nowrap;
-        text-overflow: ellipsis;
-      }
-
-      #gameJsOnlyMusicPlayer .gamejs-music-row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-
-      #gameJsOnlyMusicPlayer button {
-        border: 0;
-        border-radius: 9px;
-        padding: 6px 9px;
-        font-weight: 900;
-        cursor: pointer;
-        color: #f8fafc;
-        background: rgba(30, 41, 59, 0.95);
-      }
-
-      #gameJsOnlyMusicPlayer .music-progress-track {
-        flex: 1;
-        height: 10px;
-        min-height: 10px;
-        border-radius: 999px;
-        background: rgba(15, 23, 42, 0.95);
-        cursor: pointer;
-        overflow: hidden;
-      }
-
-      #gameJsOnlyMusicPlayer .music-progress-fill {
-        height: 100%;
-        width: 0%;
-        border-radius: 999px;
-        background: #61d394;
-        pointer-events: none;
-      }
-
-      #gameJsOnlyMusicPlayer .music-time-current,
-      #gameJsOnlyMusicPlayer .music-time-duration {
-        font-size: 0.72rem;
-        min-width: 38px;
-        text-align: center;
-        opacity: 0.88;
-      }
-    `;
-    document.head.appendChild(style);
-  }
-
-  if (!document.querySelector(".music-progress-track")) {
-    const player = document.createElement("div");
-    player.id = "gameJsOnlyMusicPlayer";
-    player.innerHTML = `
-      <div class="gamejs-music-title radio-track-title">Music</div>
-      <div class="gamejs-music-artist radio-track-artist">Radio</div>
-      <div class="gamejs-music-row">
-        <button class="music-prev-button" type="button">⏮</button>
-        <button class="music-toggle-button" type="button">▶</button>
-        <button class="music-next-button" type="button">⏭</button>
-        <span class="music-time-current">0:00</span>
-        <div class="music-progress-track" role="slider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-          <div class="music-progress-fill"></div>
-        </div>
-        <span class="music-time-duration">-0:00</span>
-      </div>
-    `;
-    document.body.appendChild(player);
-  }
-
-  document.querySelectorAll(".music-toggle-button").forEach((button) => {
-    if (button.dataset.gameJsMusicBound === "1") return;
-    button.dataset.gameJsMusicBound = "1";
-    button.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      setMusicMuted(!musicMuted);
-      updateRadioUi();
-    });
-  });
-
-  document.querySelectorAll(".music-prev-button").forEach((button) => {
-    if (button.dataset.gameJsMusicBound === "1") return;
-    button.dataset.gameJsMusicBound = "1";
-    button.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      playPreviousSong();
-    });
-  });
-
-  document.querySelectorAll(".music-next-button").forEach((button) => {
-    if (button.dataset.gameJsMusicBound === "1") return;
-    button.dataset.gameJsMusicBound = "1";
-    button.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      playNextSong();
-    });
-  });
-
-  document.querySelectorAll(".music-progress-track").forEach((track) => {
-    if (track.dataset.gameJsSeekBound === "1") return;
-    track.dataset.gameJsSeekBound = "1";
-    track.addEventListener("pointerdown", (event) => seekRadioFromTrack(track, event), true);
-    track.addEventListener("click", (event) => seekRadioFromTrack(track, event), true);
-  });
-
-  battleMusic.removeEventListener("ended", playNextSong);
-  battleMusic.addEventListener("ended", playNextSong);
-  battleMusic.removeEventListener("loadedmetadata", updateMusicProgressUi);
-  battleMusic.addEventListener("loadedmetadata", updateMusicProgressUi);
-  battleMusic.removeEventListener("durationchange", updateMusicProgressUi);
-  battleMusic.addEventListener("durationchange", updateMusicProgressUi);
-  battleMusic.removeEventListener("timeupdate", updateMusicProgressUi);
-  battleMusic.addEventListener("timeupdate", updateMusicProgressUi);
-
-  updateRadioUi();
-  updateBattleMusicState(false);
-}
-
-installGameJsOnlyMusicUi();
-window.addEventListener("DOMContentLoaded", installGameJsOnlyMusicUi);
-window.addEventListener("load", installGameJsOnlyMusicUi);
-window.setTimeout(installGameJsOnlyMusicUi, 0);
-
 
 resetGame();
 updateHomeModeButtons();
