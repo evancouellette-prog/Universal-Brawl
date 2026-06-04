@@ -859,14 +859,44 @@ function closeRadioScreen() {
   radioScreen.classList.add("hidden");
 }
 
-function seekMusicFromProgressTrack(event) {
+function getRadioSeekTrackFromEvent(event) {
+  const target = event?.target;
+  if (!target || !target.closest) return null;
+  return target.closest(".music-progress-track");
+}
+
+function getBestMusicDuration() {
   const duration = getMusicDuration();
-  if (duration <= 0) return;
+  if (duration > 0) return duration;
+
+  // Fallback for browsers that have seekable metadata before duration updates.
+  try {
+    if (battleMusic.seekable && battleMusic.seekable.length > 0) {
+      const end = battleMusic.seekable.end(battleMusic.seekable.length - 1);
+      if (Number.isFinite(end) && end > 0) return end;
+    }
+  } catch (err) {}
+
+  return 0;
+}
+
+function seekMusicFromProgressTrack(event) {
+  const track = event.currentTarget?.classList?.contains("music-progress-track")
+    ? event.currentTarget
+    : getRadioSeekTrackFromEvent(event);
+
+  if (!track) return;
+
+  const duration = getBestMusicDuration();
+  if (duration <= 0) {
+    console.warn("Cannot seek yet: song duration is not loaded.");
+    return;
+  }
 
   event.preventDefault();
   event.stopPropagation();
 
-  const rect = event.currentTarget.getBoundingClientRect();
+  const rect = track.getBoundingClientRect();
   let clientX = event.clientX;
 
   // Touch fallback for phones/tablets.
@@ -874,13 +904,19 @@ function seekMusicFromProgressTrack(event) {
     clientX = event.touches[0].clientX;
   }
 
-  if (!Number.isFinite(clientX)) return;
+  if (!Number.isFinite(clientX) || rect.width <= 0) return;
 
-  const ratio = rect.width > 0 ? (clientX - rect.left) / rect.width : 0;
-  const seekTime = Math.max(0, Math.min(duration, ratio * duration));
+  const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  const seekTime = Math.max(0, Math.min(duration - 0.05, ratio * duration));
   const wasPlaying = !battleMusic.paused && !musicMuted;
 
-  battleMusic.currentTime = seekTime;
+  try {
+    if (typeof battleMusic.fastSeek === "function") battleMusic.fastSeek(seekTime);
+    else battleMusic.currentTime = seekTime;
+  } catch (err) {
+    battleMusic.currentTime = seekTime;
+  }
+
   updateMusicProgressUi();
 
   // Seeking should move to the chosen timestamp, not restart the song.
@@ -893,32 +929,73 @@ function seekMusicFromProgressTrack(event) {
 
 // RADIO_SEEK_BAR_PATCH
 // Click or drag on the radio song time bar to jump to that exact point.
+// This uses both direct listeners and document-level delegated listeners,
+// so it still works if the fill element is clicked or the radio UI is rebuilt.
 let musicSeekingPointerDown = false;
 
-musicProgressTracks.forEach((track) => {
-  track.style.cursor = "pointer";
-  track.addEventListener("pointerdown", (event) => {
-    musicSeekingPointerDown = true;
-    seekMusicFromProgressTrack(event);
-  });
+function installRadioSeekListeners() {
+  const tracks = Array.from(document.querySelectorAll(".music-progress-track"));
+  tracks.forEach((track) => {
+    if (track.dataset.seekInstalled === "1") return;
+    track.dataset.seekInstalled = "1";
+    track.style.cursor = "pointer";
+    track.setAttribute("title", "Click to seek");
 
-  track.addEventListener("pointermove", (event) => {
-    if (!musicSeekingPointerDown) return;
-    seekMusicFromProgressTrack(event);
-  });
+    track.addEventListener("pointerdown", (event) => {
+      musicSeekingPointerDown = true;
+      seekMusicFromProgressTrack(event);
+    });
 
-  track.addEventListener("pointerup", (event) => {
-    if (!musicSeekingPointerDown) return;
+    track.addEventListener("pointermove", (event) => {
+      if (!musicSeekingPointerDown) return;
+      seekMusicFromProgressTrack(event);
+    });
+
+    track.addEventListener("pointerup", (event) => {
+      if (!musicSeekingPointerDown) return;
+      musicSeekingPointerDown = false;
+      seekMusicFromProgressTrack(event);
+    });
+
+    track.addEventListener("pointercancel", () => {
+      musicSeekingPointerDown = false;
+    });
+
+    track.addEventListener("click", seekMusicFromProgressTrack);
+  });
+}
+
+// Delegated fallback catches clicks even when the inner fill or another child
+// receives the event instead of the track.
+document.addEventListener("pointerdown", (event) => {
+  if (!getRadioSeekTrackFromEvent(event)) return;
+  musicSeekingPointerDown = true;
+  seekMusicFromProgressTrack(event);
+}, true);
+
+document.addEventListener("pointermove", (event) => {
+  if (!musicSeekingPointerDown || !getRadioSeekTrackFromEvent(event)) return;
+  seekMusicFromProgressTrack(event);
+}, true);
+
+document.addEventListener("pointerup", (event) => {
+  if (!musicSeekingPointerDown || !getRadioSeekTrackFromEvent(event)) {
     musicSeekingPointerDown = false;
-    seekMusicFromProgressTrack(event);
-  });
+    return;
+  }
+  musicSeekingPointerDown = false;
+  seekMusicFromProgressTrack(event);
+}, true);
 
-  track.addEventListener("pointercancel", () => {
-    musicSeekingPointerDown = false;
-  });
+document.addEventListener("click", (event) => {
+  if (!getRadioSeekTrackFromEvent(event)) return;
+  seekMusicFromProgressTrack(event);
+}, true);
 
-  track.addEventListener("click", seekMusicFromProgressTrack);
-});
+installRadioSeekListeners();
+window.addEventListener("DOMContentLoaded", installRadioSeekListeners);
+window.setTimeout(installRadioSeekListeners, 0);
+
 
 function playButtonClickSound() {
   const sound = buttonClickSounds[buttonClickSoundIndex % buttonClickSounds.length];
