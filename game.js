@@ -1308,7 +1308,7 @@ const HOLLOW_PURPLE_BLOCK_CHIP = 0.56;
 const WORLD_SLASH_DAMAGE = 118;
 const WORLD_SLASH_BLOCK_CHIP = 0.62;
 const DOMAIN_CE_REQUIREMENT_RATIO = 0.9;
-const DOMAIN_STARTUP_TICKS = 150;
+const DOMAIN_STARTUP_TICKS = 120;
 const DOMAIN_CLASH_WINDOW_TICKS = 180;
 const DOMAIN_CLASH_TICKS = 180;
 const DOMAIN_CT_LOCK_TICKS = 15 * 60;
@@ -2633,7 +2633,12 @@ if (data.type === "role") {
       if (data.action === "dodge") startDodge(enemy, getVectorFromInput(remoteInput));
       if (data.action === "jump") jumpFighterWithMove(enemy, (remoteInput.right ? 1 : 0) - (remoteInput.left ? 1 : 0));
       if (data.action === "infinity") toggleInfinity(enemy);
-      if (data.action === "domain") startDomainExpansion(enemy);
+      if (data.action === "domain") {
+        if (Number.isFinite(Number(data.domainPreCe))) enemy.ce = Math.max(enemy.ce || 0, Number(data.domainPreCe));
+        if (Number.isFinite(Number(data.domainPreUltimate))) enemy.ultimateMeter = Math.max(enemy.ultimateMeter || 0, Number(data.domainPreUltimate));
+        if (data.domainTechnique === "limitless" || data.domainTechnique === "shrine") enemy.technique = data.domainTechnique;
+        startDomainExpansion(enemy);
+      }
       if (data.action === "ultimate") startUltimate(enemy);
       if (data.action === "ultimate-start") beginUltimateAim(enemy, data.aim);
       if (data.action === "ultimate-release") releaseUltimateAim(enemy, data.aim);
@@ -2855,8 +2860,28 @@ function sendOnlineInput(action = null, aim = null) {
   lastOnlineInputKey = JSON.stringify(getOnlineInput());
   lastOnlineInputSent = performance.now();
   const aimPoint = sanitizeAimPoint(aim);
-  onlineSocket.send(JSON.stringify({ type: "input",
-      localName: getLocalPlayerName(), input: getOnlineInput(), action, aim: aimPoint }));
+
+  const payload = {
+    type: "input",
+    localName: getLocalPlayerName(),
+    input: getOnlineInput(),
+    action,
+    aim: aimPoint
+  };
+
+  // DOMAIN_ONLINE_ACTIVATION_FIX
+  // P2 locally spends CE/ult before this input reaches the host. Send the
+  // original pre-cost values from the local domain attempt so the host can
+  // validate and start the real authoritative domain.
+  if (action === "domain") {
+    const owner = getFighterOwner(enemy);
+    const attempt = pendingDomain?.owner === owner ? pendingDomain : domainClash?.attempts?.[owner];
+    payload.domainPreCe = Number.isFinite(Number(attempt?.preCe)) ? Number(attempt.preCe) : enemy.ce;
+    payload.domainPreUltimate = Number.isFinite(Number(attempt?.preUltimate)) ? Number(attempt.preUltimate) : enemy.ultimateMeter;
+    payload.domainTechnique = enemy.technique;
+  }
+
+  onlineSocket.send(JSON.stringify(payload));
 }
 
 function sendOnlineInputTick(force = false) {
@@ -3708,6 +3733,15 @@ function isSpecialLocked(f) {
   return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || (f?.domainStartup || 0) > 0 || clashing;
 }
 
+// DOMAIN_MOVEMENT_FIX
+// Domain startup still blocks attacks/CT, but it should not freeze walking.
+// The caster can keep moving while the short domain animation plays.
+function isMovementLocked(f) {
+  const owner = getFighterOwner(f);
+  const clashing = Boolean(owner && domainClash?.attempts?.[owner]);
+  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || clashing;
+}
+
 function getMoveInputForFighter(f) {
   if (f === player) return (isPressed("d", "keyd") ? 1 : 0) - (isPressed("a", "keya") ? 1 : 0);
   if (gameMode === "cpu" && f === enemy) return Math.sign(enemy.vx) || enemy.dir;
@@ -4214,10 +4248,10 @@ function startFuga(f, aimPoint = null) {
     vy: aimVector.y * spec.speed,
     owner: f === player ? "player" : "enemy",
     move,
-    radius: spec.radius,
+    radius: spec.radius * getDomainProjectileSizeMultiplier(f, move),
     explosionRadius: spec.explosionRadius,
     damage: Math.ceil(spec.damage * getOutgoingDamageMultiplier(f)),
-    knockback: spec.knockback,
+    knockback: spec.knockback * getDomainProjectileKnockbackMultiplier(f, move),
     dir: aimVector.dir,
     aimX: aimVector.x,
     aimY: aimVector.y,
@@ -4857,6 +4891,20 @@ function getCtCostMultiplier(f) {
   return 1;
 }
 
+function getDomainProjectileSizeMultiplier(f, move) {
+  if (isDomainOwner(f, "unlimitedVoid") && move === "red") return 1.45;
+  if (isDomainOwner(f, "unlimitedVoid") && move === "blue") return 1.25;
+  if (isDomainOwner(f, "malevolentShrine") && (move === "slash" || move === "cleave")) return 1.28;
+  return 1;
+}
+
+function getDomainProjectileKnockbackMultiplier(f, move) {
+  if (isDomainOwner(f, "unlimitedVoid") && move === "blue") return 1.55;
+  if (isDomainOwner(f, "unlimitedVoid") && move === "red") return 1.25;
+  if (isDomainOwner(f, "malevolentShrine") && (move === "slash" || move === "cleave")) return 1.25;
+  return 1;
+}
+
 function getGojoTeleportCost(f) {
   return Math.ceil(GOJO_TELEPORT_COST * getCtCostMultiplier(f));
 }
@@ -5117,6 +5165,22 @@ function applyActiveDomainTick() {
   if (!activeDomain) return;
   activeDomain.ticks -= 1;
   activeDomain.pulse = (activeDomain.pulse || 0) + 1;
+  if (activeDomain.type === "unlimitedVoid") {
+    const ownerFighter = getFighterByOwner(activeDomain.owner);
+    const target = getOpponent(ownerFighter);
+
+    // Unlimited Void is mostly a control domain, not free damage.
+    // Make the effect obvious: victim blocking drains faster and gets
+    // repeated info-shock sparks while their movement/attacks/CT are slowed.
+    if (target?.blocking) damageShield(target, 1.35);
+
+    if (target && activeDomain.pulse % 24 === 0) {
+      const center = getFighterCenter(target);
+      spawnHitSpark(center.x + (Math.random() - 0.5) * 45, center.y + (Math.random() - 0.5) * 55, ownerFighter?.dir || 1, "blue");
+      target.hurt = Math.max(target.hurt || 0, 2);
+    }
+  }
+
   if (activeDomain.type === "malevolentShrine") {
     const ownerFighter = getFighterByOwner(activeDomain.owner);
     const target = getOpponent(ownerFighter);
@@ -6353,7 +6417,7 @@ function updateHitSparks() {
 function updatePlayer() {
   if (gameOver) return;
   updateBluePunchCharge(player, isPressed("t", "keyt"));
-  const canControl = player.stun <= 0 && !player.knockdown && (!isSpecialLocked(player) || player.ultimateAiming);
+  const canControl = player.stun <= 0 && !player.knockdown && (!isMovementLocked(player) || player.ultimateAiming);
   setShielding(player, isPressed("q", "keyq"));
   setRctHealing(player, isPressed("r", "keyr"));
 
@@ -6379,7 +6443,7 @@ function updatePlayer() {
 function updateRivalPlayer() {
   if (gameOver) return;
   updateBluePunchCharge(enemy, false);
-  const canControl = enemy.stun <= 0 && !enemy.knockdown && (!isSpecialLocked(enemy) || enemy.ultimateAiming);
+  const canControl = enemy.stun <= 0 && !enemy.knockdown && (!isMovementLocked(enemy) || enemy.ultimateAiming);
   setShielding(enemy, isPressed("p", "keyp"));
 
   if (canControl && enemy.dodging <= 0 && !enemy.blocking) {
@@ -6403,7 +6467,7 @@ function updateRivalPlayer() {
 function applyRemoteRivalInput() {
   if (gameOver) return;
   updateBluePunchCharge(enemy, Boolean(remoteInput.bluePunch));
-  const canControl = enemy.stun <= 0 && !enemy.knockdown && (!isSpecialLocked(enemy) || enemy.ultimateAiming);
+  const canControl = enemy.stun <= 0 && !enemy.knockdown && (!isMovementLocked(enemy) || enemy.ultimateAiming);
   setShielding(enemy, remoteInput.block);
   setRctHealing(enemy, remoteInput.rct);
 
@@ -6432,7 +6496,7 @@ function updateOnlineRivalSelf() {
   if (gameOver) return;
   const input = getOnlineInput();
   updateBluePunchCharge(enemy, Boolean(input.bluePunch));
-  const canControl = enemy.stun <= 0 && !enemy.knockdown && (!isSpecialLocked(enemy) || enemy.ultimateAiming);
+  const canControl = enemy.stun <= 0 && !enemy.knockdown && (!isMovementLocked(enemy) || enemy.ultimateAiming);
   setShielding(enemy, input.block);
   setRctHealing(enemy, input.rct);
 
