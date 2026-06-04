@@ -367,9 +367,9 @@ function getLocalFighterForSfx() {
 function playRoundResultSfx(attacker, defender) {
   if (pacifistBot || gameMode === "practice") return;
 
-  // LOSE_SOUND_CPU_FIX:
-  // In CPU mode, the local player should still hear lose-sound when they die.
-  // The CPU itself never needs a win/lose sound.
+  // CPU_LOSE_SOUND_FIX:
+  // In CPU mode the user is the player. Play lose-sound if the player dies.
+  // Do not play a separate win sound for the CPU.
   if (gameMode === "cpu") {
     if (attacker === player) playGameSfx("win");
     else if (defender === player) playGameSfx("lose");
@@ -3796,119 +3796,48 @@ function getOutgoingDamageMultiplier(f) {
   return (f?.outgoingDamageMultiplier || 1) * getSukunaPassiveDamageMultiplier(f) * simpleDomainBonus;
 }
 
+// HP_BAR_STYLE_REVERTED_TO_OLD_SMALL
 function installHealthBarSizePatch() {
-  const oldStyle = document.getElementById("twoMoreHpBarsStyle");
-  if (oldStyle) oldStyle.remove();
+  if (document.getElementById("twoMoreHpBarsStyle")) return;
 
   const style = document.createElement("style");
   style.id = "twoMoreHpBarsStyle";
   style.textContent = `
-    /* HEALTH_BAR_VISUAL_FIX:
-       The extra HP bars were showing as gray lines because the dynamic
-       .health-main/.health-current/.health-stock elements did not have full
-       fill styling. This makes every segment look like the original green bar. */
-    #playerHealth,
-    #enemyHealth,
     .health-bar,
     .health-meter,
-    .hud-health {
+    .hud-health,
+    #playerHealth,
+    #enemyHealth {
       display: flex !important;
-      align-items: stretch !important;
+      align-items: center !important;
       gap: 4px !important;
       min-width: 0 !important;
       max-width: 100% !important;
-      overflow: visible !important;
-      height: 18px !important;
-      border-radius: 999px !important;
-    }
-
-    #playerHealth .health-main,
-    #enemyHealth .health-main,
-    .health-main {
-      position: relative !important;
-      flex: 1 1 auto !important;
-      min-width: 68px !important;
-      height: 18px !important;
-      border-radius: 999px !important;
       overflow: hidden !important;
-      background: rgba(15, 23, 42, 0.88) !important;
-      border: 1px solid rgba(148, 163, 184, 0.45) !important;
-      box-shadow: inset 0 1px 4px rgba(0,0,0,0.55) !important;
     }
 
-    #playerHealth .health-current,
-    #enemyHealth .health-current,
-    #playerHealth .health-lag,
-    #enemyHealth .health-lag,
-    .health-current,
-    .health-lag {
-      position: absolute !important;
-      left: 0 !important;
-      top: 0 !important;
-      bottom: 0 !important;
-      height: 100% !important;
-      border-radius: inherit !important;
-      transition: width 120ms linear !important;
+    .health-main {
+      flex: 1 1 auto !important;
+      min-width: 72px !important;
+      max-width: none !important;
+      overflow: hidden !important;
     }
 
-    #playerHealth .health-lag,
-    #enemyHealth .health-lag,
-    .health-lag {
-      background: rgba(248, 113, 113, 0.62) !important;
-      z-index: 1 !important;
-    }
-
-    #playerHealth .health-current,
-    #enemyHealth .health-current,
-    .health-current {
-      z-index: 2 !important;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.28), 0 0 12px rgba(34,197,94,0.22) !important;
-    }
-
-    .health-current.green,
-    .health-stock.full.green {
-      background: linear-gradient(90deg, #16a34a, #22c55e, #86efac) !important;
-    }
-
-    .health-current.yellow,
-    .health-stock.full.yellow {
-      background: linear-gradient(90deg, #ca8a04, #facc15, #fde68a) !important;
-    }
-
-    .health-current.red,
-    .health-stock.full.red {
-      background: linear-gradient(90deg, #b91c1c, #ef4444, #fecaca) !important;
-    }
-
-    #playerHealth .health-stack,
-    #enemyHealth .health-stack,
     .health-stack {
       flex: 0 0 auto !important;
       display: flex !important;
-      align-items: stretch !important;
+      align-items: center !important;
       gap: 3px !important;
-      height: 18px !important;
       min-width: 0 !important;
     }
 
-    #playerHealth .health-stock,
-    #enemyHealth .health-stock,
     .health-stock {
       flex: 0 0 15px !important;
       width: 15px !important;
       min-width: 15px !important;
       max-width: 15px !important;
-      height: 18px !important;
+      height: 100% !important;
       box-sizing: border-box !important;
-      border-radius: 999px !important;
-      border: 1px solid rgba(148, 163, 184, 0.45) !important;
-      background: rgba(15, 23, 42, 0.88) !important;
-      box-shadow: inset 0 1px 4px rgba(0,0,0,0.55) !important;
-    }
-
-    .health-stock.empty {
-      background: rgba(15, 23, 42, 0.88) !important;
-      opacity: 0.92 !important;
     }
   `;
 
@@ -3939,7 +3868,7 @@ function getLayeredHealthState(health, maxHealth, barCount) {
 function renderSegmentedHealth(el, f) {
   if (!el || !f) return;
   const barCount = Math.max(1, Math.round(f.healthBars || 1));
-  if (el.dataset.barCount !== String(barCount) || !el.querySelector(".health-main") || !el.querySelector(".health-current") || !el.querySelector(".health-stack")) {
+  if (el.dataset.barCount !== String(barCount) || !el.querySelector(".health-main")) {
     el.dataset.barCount = String(barCount);
     el.innerHTML = "";
     const main = document.createElement("div");
@@ -8106,6 +8035,118 @@ function updateCpuStuckRecovery() {
 }
 
 
+function getCpuDecisionChance(easyChance, mediumChance, hardChance) {
+  if (cpuDifficulty === "hard") return hardChance;
+  if (cpuDifficulty === "medium") return mediumChance;
+  return easyChance;
+}
+
+function tryCpuSimpleDomain(cpu, distance) {
+  if (gameMode !== "cpu" || pacifistBot || !enemy || enemy.ko || enemy.technique !== "shrine" && enemy.technique !== "limitless") return false;
+  if (!canStartSimpleDomain(enemy)) return false;
+
+  const threatenedByDomain =
+    isDomainVictim(enemy, "unlimitedVoid") ||
+    isDomainVictim(enemy, "malevolentShrine") ||
+    Boolean(pendingDomain && pendingDomain.owner === "player");
+
+  const dangerLowHealth = enemy.health < enemy.maxHealth * 0.38 && distance < 260;
+  const chance = getCpuDecisionChance(0.16, 0.34, 0.56);
+
+  if ((threatenedByDomain || dangerLowHealth) && Math.random() < chance) {
+    if (startSimpleDomain(enemy)) {
+      enemy.aiGoal = "simpleDomain";
+      enemy.aiCooldown = Math.max(20, cpu.thinkCooldown + 16);
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function getCpuBindingVowChoice(distance) {
+  if (!enemy || enemy.technique !== "shrine") return null;
+
+  // If Sukuna is ready to domain, sometimes improve the domain first.
+  if (
+    (enemy.ultimateMeter || 0) >= MAX_ULTIMATE &&
+    enemy.ce >= enemy.maxCe * DOMAIN_CE_REQUIREMENT_RATIO &&
+    Math.random() < getCpuDecisionChance(0.18, 0.34, 0.52)
+  ) {
+    return "domain";
+  }
+
+  // Pick vows based on what the CPU is likely to use next.
+  if (distance > 310 && enemy.ce >= getTechniqueCost(enemy, "fuga") && (enemy.fugaCooldown || 0) <= 0) {
+    if (Math.random() < getCpuDecisionChance(0.20, 0.38, 0.56)) return "fuga";
+  }
+
+  if (distance > 190 && enemy.ce >= getTechniqueCost(enemy, "slash")) {
+    if (Math.random() < getCpuDecisionChance(0.28, 0.46, 0.64)) return "dismantle";
+  }
+
+  if (distance <= 210 && enemy.ce >= getTechniqueCost(enemy, "cleave")) {
+    if (Math.random() < getCpuDecisionChance(0.26, 0.44, 0.62)) return "cleave";
+  }
+
+  return Math.random() < 0.5 ? "dismantle" : "cleave";
+}
+
+function tryCpuBindingVow(cpu, distance) {
+  if (gameMode !== "cpu" || pacifistBot || !enemy || enemy.ko || enemy.technique !== "shrine") return false;
+  if ((enemy.bindingVowTicks || 0) > 0 || (enemy.bindingVowCooldown || 0) > 0 || (enemy.bindingVowChoiceTicks || 0) > 0) return false;
+  if (enemy.stun > 0 || enemy.knockdown || isSpecialLocked(enemy)) return false;
+
+  const chance = getCpuDecisionChance(0.012, 0.026, 0.045);
+  const urgentDomainVow =
+    (enemy.ultimateMeter || 0) >= MAX_ULTIMATE &&
+    enemy.ce >= enemy.maxCe * DOMAIN_CE_REQUIREMENT_RATIO &&
+    Math.random() < getCpuDecisionChance(0.08, 0.18, 0.32);
+
+  if (!urgentDomainVow && Math.random() >= chance) return false;
+
+  const choice = urgentDomainVow ? "domain" : getCpuBindingVowChoice(distance);
+  if (!choice) return false;
+
+  if (activateBindingVow(enemy, choice)) {
+    enemy.aiGoal = `vow-${choice}`;
+    enemy.aiCooldown = Math.max(16, cpu.thinkCooldown + 8);
+    return true;
+  }
+
+  return false;
+}
+
+function tryCpuDomainExpansion(cpu, distance) {
+  if (gameMode !== "cpu" || pacifistBot || !enemy || enemy.ko) return false;
+  if (!canStartDomain(enemy)) return false;
+  if (activeDomain || pendingDomain || domainClash) return false;
+
+  const domainChance = getCpuDecisionChance(0.018, 0.055, 0.105);
+  const goodSituation = distance < 520 || enemy.health < enemy.maxHealth * 0.45 || player.health < player.maxHealth * 0.45;
+
+  if (!goodSituation || Math.random() >= domainChance) return false;
+
+  // If CPU Sukuna can vow the domain before casting, do it.
+  if (
+    enemy.technique === "shrine" &&
+    (enemy.bindingVowTicks || 0) <= 0 &&
+    (enemy.bindingVowCooldown || 0) <= 0 &&
+    Math.random() < getCpuDecisionChance(0.25, 0.45, 0.65)
+  ) {
+    activateBindingVow(enemy, "domain");
+  }
+
+  if (startDomainExpansion(enemy)) {
+    enemy.aiGoal = "domain";
+    enemy.aiCooldown = Math.max(60, cpu.attackCooldown + 42);
+    return true;
+  }
+
+  return false;
+}
+
+
 function updateEnemyAi() {
   updateCpuStuckRecovery();
 
@@ -8137,6 +8178,13 @@ function updateEnemyAi() {
 
   if (updateCpuTechniqueCharge(cpu)) return;
   updateCpuInfinity(incomingThreat);
+
+  // CPU_SIMPLE_DOMAIN_BINDING_VOW_PATCH
+  // CPU can now use Simple Domain defensively and Sukuna can use Binding Vows.
+  if (enemy.aiCooldown <= 0 && tryCpuSimpleDomain(cpu, distance)) return;
+  if (enemy.aiCooldown <= 0 && tryCpuBindingVow(cpu, distance)) return;
+  if (enemy.aiCooldown <= 0 && tryCpuDomainExpansion(cpu, distance)) return;
+
   if (enemy.ultimateMeter >= MAX_ULTIMATE && enemy.aiCooldown <= 0) {
     const ultimateChance = cpuDifficulty === "hard" ? 0.18 : cpuDifficulty === "medium" ? 0.08 : 0.025;
     const goodRange = enemy.technique === "shrine" ? distance > 120 : distance > 260;
