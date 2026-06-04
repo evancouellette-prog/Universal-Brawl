@@ -861,56 +861,34 @@ function closeRadioScreen() {
 }
 
 // RADIO_SEEK_RANGE_PATCH
-// Checked fix: the old seek code used pointer coordinates and sometimes called
-// audio reload paths, which made seeking look like a song restart.
-// This patch puts an actual invisible range slider over every progress bar.
-let pendingMusicSeekRatio = null;
+// Simple version: every progress bar gets a real <input type="range">.
+// On input: audio.currentTime = percent * audio.duration.
+let pendingMusicSeekPercent = null;
 
-function getSeekableMusicDuration() {
-  if (Number.isFinite(battleMusic.duration) && battleMusic.duration > 0) {
-    return battleMusic.duration;
-  }
-
-  try {
-    if (battleMusic.seekable && battleMusic.seekable.length > 0) {
-      const end = battleMusic.seekable.end(battleMusic.seekable.length - 1);
-      if (Number.isFinite(end) && end > 0) return end;
-    }
-  } catch (err) {}
-
+function getRadioAudioDuration() {
+  if (Number.isFinite(battleMusic.duration) && battleMusic.duration > 0) return battleMusic.duration;
   return 0;
 }
 
-function seekRadioToRatio(ratio) {
-  const cleanRatio = Math.max(0, Math.min(1, Number(ratio) || 0));
-  const duration = getSeekableMusicDuration();
+function seekRadioPercent(percent) {
+  const cleanPercent = Math.max(0, Math.min(100, Number(percent) || 0));
+  const duration = getRadioAudioDuration();
 
   if (duration <= 0) {
-    pendingMusicSeekRatio = cleanRatio;
-    // Start/load the current track if needed, but do not call battleMusic.load()
-    // directly from seeking because that resets playback to 0.
-    startBackgroundMusic();
+    pendingMusicSeekPercent = cleanPercent;
     return false;
   }
 
-  pendingMusicSeekRatio = null;
-  const targetTime = Math.max(0, Math.min(duration - 0.05, cleanRatio * duration));
-  const wasPlaying = !battleMusic.paused && !musicMuted;
+  pendingMusicSeekPercent = null;
 
-  try {
-    battleMusic.currentTime = targetTime;
-  } catch (err) {
-    try {
-      if (typeof battleMusic.fastSeek === "function") battleMusic.fastSeek(targetTime);
-      else return false;
-    } catch (err2) {
-      return false;
-    }
-  }
+  const newTime = (cleanPercent / 100) * duration;
 
+  // This is the important part. Do not call load(), do not call setRadioTrack(),
+  // and do not call updateBattleMusicState() here, because those can restart the song.
+  battleMusic.currentTime = Math.max(0, Math.min(duration - 0.05, newTime));
   updateMusicProgressUi();
 
-  if ((wasPlaying || backgroundMusicStarted) && !musicMuted) {
+  if (backgroundMusicStarted && !musicMuted && battleMusic.paused) {
     const playPromise = battleMusic.play();
     if (playPromise) playPromise.catch(() => {});
   }
@@ -919,80 +897,88 @@ function seekRadioToRatio(ratio) {
 }
 
 function updateRadioSeekSliderUi(progress) {
-  const value = String(Math.round(Math.max(0, Math.min(1, progress || 0)) * 1000));
-  document.querySelectorAll(".radio-seek-range").forEach((slider) => {
-    if (slider.dataset.dragging === "1") return;
-    if (String(slider.value) !== value) slider.value = value;
+  const percent = Math.round(Math.max(0, Math.min(1, progress || 0)) * 100);
+  document.querySelectorAll(".radio-seek-bar").forEach((seekBar) => {
+    if (seekBar.dataset.userSeeking === "1") return;
+    if (String(seekBar.value) !== String(percent)) seekBar.value = String(percent);
   });
 }
 
 function installRadioSeekListeners() {
   const tracks = Array.from(document.querySelectorAll(".music-progress-track"));
-  tracks.forEach((track) => {
-    track.style.position = track.style.position || "relative";
+
+  tracks.forEach((track, index) => {
+    track.style.position = "relative";
     track.style.cursor = "pointer";
     track.style.pointerEvents = "auto";
-    track.setAttribute("title", "Click or drag to seek");
 
     const fill = track.querySelector(".music-progress-fill");
     if (fill) fill.style.pointerEvents = "none";
 
-    if (track.querySelector(".radio-seek-range")) return;
+    let seekBar = track.querySelector(".radio-seek-bar");
+    if (!seekBar) {
+      seekBar = document.createElement("input");
+      seekBar.type = "range";
+      seekBar.min = "0";
+      seekBar.max = "100";
+      seekBar.step = "0.1";
+      seekBar.value = "0";
+      seekBar.className = "radio-seek-bar";
+      seekBar.id = `radioSeekBar${index}`;
+      seekBar.setAttribute("aria-label", "Seek song");
+      track.appendChild(seekBar);
+    }
 
-    const slider = document.createElement("input");
-    slider.type = "range";
-    slider.min = "0";
-    slider.max = "1000";
-    slider.step = "1";
-    slider.value = "0";
-    slider.className = "radio-seek-range";
-    slider.setAttribute("aria-label", "Song position");
+    if (seekBar.dataset.seekInstalled === "1") return;
+    seekBar.dataset.seekInstalled = "1";
 
-    slider.addEventListener("pointerdown", (event) => {
+    seekBar.addEventListener("pointerdown", (event) => {
       event.stopPropagation();
-      if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
-      slider.dataset.dragging = "1";
+      seekBar.dataset.userSeeking = "1";
       startBackgroundMusic();
-    }, true);
+    });
 
-    slider.addEventListener("input", (event) => {
+    seekBar.addEventListener("input", (event) => {
       event.stopPropagation();
-      if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
-      seekRadioToRatio(Number(slider.value) / 1000);
-    }, true);
 
-    slider.addEventListener("change", (event) => {
+      const percent = Number(seekBar.value);
+      const duration = getRadioAudioDuration();
+      if (duration > 0) {
+        const newTime = (percent / 100) * duration;
+        battleMusic.currentTime = Math.max(0, Math.min(duration - 0.05, newTime));
+        updateMusicProgressUi();
+      } else {
+        pendingMusicSeekPercent = percent;
+      }
+    });
+
+    seekBar.addEventListener("change", (event) => {
       event.stopPropagation();
-      if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
-      seekRadioToRatio(Number(slider.value) / 1000);
-      slider.dataset.dragging = "0";
-    }, true);
+      seekRadioPercent(Number(seekBar.value));
+      seekBar.dataset.userSeeking = "0";
+    });
 
-    slider.addEventListener("pointerup", (event) => {
+    seekBar.addEventListener("pointerup", (event) => {
       event.stopPropagation();
-      if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
-      seekRadioToRatio(Number(slider.value) / 1000);
-      slider.dataset.dragging = "0";
-    }, true);
+      seekRadioPercent(Number(seekBar.value));
+      seekBar.dataset.userSeeking = "0";
+    });
 
-    slider.addEventListener("click", (event) => {
+    seekBar.addEventListener("click", (event) => {
       event.stopPropagation();
-      if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
-      seekRadioToRatio(Number(slider.value) / 1000);
-    }, true);
-
-    track.appendChild(slider);
+      seekRadioPercent(Number(seekBar.value));
+    });
   });
 }
 
 battleMusic.addEventListener("loadedmetadata", () => {
-  if (pendingMusicSeekRatio === null) return;
-  seekRadioToRatio(pendingMusicSeekRatio);
+  if (pendingMusicSeekPercent === null) return;
+  seekRadioPercent(pendingMusicSeekPercent);
 });
 
 battleMusic.addEventListener("durationchange", () => {
-  if (pendingMusicSeekRatio === null) return;
-  seekRadioToRatio(pendingMusicSeekRatio);
+  if (pendingMusicSeekPercent === null) return;
+  seekRadioPercent(pendingMusicSeekPercent);
 });
 
 installRadioSeekListeners();
@@ -1008,30 +994,31 @@ window.setTimeout(() => {
   style.id = "radioSeekClickAreaStyle";
   style.textContent = `
     .music-progress-track {
-      min-height: 18px !important;
+      min-height: 22px !important;
       cursor: pointer !important;
       pointer-events: auto !important;
       position: relative !important;
+      overflow: visible !important;
     }
+
     .music-progress-fill {
       pointer-events: none !important;
     }
-    .radio-seek-range {
+
+    .radio-seek-bar {
       position: absolute !important;
       left: 0 !important;
-      right: 0 !important;
       top: -8px !important;
-      bottom: -8px !important;
       width: 100% !important;
       height: calc(100% + 16px) !important;
-      opacity: 0 !important;
+      z-index: 9999 !important;
       cursor: pointer !important;
-      z-index: 30 !important;
       margin: 0 !important;
       padding: 0 !important;
-      appearance: none !important;
-      -webkit-appearance: none !important;
+      opacity: 0.01 !important;
       pointer-events: auto !important;
+      appearance: auto !important;
+      -webkit-appearance: auto !important;
     }
   `;
   document.head.appendChild(style);
