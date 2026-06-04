@@ -715,7 +715,6 @@ function updateMusicProgressUi() {
   musicProgressTracks.forEach((track) => {
     track.setAttribute("aria-valuenow", String(Math.round(progressPercent)));
   });
-  updateRadioSeekSliderUi(progress);
 }
 
 function updateMusicToggleButtons() {
@@ -872,8 +871,12 @@ function closeRadioScreen() {
   radioScreen.classList.add("hidden");
 }
 
-// RADIO_SEEK_RANGE_PATCH
-// Uses <audio id="gameSong"> and direct range input seeking.
+// RADIO_SEEK_CLICK_TRACK_PATCH
+// Uses the same idea as:
+// seekTrack.addEventListener("click", event => {
+//   const percent = clickX / trackBox.width;
+//   song.currentTime = percent * song.duration;
+// });
 let pendingMusicSeekPercent = null;
 
 function getRadioAudio() {
@@ -881,120 +884,115 @@ function getRadioAudio() {
 }
 
 function getRadioAudioDuration() {
-  const audio = getRadioAudio();
-  if (audio && Number.isFinite(audio.duration) && audio.duration > 0) return audio.duration;
+  const song = getRadioAudio();
+  if (song && Number.isFinite(song.duration) && song.duration > 0) return song.duration;
   return 0;
 }
 
-function seekRadioPercent(percent) {
-  const audio = getRadioAudio();
-  if (!audio) return false;
+function updateRadioSeekUiOnly() {
+  const song = getRadioAudio();
+  if (!song) return;
 
-  const cleanPercent = Math.max(0, Math.min(100, Number(percent) || 0));
-  const duration = getRadioAudioDuration();
+  const duration = song.duration || 0;
+  const currentTime = song.currentTime || 0;
+  const progress = duration > 0 ? currentTime / duration : 0;
+  const progressPercent = Math.max(0, Math.min(100, progress * 100));
 
-  if (duration <= 0) {
-    pendingMusicSeekPercent = cleanPercent;
+  musicProgressFills.forEach((fill) => {
+    fill.style.width = `${progressPercent}%`;
+  });
+
+  musicCurrentTimeEls.forEach((el) => {
+    el.textContent = formatMusicTime(currentTime);
+  });
+
+  musicDurationEls.forEach((el) => {
+    el.textContent = duration > 0 ? `-${formatMusicTime(Math.max(duration - currentTime, 0))}` : "--:--";
+  });
+
+  musicProgressTracks.forEach((track) => {
+    track.setAttribute("aria-valuenow", String(Math.round(progressPercent)));
+  });
+}
+
+function seekRadioTrackFromClick(track, event) {
+  const song = getRadioAudio();
+  if (!song || !track) return false;
+
+  if (!song.duration || !Number.isFinite(song.duration)) {
+    pendingMusicSeekPercent = null;
     return false;
   }
 
-  pendingMusicSeekPercent = null;
+  const trackBox = track.getBoundingClientRect();
+  if (!trackBox || trackBox.width <= 0) return false;
 
-  const newTime = (cleanPercent / 100) * duration;
-  audio.currentTime = Math.max(0, Math.min(duration - 0.05, newTime));
+  const clickX = event.clientX - trackBox.left;
+  const percent = Math.min(Math.max(clickX / trackBox.width, 0), 1);
 
-  // Keep the variable in sync in case any old code still references battleMusic.
-  battleMusic = audio;
-
-  updateMusicProgressUi();
-
-  if (backgroundMusicStarted && !musicMuted && audio.paused) {
-    const playPromise = audio.play();
-    if (playPromise) playPromise.catch(() => {});
-  }
-
+  song.currentTime = percent * song.duration;
+  battleMusic = song;
+  updateRadioSeekUiOnly();
   return true;
 }
 
-function updateRadioSeekSliderUi(progress) {
-  const percent = Math.round(Math.max(0, Math.min(1, progress || 0)) * 100);
-  document.querySelectorAll(".radio-seek-bar").forEach((seekBar) => {
-    if (seekBar.dataset.userSeeking === "1") return;
-    if (String(seekBar.value) !== String(percent)) seekBar.value = String(percent);
-  });
+function getSeekTrackFromEvent(event) {
+  const target = event?.target;
+  if (!target || !target.closest) return null;
+  return target.closest(".music-progress-track");
 }
 
 function installRadioSeekListeners() {
   const tracks = Array.from(document.querySelectorAll(".music-progress-track"));
 
-  tracks.forEach((track, index) => {
-    track.style.position = "relative";
+  tracks.forEach((track) => {
+    if (track.dataset.seekInstalled === "1") return;
+    track.dataset.seekInstalled = "1";
+
     track.style.cursor = "pointer";
     track.style.pointerEvents = "auto";
+    track.style.position = "relative";
+    track.setAttribute("title", "Click to seek");
 
     const fill = track.querySelector(".music-progress-fill");
     if (fill) fill.style.pointerEvents = "none";
 
-    let seekBar = track.querySelector(".radio-seek-bar");
-    if (!seekBar) {
-      seekBar = document.createElement("input");
-      seekBar.type = "range";
-      seekBar.min = "0";
-      seekBar.max = "100";
-      seekBar.step = "0.1";
-      seekBar.value = "0";
-      seekBar.className = "radio-seek-bar";
-      seekBar.id = `radioSeekBar${index}`;
-      seekBar.setAttribute("aria-label", "Seek song");
-      track.appendChild(seekBar);
-    }
-
-    if (seekBar.dataset.seekInstalled === "1") return;
-    seekBar.dataset.seekInstalled = "1";
-
-    seekBar.addEventListener("pointerdown", (event) => {
+    track.addEventListener("click", (event) => {
+      event.preventDefault();
       event.stopPropagation();
       if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
-      seekBar.dataset.userSeeking = "1";
+
       startBackgroundMusic();
+      seekRadioTrackFromClick(track, event);
     }, true);
 
-    seekBar.addEventListener("input", (event) => {
+    track.addEventListener("pointerdown", (event) => {
+      // Stop the game-wide pointerdown handler from treating the seek bar like a normal game click.
       event.stopPropagation();
       if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
-      seekRadioPercent(Number(seekBar.value));
-    }, true);
-
-    seekBar.addEventListener("change", (event) => {
-      event.stopPropagation();
-      if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
-      seekRadioPercent(Number(seekBar.value));
-      seekBar.dataset.userSeeking = "0";
-    }, true);
-
-    seekBar.addEventListener("pointerup", (event) => {
-      event.stopPropagation();
-      if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
-      seekRadioPercent(Number(seekBar.value));
-      seekBar.dataset.userSeeking = "0";
-    }, true);
-
-    seekBar.addEventListener("click", (event) => {
-      event.stopPropagation();
-      if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
-      seekRadioPercent(Number(seekBar.value));
     }, true);
   });
 }
 
-function applyPendingRadioSeek() {
-  if (pendingMusicSeekPercent === null) return;
-  seekRadioPercent(pendingMusicSeekPercent);
-}
+document.addEventListener("click", (event) => {
+  const track = getSeekTrackFromEvent(event);
+  if (!track) return;
 
-battleMusic.addEventListener("loadedmetadata", applyPendingRadioSeek);
-battleMusic.addEventListener("durationchange", applyPendingRadioSeek);
-battleMusic.addEventListener("canplay", applyPendingRadioSeek);
+  event.preventDefault();
+  event.stopPropagation();
+  if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
+
+  startBackgroundMusic();
+  seekRadioTrackFromClick(track, event);
+}, true);
+
+battleMusic.addEventListener("loadedmetadata", updateRadioSeekUiOnly);
+battleMusic.addEventListener("timeupdate", updateRadioSeekUiOnly);
+battleMusic.addEventListener("durationchange", updateRadioSeekUiOnly);
+
+battleMusic.addEventListener("ended", () => {
+  updateRadioSeekUiOnly();
+});
 
 installRadioSeekListeners();
 window.addEventListener("DOMContentLoaded", installRadioSeekListeners);
@@ -1016,24 +1014,24 @@ window.setTimeout(() => {
       overflow: visible !important;
     }
 
+    .music-progress-track::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: -9px;
+      bottom: -9px;
+      z-index: 20;
+    }
+
     .music-progress-fill {
       pointer-events: none !important;
     }
 
-    .radio-seek-bar {
-      position: absolute !important;
-      left: 0 !important;
-      top: -9px !important;
-      width: 100% !important;
-      height: calc(100% + 18px) !important;
-      z-index: 9999 !important;
-      cursor: pointer !important;
-      margin: 0 !important;
-      padding: 0 !important;
-      opacity: 0.01 !important;
-      pointer-events: auto !important;
-      appearance: auto !important;
-      -webkit-appearance: auto !important;
+    .radio-seek-bar,
+    .radio-seek-range {
+      display: none !important;
+      pointer-events: none !important;
     }
   `;
   document.head.appendChild(style);
@@ -5372,6 +5370,10 @@ function applyDomainCleave(ownerFighter, target) {
   const rawDamage = blocked ? 4 : 12;
   const damage = getTakenDamage(target, Math.ceil(rawDamage * getOutgoingDamageMultiplier(ownerFighter)));
   if (blocked) damageShield(target, 24);
+
+  // SUKUNA_DOMAIN_NO_ULT_GAIN_PATCH
+  // This is the automatic domain Cleave, not a manually cast Cleave.
+  // It deals damage but intentionally does not call gainUltimate().
   applyFighterDamage(target, damage);
   cancelRct(target, false);
   target.hurt = Math.max(target.hurt, blocked ? 6 : 16);
@@ -5410,6 +5412,8 @@ function spawnDomainDismantle(ownerFighter, target) {
   projectiles.push({
     owner: getFighterOwner(ownerFighter),
     move: "slash",
+    domainAuto: true,
+    noUltimateGain: true,
     x,
     y,
     vx: aimX / length * speed,
@@ -6332,7 +6336,16 @@ function applyProjectileHit(projectile, defender) {
   if (blocked) damageShield(defender, projectile.damage);
   const projectileDamageDealt = applyFighterDamage(defender, damage);
   const ownerFighter = projectile.owner === "player" ? player : enemy;
-  if (!projectile.ultimateProjectile && projectile.move !== "purple" && projectile.move !== "worldSlash") {
+  // SUKUNA_DOMAIN_NO_ULT_GAIN_PATCH
+  // Domain-created automatic dismantles/slashes should not build Sukuna's ult.
+  // Only slashes the player actually casts should give ult meter.
+  if (
+    !projectile.noUltimateGain &&
+    !projectile.domainAuto &&
+    !projectile.ultimateProjectile &&
+    projectile.move !== "purple" &&
+    projectile.move !== "worldSlash"
+  ) {
     gainUltimate(ownerFighter, projectileDamageDealt * (blocked ? ULT_BLOCKED_DAMAGE_GAIN_SCALE : ULT_DAMAGE_GAIN_SCALE));
   }
   cancelRct(defender, false);
