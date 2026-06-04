@@ -7452,99 +7452,363 @@ function drawCity() {
 }
 
 
+
 function drawActiveDomainBackdrop() {
   if (!activeDomain && !pendingDomain && !domainClash) return;
+
   const type = activeDomain?.type || pendingDomain?.type || "domainClash";
-  const activeRatio = activeDomain ? 1 - Math.max(0, Math.min(1, activeDomain.ticks / Math.max(1, activeDomain.maxTicks))) : 0;
+  const activeRatio = activeDomain
+    ? 1 - Math.max(0, Math.min(1, activeDomain.ticks / Math.max(1, activeDomain.maxTicks)))
+    : 0;
   const pulse = 0.5 + 0.5 * Math.sin(frame * 0.12);
 
   ctx.save();
   ctx.globalCompositeOperation = "source-over";
 
   if (domainClash) {
-    ctx.fillStyle = "rgba(2, 6, 23, 0.52)";
+    const split = STAGE_W * 0.5;
+
+    ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
     ctx.fillRect(0, 0, STAGE_W, H);
-    ctx.fillStyle = "rgba(56, 189, 248, 0.17)";
-    ctx.fillRect(0, 0, STAGE_W / 2, H);
-    ctx.fillStyle = "rgba(185, 28, 28, 0.20)";
-    ctx.fillRect(STAGE_W / 2, 0, STAGE_W / 2, H);
-    ctx.strokeStyle = `rgba(255,255,255,${0.35 + pulse * 0.35})`;
-    ctx.lineWidth = 5;
-    for (let i = 0; i < 8; i += 1) {
-      const x = STAGE_W / 2 + Math.sin(frame * 0.08 + i) * 70;
+
+    ctx.fillStyle = "rgba(90, 200, 255, 0.18)";
+    ctx.fillRect(0, 0, split, H);
+    ctx.fillStyle = "rgba(210, 35, 35, 0.20)";
+    ctx.fillRect(split, 0, STAGE_W - split, H);
+
+    for (let i = 0; i < 10; i += 1) {
+      const y = 30 + i * 45 + Math.sin(frame * 0.1 + i) * 8;
+      ctx.strokeStyle = `rgba(255,255,255,${0.12 + (i % 2) * 0.05})`;
+      ctx.lineWidth = 2 + (i % 3);
       ctx.beginPath();
-      ctx.moveTo(x - 90 + i * 8, 20 + i * 52);
-      ctx.lineTo(x + 110 - i * 5, 110 + i * 50);
+      ctx.moveTo(split - 20, y);
+      ctx.lineTo(split + 10, y + 14);
+      ctx.lineTo(split - 8, y + 36);
+      ctx.lineTo(split + 22, y + 55);
       ctx.stroke();
     }
+
+    const crackCount = 12;
+    for (let i = 0; i < crackCount; i += 1) {
+      const offset = (i - crackCount / 2) * 22;
+      const startY = H * 0.18 + i * 18;
+      ctx.strokeStyle = `rgba(255,255,255,${0.18 + pulse * 0.2})`;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(split + offset * 0.15, startY);
+      ctx.lineTo(split + offset, startY + 38);
+      ctx.lineTo(split + offset * 0.35, startY + 72);
+      ctx.lineTo(split + offset * 1.1, startY + 118);
+      ctx.stroke();
+    }
+
+    const centerX = STAGE_W * 0.5;
+    const centerY = H * 0.48;
+    const radius = 80 + Math.sin(frame * 0.15) * 5;
+    const clashGlow = ctx.createRadialGradient(centerX, centerY, 5, centerX, centerY, radius * 1.8);
+    clashGlow.addColorStop(0, "rgba(255,255,255,0.9)");
+    clashGlow.addColorStop(0.18, "rgba(120,210,255,0.35)");
+    clashGlow.addColorStop(0.52, "rgba(255,60,60,0.26)");
+    clashGlow.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = clashGlow;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius * 1.8, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = `rgba(255,255,255,${0.95})`;
+    ctx.font = "bold 44px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("DOMAIN CLASH", centerX, centerY - 10);
+    ctx.font = "bold 22px system-ui, sans-serif";
+    ctx.fillText("Mash X", centerX, centerY + 34);
+
     ctx.restore();
     return;
   }
 
   if (type === "unlimitedVoid") {
-    const grad = ctx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, "#030712");
-    grad.addColorStop(0.5, "#101a3a");
-    grad.addColorStop(1, "#020617");
-    ctx.fillStyle = grad;
+    const cx = STAGE_W * 0.5;
+    const cy = H * 0.42;
+
+    const bg = ctx.createRadialGradient(cx, cy, 10, cx, cy, STAGE_W * 0.75);
+    bg.addColorStop(0, "#02030a");
+    bg.addColorStop(0.25, "#070b19");
+    bg.addColorStop(0.55, "#0a1025");
+    bg.addColorStop(1, "#010205");
+    ctx.fillStyle = bg;
     ctx.fillRect(0, 0, STAGE_W, H);
-    ctx.fillStyle = `rgba(125, 211, 252, ${0.08 + pulse * 0.05})`;
+
     for (let i = 0; i < 90; i += 1) {
-      const x = (i * 137 + frame * (0.3 + (i % 4) * 0.12)) % STAGE_W;
-      const y = 30 + ((i * 83 + frame * (0.5 + (i % 3) * 0.16)) % (GROUND - 60));
-      const r = 1.2 + (i % 5) * 0.7;
+      const a = frame * 0.008 + i * 0.37;
+      const d = 55 + (i % 19) * 18 + Math.sin(frame * 0.03 + i) * 8;
+      const x = cx + Math.cos(a) * d * (1.2 + (i % 3) * 0.11);
+      const y = cy + Math.sin(a * 1.3) * d * 0.62;
+      const r = 1 + (i % 4) * 0.9;
+      ctx.fillStyle = `rgba(180,225,255,${0.08 + (i % 5) * 0.018})`;
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.strokeStyle = `rgba(191, 219, 254, ${0.12 + pulse * 0.08})`;
-    ctx.lineWidth = 2;
-    for (let i = 0; i < 9; i += 1) {
-      const y = 65 + i * 38 + Math.sin(frame * 0.05 + i) * 9;
+
+    const haloR = 150 + Math.sin(frame * 0.08) * 7;
+    ctx.strokeStyle = `rgba(245,250,255,${0.46 + pulse * 0.18})`;
+    ctx.lineWidth = 10;
+    ctx.beginPath();
+    ctx.arc(cx, cy, haloR, -0.18 * Math.PI, 1.55 * Math.PI);
+    ctx.stroke();
+
+    ctx.strokeStyle = "rgba(225, 245, 255, 0.22)";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(cx, cy, haloR + 26, 0.1 * Math.PI, 1.88 * Math.PI);
+    ctx.stroke();
+
+    const vortex = ctx.createRadialGradient(cx, cy, 8, cx, cy, 120);
+    vortex.addColorStop(0, "rgba(0,0,0,1)");
+    vortex.addColorStop(0.5, "rgba(5,8,20,0.96)");
+    vortex.addColorStop(0.78, "rgba(220,240,255,0.15)");
+    vortex.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = vortex;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 125, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "rgba(0,0,0,0.98)";
+    ctx.beginPath();
+    ctx.arc(cx, cy, 66, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    for (let i = 0; i < 7; i += 1) {
+      const splatX = cx + Math.cos(frame * 0.015 + i * 1.2) * (110 + i * 26);
+      const splatY = cy + Math.sin(frame * 0.02 + i * 1.7) * (56 + i * 10);
+      ctx.fillStyle = `rgba(255,255,255,${0.84 - i * 0.08})`;
       ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(STAGE_W, y + Math.sin(i) * 35);
+      ctx.arc(splatX, splatY, 18 + (i % 3) * 8, 0, Math.PI * 2);
+      ctx.fill();
+      for (let j = 0; j < 5; j += 1) {
+        const dropA = j * (Math.PI * 0.4) + i;
+        const dropR = 32 + j * 13;
+        ctx.beginPath();
+        ctx.arc(
+          splatX + Math.cos(dropA) * dropR,
+          splatY + Math.sin(dropA) * dropR,
+          6 + (j % 2) * 4,
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+
+    ctx.strokeStyle = `rgba(180, 225, 255, ${0.16 + pulse * 0.08})`;
+    ctx.lineWidth = 3;
+    for (let i = 0; i < 8; i += 1) {
+      const r = 95 + i * 34 + Math.sin(frame * 0.06 + i) * 6;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, r * 1.25, r * 0.55, frame * 0.003 + i * 0.25, 0, Math.PI * 2);
       ctx.stroke();
     }
-  } else {
-    const grad = ctx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, "#2b0505");
-    grad.addColorStop(0.5, "#4c0519");
-    grad.addColorStop(1, "#111827");
-    ctx.fillStyle = grad;
+
+    const flare = ctx.createRadialGradient(cx, cy, 5, cx, cy, 250);
+    flare.addColorStop(0, `rgba(255,255,255,${0.06 + pulse * 0.06})`);
+    flare.addColorStop(0.45, "rgba(120,180,255,0.05)");
+    flare.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = flare;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 250, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (type === "malevolentShrine") {
+    const sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, "#130103");
+    sky.addColorStop(0.28, "#340206");
+    sky.addColorStop(0.62, "#64070a");
+    sky.addColorStop(1, "#150103");
+    ctx.fillStyle = sky;
     ctx.fillRect(0, 0, STAGE_W, H);
-    ctx.fillStyle = "rgba(0,0,0,0.35)";
-    ctx.fillRect(0, GROUND, STAGE_W, H - GROUND);
-    ctx.fillStyle = "rgba(127, 29, 29, 0.84)";
-    ctx.fillRect(STAGE_W / 2 - 95, GROUND - 155, 190, 155);
-    ctx.fillStyle = "rgba(2, 6, 23, 0.86)";
-    ctx.fillRect(STAGE_W / 2 - 45, GROUND - 105, 90, 105);
-    ctx.fillStyle = `rgba(249, 115, 22, ${0.12 + pulse * 0.08})`;
-    for (let i = 0; i < 45; i += 1) {
-      const x = (i * 97 + frame * 3) % STAGE_W;
-      const y = 80 + ((i * 41 + frame * 2) % (GROUND - 90));
-      ctx.fillRect(x, y, 3 + (i % 4), 12 + (i % 8));
-    }
-    ctx.strokeStyle = `rgba(248, 250, 252, ${0.16 + pulse * 0.14})`;
-    ctx.lineWidth = 3;
-    for (let i = 0; i < 11; i += 1) {
-      const y = 55 + i * 35 + Math.sin(frame * 0.15 + i) * 16;
+
+    ctx.fillStyle = "rgba(25, 0, 0, 0.42)";
+    for (let i = 0; i < 13; i += 1) {
+      const y = 18 + i * 30;
       ctx.beginPath();
-      ctx.moveTo(-50, y);
-      ctx.lineTo(STAGE_W + 50, y - 60 + (i % 4) * 26);
+      ctx.moveTo(-60, y);
+      ctx.bezierCurveTo(
+        STAGE_W * 0.2, y - 18,
+        STAGE_W * 0.72, y + 24,
+        STAGE_W + 60, y - 4
+      );
+      ctx.lineTo(STAGE_W + 60, y + 14);
+      ctx.bezierCurveTo(
+        STAGE_W * 0.72, y + 40,
+        STAGE_W * 0.2, y + 4,
+        -60, y + 28
+      );
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    for (let i = 0; i < 16; i += 1) {
+      const sx = (i * 91 + frame * (4 + (i % 3))) % (STAGE_W + 160) - 80;
+      const sy = 40 + (i * 37) % (GROUND - 120);
+      ctx.strokeStyle = `rgba(25, 0, 0, ${0.18 + (i % 5) * 0.06})`;
+      ctx.lineWidth = 1 + (i % 3);
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + 24 + (i % 4) * 10, sy - 30 - (i % 3) * 12);
+      ctx.stroke();
+    }
+
+    const shrineX = STAGE_W * 0.5;
+    const shrineY = GROUND - 26;
+
+    ctx.fillStyle = "rgba(0,0,0,0.18)";
+    ctx.beginPath();
+    ctx.ellipse(shrineX, GROUND + 38, 220, 30, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#080000";
+    ctx.fillRect(shrineX - 145, shrineY - 16, 290, 28);
+
+    ctx.fillStyle = "#1a0606";
+    ctx.fillRect(shrineX - 108, shrineY - 148, 216, 132);
+
+    ctx.fillStyle = "#2c0b0b";
+    ctx.fillRect(shrineX - 124, shrineY - 176, 248, 20);
+
+    ctx.fillStyle = "#180303";
+    ctx.fillRect(shrineX - 84, shrineY - 250, 168, 74);
+
+    ctx.fillStyle = "#0a0000";
+    ctx.fillRect(shrineX - 52, shrineY - 130, 104, 114);
+
+    const mouthGlow = ctx.createRadialGradient(shrineX, shrineY - 72, 8, shrineX, shrineY - 72, 88);
+    mouthGlow.addColorStop(0, "rgba(255,80,80,0.95)");
+    mouthGlow.addColorStop(0.35, "rgba(200,20,20,0.65)");
+    mouthGlow.addColorStop(1, "rgba(120,0,0,0)");
+    ctx.fillStyle = mouthGlow;
+    ctx.beginPath();
+    ctx.arc(shrineX, shrineY - 72, 88, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#250202";
+    ctx.beginPath();
+    ctx.ellipse(shrineX, shrineY - 72, 66, 54, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#ff2b2b";
+    ctx.beginPath();
+    ctx.ellipse(shrineX, shrineY - 56, 50, 28, 0, 0, Math.PI);
+    ctx.fill();
+
+    ctx.fillStyle = "#f7dad7";
+    for (let i = 0; i < 7; i += 1) {
+      const x = shrineX - 42 + i * 14;
+      ctx.beginPath();
+      ctx.moveTo(x, shrineY - 92);
+      ctx.lineTo(x + 6, shrineY - 116);
+      ctx.lineTo(x + 12, shrineY - 92);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(x, shrineY - 19);
+      ctx.lineTo(x + 6, shrineY + 2);
+      ctx.lineTo(x + 12, shrineY - 19);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    ctx.fillStyle = "#4f1717";
+    ctx.beginPath();
+    ctx.moveTo(shrineX - 126, shrineY - 176);
+    ctx.lineTo(shrineX + 126, shrineY - 176);
+    ctx.lineTo(shrineX + 78, shrineY - 226);
+    ctx.lineTo(shrineX - 78, shrineY - 226);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = "#f39255";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(shrineX - 116, shrineY - 176);
+    ctx.lineTo(shrineX + 116, shrineY - 176);
+    ctx.stroke();
+
+    for (let i = 0; i < 8; i += 1) {
+      const hornX = shrineX - 90 + i * 26;
+      ctx.strokeStyle = "rgba(32,0,0,0.9)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(hornX, shrineY - 226);
+      ctx.quadraticCurveTo(hornX + 6, shrineY - 252 - (i % 2) * 10, hornX + 18, shrineY - 264);
+      ctx.stroke();
+    }
+
+    for (let side of [-1, 1]) {
+      for (let i = 0; i < 5; i += 1) {
+        const baseX = shrineX + side * (180 + i * 30);
+        const baseY = GROUND + 6;
+        ctx.strokeStyle = "rgba(18,0,0,0.94)";
+        ctx.lineWidth = 5 - Math.min(i, 2);
+        ctx.beginPath();
+        ctx.moveTo(baseX, baseY);
+        ctx.lineTo(baseX + side * 8, baseY - 36);
+        ctx.lineTo(baseX + side * (16 + i * 4), baseY - 70);
+        ctx.lineTo(baseX + side * (28 + i * 10), baseY - 102);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(baseX + side * (16 + i * 4), baseY - 70);
+        ctx.lineTo(baseX + side * (34 + i * 10), baseY - 78);
+        ctx.stroke();
+      }
+    }
+
+    ctx.fillStyle = "rgba(0,0,0,0.22)";
+    ctx.fillRect(0, GROUND, STAGE_W, H - GROUND);
+
+    ctx.strokeStyle = `rgba(35,0,0,${0.26 + pulse * 0.18})`;
+    ctx.lineWidth = 3;
+    for (let i = 0; i < 12; i += 1) {
+      const y = 70 + i * 28 + Math.sin(frame * 0.09 + i * 0.7) * 12;
+      ctx.beginPath();
+      ctx.moveTo(-40, y);
+      ctx.lineTo(STAGE_W + 40, y - 95 + (i % 4) * 24);
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = `rgba(255, 40, 40, ${0.16 + pulse * 0.14})`;
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 9; i += 1) {
+      const sx = (i * 140 + frame * 6) % (STAGE_W + 220) - 110;
+      const sy = 90 + (i * 44) % 200;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + 100, sy - 20);
       ctx.stroke();
     }
   }
 
   if (activeDomain) {
     const remaining = Math.ceil(activeDomain.ticks / 60);
-    ctx.fillStyle = "rgba(255,255,255,0.88)";
+    ctx.fillStyle = type === "malevolentShrine" ? "rgba(255,220,220,0.92)" : "rgba(240,248,255,0.95)";
     ctx.font = "bold 24px system-ui, sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(`${getDomainDisplayName(activeDomain.type)}: ${remaining}s`, cameraX + W / (2 * cameraZoom), 44);
+    ctx.shadowColor = type === "malevolentShrine" ? "rgba(180,20,20,0.65)" : "rgba(180,225,255,0.55)";
+    ctx.shadowBlur = 12;
+    ctx.fillText(
+      `${getDomainDisplayName(activeDomain.type)}: ${remaining}s`,
+      cameraX + W / (2 * cameraZoom),
+      44
+    );
+    ctx.shadowBlur = 0;
   }
+
   ctx.restore();
 }
+
 
 function drawPlatforms() {
   for (const platform of getActivePlatforms()) {
