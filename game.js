@@ -4649,12 +4649,9 @@ function startTechnique(f, slot, chargeRatio = 0, aimPoint = null, releasingChar
     rangeStartY: aimVector.origin.y,
     rangeEndX: aimVector.origin.x + aimVector.x * previewDistance,
     rangeEndY: aimVector.origin.y + aimVector.y * previewDistance,
-    // CLEAVE_VOW_RADIUS_FIX
-    // Cleave's real hitbox uses rangeRadius, not just projectile.radius.
-    // Use finalRadius so the Binding Vow size boost actually affects the hit area.
-    rangeRadius: move === "cleave"
-      ? Math.max(24, finalRadius * (hasBindingVow(f, "cleave") ? 0.95 : 0.55))
-      : finalRadius,
+    // Art-matched hitboxes use the drawn slash shape.
+    // rangeRadius is kept only for older fallback/debug code.
+    rangeRadius: finalRadius,
     maxTravel: move === "cleave" ? Infinity : travelDistance,
     traveled: 0,
     life: spec.life + (chargedLimitless ? Math.round(finalCharge * 10) : 0) + (shrineBoost && move === "slash" ? 34 : 0),
@@ -6873,17 +6870,120 @@ function shouldResolveProjectileHit(projectile, target) {
   return true;
 }
 
-function projectileOverlapsTarget(projectile, target) {
-  if (projectile.move === "cleave") {
-    return lineCapsuleOverlapsRect(
-      projectile.rangeStartX ?? projectile.x,
-      projectile.rangeStartY ?? projectile.y,
-      projectile.rangeEndX ?? projectile.x,
-      projectile.rangeEndY ?? projectile.y,
-      projectile.rangeRadius ?? Math.max(20, projectile.radius * 0.55),
-      target
-    );
+function pointInOrientedRect(px, py, cx, cy, halfW, halfH, angle) {
+  const dx = px - cx;
+  const dy = py - cy;
+  const cos = Math.cos(-angle);
+  const sin = Math.sin(-angle);
+  const localX = dx * cos - dy * sin;
+  const localY = dx * sin + dy * cos;
+  return Math.abs(localX) <= halfW && Math.abs(localY) <= halfH;
+}
+
+function segmentIntersectsSegment(a, b, c, d) {
+  const cross = (p, q, r) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  const c1 = cross(a, b, c);
+  const c2 = cross(a, b, d);
+  const c3 = cross(c, d, a);
+  const c4 = cross(c, d, b);
+  return c1 * c2 <= 0 && c3 * c4 <= 0;
+}
+
+function getOrientedRectCorners(cx, cy, halfW, halfH, angle) {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return [
+    { x: -halfW, y: -halfH },
+    { x: halfW, y: -halfH },
+    { x: halfW, y: halfH },
+    { x: -halfW, y: halfH }
+  ].map((p) => ({
+    x: cx + p.x * cos - p.y * sin,
+    y: cy + p.x * sin + p.y * cos
+  }));
+}
+
+function orientedRectOverlapsRect(cx, cy, halfW, halfH, angle, rect) {
+  const corners = getOrientedRectCorners(cx, cy, halfW, halfH, angle);
+  const rectCorners = [
+    { x: rect.x, y: rect.y },
+    { x: rect.x + rect.w, y: rect.y },
+    { x: rect.x + rect.w, y: rect.y + rect.h },
+    { x: rect.x, y: rect.y + rect.h }
+  ];
+
+  // Any target corner inside the art hitbox.
+  for (const c of rectCorners) {
+    if (pointInOrientedRect(c.x, c.y, cx, cy, halfW, halfH, angle)) return true;
   }
+
+  // Any art corner inside target.
+  for (const c of corners) {
+    if (pointInRect(c.x, c.y, rect)) return true;
+  }
+
+  // Any edge crossing.
+  for (let i = 0; i < 4; i += 1) {
+    const a = corners[i];
+    const b = corners[(i + 1) % 4];
+    for (let j = 0; j < 4; j += 1) {
+      const c = rectCorners[j];
+      const d = rectCorners[(j + 1) % 4];
+      if (segmentIntersectsSegment(a, b, c, d)) return true;
+    }
+  }
+
+  return false;
+}
+
+function getShrineArtHitbox(projectile) {
+  const r = projectile.radius || 0;
+  const baseAngle = Number.isFinite(projectile.angle) ? projectile.angle : 0;
+
+  if (projectile.move === "slash") {
+    // Same bounds as drawShrineTechniqueShape("slash") / Dismantle art.
+    return {
+      cx: projectile.x + Math.cos(baseAngle - 0.1) * (r * 0.2),
+      cy: projectile.y + Math.sin(baseAngle - 0.1) * (r * 0.2),
+      halfW: r * 1.65,
+      halfH: r * 0.86,
+      angle: baseAngle - 0.1
+    };
+  }
+
+  if (projectile.move === "cleave") {
+    // Same bounds as drawShrineTechniqueShape("cleave") art.
+    return {
+      cx: projectile.x + Math.cos(baseAngle - 0.18) * (r * 0.35),
+      cy: projectile.y + Math.sin(baseAngle - 0.18) * (r * 0.35),
+      halfW: r * 1.10,
+      halfH: r * 1.175,
+      angle: baseAngle - 0.18
+    };
+  }
+
+  return null;
+}
+
+
+function projectileOverlapsTarget(projectile, target) {
+  // SHRINE_ART_HITBOX_FIX:
+  // Dismantle and Cleave now use hitboxes matching the drawn slash art
+  // instead of a square/circle/capsule that doesn't line up visually.
+  if (projectile.move === "slash" || projectile.move === "cleave") {
+    const hitbox = getShrineArtHitbox(projectile);
+    if (hitbox) {
+      return orientedRectOverlapsRect(
+        hitbox.cx,
+        hitbox.cy,
+        hitbox.halfW,
+        hitbox.halfH,
+        hitbox.angle,
+        target
+      );
+    }
+  }
+
   const box = { x: projectile.x - projectile.radius, y: projectile.y - projectile.radius, w: projectile.radius * 2, h: projectile.radius * 2 };
   return rectsOverlap(box, target);
 }
@@ -11304,70 +11404,63 @@ function drawTechniqueAimSizePreview() {
   const spec = techniqueMoves[move];
   const origin = getTechniqueOrigin(active, move);
   const aimVector = getTechniqueAimVector(active, move, aimPoint);
-  const previewDistance = getAimPreviewDistance(move, spec, 0, aimVector, active, spec.radius);
+  const vowBoost = move === "cleave" && hasBindingVow(active, "cleave");
+  const finalRadius =
+    spec.radius *
+    getDomainProjectileSizeMultiplier(active, move) *
+    (vowBoost ? 1.45 : 1);
+  const previewDistance = getAimPreviewDistance(move, spec, 0, aimVector, active, finalRadius);
   const endX = origin.x + aimVector.x * previewDistance;
   const endY = origin.y + aimVector.y * previewDistance;
 
   ctx.save();
 
-  // Draw aiming line.
-  ctx.globalAlpha = 0.88;
-  ctx.lineWidth = move === "cleave" ? 3.5 : 2.5;
-  ctx.setLineDash(move === "cleave" ? [14, 10] : [10, 8]);
-  ctx.strokeStyle = active.technique === "shrine" ? "rgba(255, 233, 233, 0.92)" : "rgba(173, 216, 255, 0.9)";
+  // Draw the aim line.
+  ctx.globalAlpha = 0.65;
+  ctx.lineWidth = move === "cleave" ? 3 : 2.5;
+  ctx.setLineDash(move === "cleave" ? [12, 9] : [10, 8]);
+  ctx.strokeStyle = active.technique === "shrine" ? "rgba(255, 233, 233, 0.85)" : "rgba(173, 216, 255, 0.85)";
   ctx.beginPath();
   ctx.moveTo(origin.x, origin.y);
   ctx.lineTo(endX, endY);
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // Draw endpoint marker.
-  ctx.fillStyle = active.technique === "shrine" ? "rgba(255,255,255,0.95)" : "rgba(191,219,254,0.95)";
-  ctx.beginPath();
-  ctx.arc(endX, endY, 4.5, 0, Math.PI * 2);
-  ctx.fill();
-
+  // CLEAVE_AIM_ART_PREVIEW_FIX:
+  // For Cleave, show the actual Cleave art ghost, not a circle.
   if (move === "cleave") {
-    const vowBoost = hasBindingVow(active, "cleave");
-    const finalRadius =
-      spec.radius *
-      getDomainProjectileSizeMultiplier(active, move) *
-      (vowBoost ? 1.45 : 1);
-
-    const previewRadius = Math.max(24, finalRadius * (vowBoost ? 0.95 : 0.55));
-
-    // Main preview ring so the player can see the real size.
+    ctx.translate(endX, endY);
+    ctx.rotate(aimVector.angle);
+    ctx.globalAlpha = vowBoost ? 0.68 : 0.48;
     ctx.globalCompositeOperation = "lighter";
-    ctx.fillStyle = vowBoost ? "rgba(248, 113, 113, 0.16)" : "rgba(248, 113, 113, 0.09)";
+    drawShrineTechniqueShape("cleave", finalRadius);
+
+    // Thin outline matching the art hitbox, so the player sees the real size.
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = vowBoost ? 0.75 : 0.5;
+    ctx.strokeStyle = vowBoost ? "rgba(255, 230, 230, 0.92)" : "rgba(248, 113, 113, 0.75)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 7]);
+    ctx.rotate(-0.18);
+    ctx.strokeRect(-finalRadius * 0.75, -finalRadius * 1.25, finalRadius * 2.2, finalRadius * 2.35);
+    ctx.setLineDash([]);
+    ctx.restore();
+    return;
+  }
+
+  // Other moves keep a simple ghost preview.
+  ctx.globalAlpha = 0.5;
+  ctx.translate(endX, endY);
+  if (move === "blue" || move === "red") {
+    drawLimitlessOrb(move, finalRadius, aimVector.dir);
+  } else if (move === "slash") {
+    ctx.rotate(aimVector.angle);
+    drawShrineTechniqueShape("slash", finalRadius);
+  } else {
+    ctx.fillStyle = "rgba(255,255,255,0.75)";
     ctx.beginPath();
-    ctx.arc(endX, endY, previewRadius, 0, Math.PI * 2);
+    ctx.arc(0, 0, 4.5, 0, Math.PI * 2);
     ctx.fill();
-
-    ctx.strokeStyle = vowBoost ? "rgba(255, 214, 214, 0.98)" : "rgba(248, 113, 113, 0.88)";
-    ctx.lineWidth = vowBoost ? 4 : 3;
-    ctx.beginPath();
-    ctx.arc(endX, endY, previewRadius, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // Inner ring for readability.
-    ctx.strokeStyle = vowBoost ? "rgba(127, 29, 29, 0.85)" : "rgba(127, 29, 29, 0.6)";
-    ctx.lineWidth = 1.75;
-    ctx.beginPath();
-    ctx.arc(endX, endY, Math.max(12, previewRadius - 8), 0, Math.PI * 2);
-    ctx.stroke();
-
-    // Add a label so it's obvious the vow made it larger.
-    if (vowBoost) {
-      ctx.globalCompositeOperation = "source-over";
-      ctx.font = "bold 14px system-ui, sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "bottom";
-      ctx.fillStyle = "rgba(255, 241, 242, 0.95)";
-      ctx.strokeStyle = "rgba(68, 10, 10, 0.88)";
-      ctx.lineWidth = 4;
-      ctx.strokeText("CLEAVE VOW SIZE", endX, endY - previewRadius - 10);
-      ctx.fillText("CLEAVE VOW SIZE", endX, endY - previewRadius - 10);
-    }
   }
 
   ctx.restore();
