@@ -2178,6 +2178,15 @@ function hasPickedOnlineTechnique() {
   return gameMode !== "online" || !isOnlinePlayerRole() || onlinePickedTechnique;
 }
 
+// ONLINE_CHARACTER_SELECT_LOCK_PATCH
+function bothOnlinePlayersPresent() {
+  return gameMode !== "online" || (onlinePlayers.p1 > 0 && onlinePlayers.p2 > 0);
+}
+
+function canPickOnlineTechniqueNow() {
+  return gameMode !== "online" || (isOnlinePlayerRole() && bothOnlinePlayersPresent());
+}
+
 function resetReadyPhase(reason = "") {
   setReadyFlags(false, false, reason);
   readyCountdownValue = 0;
@@ -2322,6 +2331,63 @@ function updateControlsPanel() {
   `;
 }
 
+function broadcastFullBattleRestart() {
+  if (!onlineSocket || onlineSocket.readyState !== WebSocket.OPEN || gameMode !== "online") return;
+  onlineSocket.send(JSON.stringify({ type: "restart-full", role: onlineRole || "local", stamp: Date.now() }));
+}
+
+function restartWholeBattle(broadcast = true) {
+  paused = false;
+  gameOver = true;
+  roundEnding = false;
+  roundResolved = false;
+  currentRound = 1;
+  playerRounds = 0;
+  enemyRounds = 0;
+  readyCountdownValue = 0;
+  lastRoundWinner = null;
+  koWinner = null;
+  clearInterval(readyCountdownId);
+  setCountdownOverlay(0);
+  keys.clear();
+
+  if (pauseScreen) pauseScreen.classList.add("hidden");
+  if (message) message.classList.add("hidden");
+  updateReadyPromptVisibility();
+
+  if (gameMode === "online" && isOnlinePlayerRole()) {
+    onlineTechniqueChoices = { p1: null, p2: null };
+    onlinePickedTechnique = false;
+    selectedTechnique = "limitless";
+    resetReadyPhase("full online restart");
+    setGameState("lobby", "full online restart");
+    homeOpen = false;
+    homeScreen.classList.add("hidden");
+
+    if (bothOnlinePlayersPresent()) {
+      hideWaiting();
+      techniqueScreen.classList.remove("hidden");
+    } else {
+      techniqueScreen.classList.add("hidden");
+      updateOnlineWaiting();
+    }
+
+    if (broadcast) broadcastFullBattleRestart();
+    updateHud();
+    return;
+  }
+
+  // Local CPU/PVP/practice restart: go back to character select and fully reset the match.
+  onlineTechniqueChoices = { p1: null, p2: null };
+  onlinePickedTechnique = false;
+  setGameState("lobby", "full local restart");
+  homeOpen = false;
+  homeScreen.classList.add("hidden");
+  techniqueScreen.classList.remove("hidden");
+  resetReadyPhase("full local restart");
+  updateHud();
+}
+
 function resetGame() {
   currentRound = 1;
   playerRounds = 0;
@@ -2377,6 +2443,12 @@ function startFromHome(practiceMode) {
 }
 
 function finishTechniqueSelect(technique) {
+  if (gameMode === "online" && !canPickOnlineTechniqueNow()) {
+    techniqueScreen.classList.add("hidden");
+    updateOnlineWaiting();
+    return;
+  }
+
   selectedTechnique = technique;
   if (onlineRole === "p1" || onlineRole === "p2") {
     onlineTechniqueChoices[onlineRole] = technique;
@@ -2438,25 +2510,39 @@ function hideWaiting() {
 
 function updateOnlineWaiting() {
   if (gameMode !== "online" || !onlineRole) return;
-  if (!techniqueScreen.classList.contains("hidden")) return;
-  if (!hasPickedOnlineTechnique()) return;
-  const wasWaiting = onlineWaiting;
+
   const hasHost = onlinePlayers.p1 > 0;
   const hasJoiner = onlinePlayers.p2 > 0;
+  const bothPresent = hasHost && hasJoiner;
 
-  if (onlineRole === "p1" && !hasJoiner) {
-    showWaiting("Waiting For Player 2", "Tell your friend to press Join Battle and enter this code.");
-    return;
-  }
-
-  if (onlineRole === "p2" && !hasHost) {
-    showWaiting("Waiting For Host", "The host has to press Host Battle with this same code.");
+  // Do not let either player pick a character until both players are actually in the room.
+  if (!bothPresent) {
+    techniqueScreen.classList.add("hidden");
+    updateReadyPromptVisibility();
+    if (onlineRole === "p1" && !hasJoiner) {
+      showWaiting("Waiting For Player 2", "Tell your friend to press Join Battle and enter this code.");
+    } else if (onlineRole === "p2" && !hasHost) {
+      showWaiting("Waiting For Host", "The host has to press Host Battle with this same code.");
+    } else {
+      showWaiting("Waiting For Battle", "Waiting for both players to connect.");
+    }
     return;
   }
 
   hideWaiting();
+
+  // Both players are in. If this player has not picked yet, force character select.
+  if (!hasPickedOnlineTechnique()) {
+    homeScreen.classList.add("hidden");
+    pauseScreen.classList.add("hidden");
+    message.classList.add("hidden");
+    updateReadyPromptVisibility();
+    techniqueScreen.classList.remove("hidden");
+    return;
+  }
+
+  techniqueScreen.classList.add("hidden");
   sendOnlineTechniqueChoice();
-  if (wasWaiting && onlineRole === "p1") resetGame();
 }
 
 function applyOnlineTechniqueChoice(role, technique, reason = "") {
@@ -2522,7 +2608,8 @@ homeOpen = false;
     techniqueScreen.classList.add("hidden");
     showWaiting("Room Full", "This battle already has two players. Try a different code.");
   } else {
-    techniqueScreen.classList.remove("hidden");
+    techniqueScreen.classList.add("hidden");
+    updateOnlineWaiting();
   }
   scoreInfoEl.textContent = role === "p1" ? "Online P1" : role === "p2" ? "Online P2" : "Spectator";
 }
@@ -2625,7 +2712,13 @@ function connectOnline(room = onlineRoom, side = onlineSide) {
   onlineSocket.addEventListener("message", (event) => {
     const data = JSON.parse(event.data);
     
-    if (data.type === "name") {
+    
+    if (data.type === "restart-full") {
+      restartWholeBattle(false);
+      return;
+    }
+
+if (data.type === "name") {
       const role = data.role === "p2" ? "p2" : "p1";
       onlinePlayerNames[role] = sanitizePlayerName(data.name, role === "p1" ? "Player 1" : "Player 2");
       updatePlayerNameLabels();
@@ -3464,6 +3557,11 @@ function updateReadyMessage() {
   message.classList.add("hidden");
   let showReadyButton = readyCountdownValue <= 0 && !pacifistBot;
   if (gameMode === "online") {
+    if (!bothOnlinePlayersPresent()) {
+      updateReadyPromptVisibility(false, true);
+      readyStatus.textContent = "Waiting For Both Players";
+      return;
+    }
     if (!hasPickedOnlineTechnique()) {
       updateReadyPromptVisibility();
       return;
@@ -3528,8 +3626,15 @@ function handleReadyClick() {
     return;
   }
 
+  if (!bothOnlinePlayersPresent()) {
+    updateOnlineWaiting();
+    updateReadyPromptVisibility(false, true);
+    readyStatus.textContent = "Waiting For Both Players";
+    return;
+  }
+
   if (!hasPickedOnlineTechnique()) {
-    techniqueScreen.classList.remove("hidden");
+    if (canPickOnlineTechniqueNow()) techniqueScreen.classList.remove("hidden");
     message.classList.add("hidden");
     return;
   }
@@ -10254,7 +10359,7 @@ if (usernameInput) {
   loadLocalPlayerName();
 }
 
-restartButton.addEventListener("click", resetGame);
+restartButton.addEventListener("click", () => restartWholeBattle(true));
 readyButton.addEventListener("click", handleReadyClick);
 pauseButton.addEventListener("click", () => setPaused(true));
 homeButton.addEventListener("click", openHomeScreen);
@@ -10355,7 +10460,7 @@ techniqueButtons.forEach((button) => {
   button.addEventListener("click", () => finishTechniqueSelect(button.dataset.technique));
 });
 resumeButton.addEventListener("click", () => setPaused(false));
-pauseRestartButton.addEventListener("click", resetGame);
+pauseRestartButton.addEventListener("click", () => restartWholeBattle(true));
 pauseHomeButton.addEventListener("click", openHomeScreen);
 
 resetGame();
@@ -10571,7 +10676,8 @@ document.addEventListener("click", (event) => {
     event.preventDefault();
     paused = false;
     if (pauseScreen) pauseScreen.classList.add("hidden");
-    if (typeof restartMatch === "function") restartMatch();
+    if (typeof restartWholeBattle === "function") restartWholeBattle(true);
+    else if (typeof restartMatch === "function") restartMatch();
     else if (typeof resetMatch === "function") resetMatch();
     else if (typeof startSelectedMode === "function") startSelectedMode();
     return;
