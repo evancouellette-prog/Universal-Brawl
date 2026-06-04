@@ -131,6 +131,53 @@ const PLAYER_NAME_STORAGE_KEY = "jujutsuBrawlPlayerName";
 const BUTTON_SFX_VOLUME_STORAGE_KEY = "jujutsuBrawlButtonSfxVolume";
 const GAME_SFX_VOLUME_STORAGE_KEY = "jujutsuBrawlGameSfxVolume";
 
+// INPUT_LABELS_PATCH
+function ensureInputLabel(input, labelId, labelText, placeholderText) {
+  if (!input || document.getElementById(labelId)) return;
+
+  const label = document.createElement("label");
+  label.id = labelId;
+  label.className = "menu-input-label";
+  label.textContent = labelText;
+  label.setAttribute("for", input.id || "");
+
+  if (placeholderText) input.setAttribute("placeholder", placeholderText);
+
+  input.parentNode.insertBefore(label, input);
+}
+
+function installInputLabels() {
+  ensureInputLabel(usernameInput, "usernameInputLabel", "Name", "Enter name");
+  ensureInputLabel(roomCodeInput, "roomCodeInputLabel", "Battle Code", "Enter battle code");
+
+  if (!document.getElementById("menuInputLabelStyles")) {
+    const style = document.createElement("style");
+    style.id = "menuInputLabelStyles";
+    style.textContent = `
+      .menu-input-label {
+        display: block;
+        margin: 10px 0 4px;
+        font-size: 0.8rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #f8f8ff;
+        text-shadow: 0 0 8px rgba(120, 190, 255, 0.65);
+      }
+
+      #usernameInputLabel,
+      #roomCodeInputLabel {
+        text-align: left;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+}
+
+window.addEventListener("DOMContentLoaded", installInputLabels);
+window.setTimeout(installInputLabels, 0);
+
+
 const KEY_BINDINGS_STORAGE_KEY = "jujutsuBrawlKeyBindingsV2";
 const DEFAULT_KEY_BINDINGS = {
   moveLeft: "KeyA",
