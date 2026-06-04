@@ -860,25 +860,65 @@ function closeRadioScreen() {
 }
 
 function seekMusicFromProgressTrack(event) {
-  if (event.type === "click" && performance.now() - lastMusicSeekStamp < 90) return;
-  if (event.type === "pointerdown") lastMusicSeekStamp = performance.now();
   const duration = getMusicDuration();
   if (duration <= 0) return;
+
   event.preventDefault();
+  event.stopPropagation();
+
   const rect = event.currentTarget.getBoundingClientRect();
-  const fallbackX = rect.left + rect.width * 0.5;
-  const clientX = Number.isFinite(event.clientX) && event.clientX > 0 ? event.clientX : fallbackX;
+  let clientX = event.clientX;
+
+  // Touch fallback for phones/tablets.
+  if ((!Number.isFinite(clientX) || clientX <= 0) && event.touches && event.touches[0]) {
+    clientX = event.touches[0].clientX;
+  }
+
+  if (!Number.isFinite(clientX)) return;
+
   const ratio = rect.width > 0 ? (clientX - rect.left) / rect.width : 0;
+  const seekTime = Math.max(0, Math.min(duration, ratio * duration));
   const wasPlaying = !battleMusic.paused && !musicMuted;
-  battleMusic.currentTime = Math.max(0, Math.min(duration, ratio * duration));
+
+  battleMusic.currentTime = seekTime;
   updateMusicProgressUi();
 
-  // Seeking should jump to the chosen timestamp, not restart the song.
+  // Seeking should move to the chosen timestamp, not restart the song.
   if (wasPlaying || backgroundMusicStarted) {
     backgroundMusicStarted = true;
     updateBattleMusicState(false);
   }
 }
+
+
+// RADIO_SEEK_BAR_PATCH
+// Click or drag on the radio song time bar to jump to that exact point.
+let musicSeekingPointerDown = false;
+
+musicProgressTracks.forEach((track) => {
+  track.style.cursor = "pointer";
+  track.addEventListener("pointerdown", (event) => {
+    musicSeekingPointerDown = true;
+    seekMusicFromProgressTrack(event);
+  });
+
+  track.addEventListener("pointermove", (event) => {
+    if (!musicSeekingPointerDown) return;
+    seekMusicFromProgressTrack(event);
+  });
+
+  track.addEventListener("pointerup", (event) => {
+    if (!musicSeekingPointerDown) return;
+    musicSeekingPointerDown = false;
+    seekMusicFromProgressTrack(event);
+  });
+
+  track.addEventListener("pointercancel", () => {
+    musicSeekingPointerDown = false;
+  });
+
+  track.addEventListener("click", seekMusicFromProgressTrack);
+});
 
 function playButtonClickSound() {
   const sound = buttonClickSounds[buttonClickSoundIndex % buttonClickSounds.length];
@@ -10288,10 +10328,6 @@ musicPrevButtons.forEach((button) => {
 });
 musicNextButtons.forEach((button) => {
   button.addEventListener("click", playNextSong);
-});
-musicProgressTracks.forEach((track) => {
-  track.addEventListener("pointerdown", seekMusicFromProgressTrack);
-  track.addEventListener("click", seekMusicFromProgressTrack);
 });
 radioOpenButtons.forEach((button) => {
   button.addEventListener("click", openRadioScreen);
