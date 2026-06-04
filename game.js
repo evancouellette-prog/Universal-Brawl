@@ -2522,73 +2522,21 @@ function syncRemoteDamageToLocalJoiner(remoteEnemy) {
 }
 
 function protectJoinerLocalHitState() {
-  if (gameMode !== "online" || onlineRole !== "p2") return false;
-  return (
-    joinerLocalHitLockTicks > 0 ||
-    isBarrageActive(enemy) ||
-    isGrabThrowActive(enemy) ||
-    enemy.attacking === "barrage" ||
-    enemy.attacking === "grabThrow" ||
-    player.barrageHeldBy === "enemy" ||
-    player.grabHeldBy === "enemy" ||
-    (player.barrageHeldTimer || 0) > 0 ||
-    (player.grabHeldTimer || 0) > 0 ||
-    (player.hurt || 0) > 0 ||
-    (player.stun || 0) > 0
-  );
+  // Kept for compatibility, but it must not stop host-owned Player 1
+  // movement from syncing to the joined player's screen.
+  return false;
 }
 
 function syncHostPlayerToJoiner(remotePlayer) {
   if (!remotePlayer || !player) return;
 
-  if (!protectJoinerLocalHitState()) {
-    Object.assign(player, remotePlayer);
-    return;
-  }
-
-  const local = {
-    x: player.x,
-    y: player.y,
-    vx: player.vx,
-    vy: player.vy,
-    hurt: player.hurt,
-    stun: player.stun,
-    knockdown: player.knockdown,
-    knockdownTimer: player.knockdownTimer,
-    grounded: player.grounded,
-    barrageHeldTimer: player.barrageHeldTimer,
-    barrageHeldBy: player.barrageHeldBy,
-    barrageLockY: player.barrageLockY,
-    grabHeldTimer: player.grabHeldTimer,
-    grabHeldBy: player.grabHeldBy,
-    grabLockY: player.grabLockY,
-    attacking: player.attacking,
-    attackFrame: player.attackFrame,
-    hasHit: player.hasHit
-  };
-  const localHealth = player.health;
-
+  // ONLINE_HOST_MOVEMENT_AUTHORITATIVE_FIX
+  // Player 1 is owned by the host. The joined player must render Player 1
+  // from the host's real state every frame, especially after Player 1 gets hit.
+  // The old "protect local hit state" code kept P2's predicted/stale copy of
+  // Player 1 during hurt/stun frames, which made the host look frozen on P2's
+  // screen even while the host was moving normally on their own screen.
   Object.assign(player, remotePlayer);
-
-  // While P2's hit is still being confirmed, keep the joiner's predicted
-  // knockback/position so Player 1 visibly moves on P2's screen.
-  // Health still comes from the host so damage stays authoritative.
-  Object.assign(player, local);
-  if (Number.isFinite(Number(remotePlayer.health))) {
-    player.health = Math.min(localHealth, Number(remotePlayer.health));
-  }
-
-  // If the host has caught up to a stronger knockback/knockdown, accept it.
-  if (Number.isFinite(Number(remotePlayer.vx)) && Math.abs(Number(remotePlayer.vx)) > Math.abs(player.vx || 0)) {
-    player.vx = Number(remotePlayer.vx);
-  }
-  if (Number.isFinite(Number(remotePlayer.vy)) && Number(remotePlayer.vy) < (player.vy || 0)) {
-    player.vy = Number(remotePlayer.vy);
-  }
-  if (remotePlayer.knockdown) {
-    player.knockdown = true;
-    player.knockdownTimer = Math.max(player.knockdownTimer || 0, remotePlayer.knockdownTimer || 0);
-  }
 }
 
 function applyJoinerFighterStateOnHost(remoteFighter) {
