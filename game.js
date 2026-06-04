@@ -267,6 +267,119 @@ const buttonClickSounds = Array.from({ length: 5 }, () => {
 });
 let buttonClickSoundIndex = 0;
 
+// GAME_SFX_PATCH
+// Put these files in /assets/sfx exactly like this:
+// gojo-red-blue-shoot.wav, grunt-1.wav, grunt-2.wav, grunt-3.wav,
+// landing.wav, lose-sound.wav, sukuna-shoot.wav, walking.wav, win-sound.wav
+const GAME_SFX_PATH = "assets/sfx/";
+
+function makeGameSfx(src, volume = 1, poolSize = 4) {
+  const pool = Array.from({ length: poolSize }, () => {
+    const sound = new Audio(`${GAME_SFX_PATH}${src}?v=1`);
+    sound.preload = "auto";
+    sound.volume = Math.max(0, Math.min(1, volume * gameSfxVolume));
+    return sound;
+  });
+  return { src, volume, pool, index: 0 };
+}
+
+const gameSfx = {
+  gojoRedBlueShoot: makeGameSfx("gojo-red-blue-shoot.wav", 0.72, 5),
+  grunt1: makeGameSfx("grunt-1.wav", 0.62, 3),
+  grunt2: makeGameSfx("grunt-2.wav", 0.62, 3),
+  grunt3: makeGameSfx("grunt-3.wav", 0.62, 3),
+  landing: makeGameSfx("landing.wav", 0.58, 5),
+  lose: makeGameSfx("lose-sound.wav", 0.82, 2),
+  sukunaShoot: makeGameSfx("sukuna-shoot.wav", 0.74, 5),
+  walking: makeGameSfx("walking.wav", 0.34, 4),
+  win: makeGameSfx("win-sound.wav", 0.82, 2)
+};
+
+const gruntSfxKeys = ["grunt1", "grunt2", "grunt3"];
+let lastWalkingSfxFrame = 0;
+
+function refreshGameSfxVolumes() {
+  Object.values(gameSfx).forEach((entry) => {
+    entry.pool.forEach((sound) => {
+      sound.volume = Math.max(0, Math.min(1, entry.volume * gameSfxVolume));
+    });
+  });
+}
+
+function playGameSfx(name, options = {}) {
+  const entry = gameSfx[name];
+  if (!entry || !entry.pool.length) return;
+
+  refreshGameSfxVolumes();
+
+  const sound = entry.pool[entry.index % entry.pool.length];
+  entry.index += 1;
+
+  try {
+    sound.pause();
+    sound.currentTime = 0;
+    if (Number.isFinite(options.volume)) {
+      sound.volume = Math.max(0, Math.min(1, options.volume * entry.volume * gameSfxVolume));
+    }
+    const promise = sound.play();
+    if (promise) promise.catch(() => {});
+  } catch (err) {}
+}
+
+function playRandomGruntSfx() {
+  const key = gruntSfxKeys[Math.floor(Math.random() * gruntSfxKeys.length)];
+  playGameSfx(key);
+}
+
+function playTechniqueShootSfx(f, move) {
+  if (!move) return;
+  if (move === "blue" || move === "red") {
+    playGameSfx("gojoRedBlueShoot");
+    return;
+  }
+  if (move === "slash" || move === "cleave") {
+    playGameSfx("sukunaShoot");
+  }
+}
+
+function getLocalFighterForSfx() {
+  if (gameMode === "online" && onlineRole === "p2") return enemy;
+  return player;
+}
+
+function playRoundResultSfx(attacker, defender) {
+  if (pacifistBot || gameMode === "practice") return;
+
+  // CPU mode is local player vs CPU:
+  // play win when the user wins, but do not play lose when the CPU wins.
+  if (gameMode === "cpu") {
+    if (attacker === player) playGameSfx("win");
+    return;
+  }
+
+  const local = getLocalFighterForSfx();
+  if (attacker === local) playGameSfx("win");
+  else if (defender === local) playGameSfx("lose");
+}
+
+function playLandingSfx(f) {
+  if (!f || f.ko) return;
+  playGameSfx("landing");
+}
+
+function updateWalkingSfx(f) {
+  if (!f || f.ko || !f.grounded || f.stun > 0 || f.dodging > 0 || f.blocking || f.attacking) return;
+  if (Math.abs(f.vx || 0) < 0.65) return;
+
+  const interval = Math.max(12, Math.round(20 - Math.min(8, Math.abs(f.vx || 0))));
+  if (frame - lastWalkingSfxFrame < interval) return;
+
+  lastWalkingSfxFrame = frame;
+  playGameSfx("walking", { volume: 0.65 });
+}
+
+
+
 const MENU_MUSIC_STEP_SECONDS = 60 / 84 / 2;
 const BATTLE_MUSIC_STEP_SECONDS = 60 / 146 / 2;
 
@@ -4137,6 +4250,7 @@ function resolvePlatformCollisions(f, prevX, prevY) {
     ) {
       f.y = platform.y - f.h;
       f.vy = 0;
+      playLandingSfx(f);
       f.grounded = true;
       f.onPlatform = true;
       f.jumpsUsed = 0;
@@ -4400,6 +4514,7 @@ function startKnockout(attacker, defender) {
   gameOver = true;
   roundEnding = true;
   koWinner = attacker === player ? "player" : "enemy";
+  playRoundResultSfx(attacker, defender);
 
   defender.health = 0;
   defender.ko = true;
@@ -4681,6 +4796,8 @@ function startTechnique(f, slot, chargeRatio = 0, aimPoint = null, releasingChar
   const bindingDamageBoost = move === "slash" && hasBindingVow(f, "dismantle") ? 1.32 : 1;
   const damageScale = (chargedLimitless ? 1 + finalCharge * (move === "red" ? 1.45 : 1.25) : 1) * (voidBoost ? 1.28 : shrineBoost ? 1.12 : 1) * bindingDamageBoost;
   const knockbackScale = (chargedLimitless ? 1 + finalCharge * (move === "red" ? 1.25 : 1.08) : 1) * (move === "red" ? 1.28 : move === "blue" ? 1.32 : 1) * (voidBoost && move === "blue" ? 1.9 : voidBoost ? 1.32 : shrineBoost ? 1.16 : 1);
+  playTechniqueShootSfx(f, move);
+
   projectiles.push({
     owner: f === player ? "player" : "enemy",
     move,
@@ -6580,6 +6697,7 @@ function applyHit(attacker, defender) {
     return;
   }
   const meleeDamageDealt = applyFighterDamage(defender, damage);
+  if (!blocked && meleeDamageDealt > 0) playRandomGruntSfx();
   gainUltimate(attacker, meleeDamageDealt * (blocked ? ULT_BLOCKED_DAMAGE_GAIN_SCALE : ULT_DAMAGE_GAIN_SCALE));
   cancelRct(defender, false);
   defender.hurt = blocked ? 6 : 14;
@@ -6789,6 +6907,7 @@ function applyProjectileHit(projectile, defender) {
   const damage = getTakenDamage(defender, baseDamage);
   if (blocked) damageShield(defender, projectile.damage);
   const projectileDamageDealt = applyFighterDamage(defender, damage);
+  if (!blocked && projectileDamageDealt > 0) playRandomGruntSfx();
   const ownerFighter = projectile.owner === "player" ? player : enemy;
   // SUKUNA_DOMAIN_NO_ULT_GAIN_PATCH
   // Domain-created automatic dismantles/slashes should not build Sukuna's ult.
@@ -8152,6 +8271,7 @@ function updateFighter(f, opponent) {
   } else if (f.grounded && !f.attacking && !f.blocking) {
     f.walkCycle = 0;
   }
+  updateWalkingSfx(f);
   f.vx *= f.grounded ? 0.86 : 0.97;
 
   const wasGrounded = f.grounded;
@@ -8163,6 +8283,7 @@ function updateFighter(f, opponent) {
   }
   if (f.y + f.h >= GROUND) {
     const landedFromKnockdown = f.knockdown && !wasGrounded;
+    if (!wasGrounded && f.vy > 1.2) playLandingSfx(f);
     f.y = GROUND - f.h;
     f.vy = 0;
     f.grounded = true;
