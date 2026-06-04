@@ -3798,46 +3798,117 @@ function getOutgoingDamageMultiplier(f) {
 
 // HP_BAR_STYLE_REVERTED_TO_OLD_SMALL
 function installHealthBarSizePatch() {
-  if (document.getElementById("twoMoreHpBarsStyle")) return;
+  const oldStyle = document.getElementById("twoMoreHpBarsStyle");
+  if (oldStyle) oldStyle.remove();
 
   const style = document.createElement("style");
   style.id = "twoMoreHpBarsStyle";
   style.textContent = `
+    /* HP_SMALL_BAR_SLICE_FIX:
+       The small HP bars are now literally styled like clipped chunks of the
+       main HP bar instead of gray tick marks. */
+    #playerHealth,
+    #enemyHealth,
     .health-bar,
     .health-meter,
-    .hud-health,
-    #playerHealth,
-    #enemyHealth {
+    .hud-health {
       display: flex !important;
-      align-items: center !important;
+      align-items: stretch !important;
       gap: 4px !important;
       min-width: 0 !important;
       max-width: 100% !important;
-      overflow: hidden !important;
+      overflow: visible !important;
     }
 
+    #playerHealth .health-main,
+    #enemyHealth .health-main,
     .health-main {
+      position: relative !important;
       flex: 1 1 auto !important;
       min-width: 72px !important;
-      max-width: none !important;
       overflow: hidden !important;
+      border-radius: inherit !important;
     }
 
+    #playerHealth .health-current,
+    #enemyHealth .health-current,
+    #playerHealth .health-lag,
+    #enemyHealth .health-lag,
+    .health-current,
+    .health-lag {
+      height: 100% !important;
+      border-radius: inherit !important;
+    }
+
+    #playerHealth .health-stack,
+    #enemyHealth .health-stack,
     .health-stack {
       flex: 0 0 auto !important;
       display: flex !important;
-      align-items: center !important;
-      gap: 3px !important;
+      align-items: stretch !important;
+      gap: 4px !important;
       min-width: 0 !important;
+      height: auto !important;
     }
 
+    #playerHealth .health-stock,
+    #enemyHealth .health-stock,
     .health-stock {
-      flex: 0 0 15px !important;
-      width: 15px !important;
-      min-width: 15px !important;
-      max-width: 15px !important;
-      height: 100% !important;
+      position: relative !important;
+      flex: 0 0 16px !important;
+      width: 16px !important;
+      min-width: 16px !important;
+      max-width: 16px !important;
+      height: auto !important;
+      align-self: stretch !important;
       box-sizing: border-box !important;
+      overflow: hidden !important;
+      border-radius: inherit !important;
+      background: rgba(15, 23, 42, 0.82) !important;
+      border: 1px solid rgba(148, 163, 184, 0.55) !important;
+    }
+
+    #playerHealth .health-stock.full,
+    #enemyHealth .health-stock.full,
+    .health-stock.full {
+      border-color: rgba(220, 252, 231, 0.72) !important;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.24), 0 0 7px rgba(34,197,94,0.20) !important;
+    }
+
+    /* This is the "cut snippet of the big bar" part. */
+    #playerHealth .health-stock.full.green,
+    #enemyHealth .health-stock.full.green,
+    .health-stock.full.green {
+      background: linear-gradient(90deg, #16a34a 0%, #22c55e 52%, #bbf7d0 100%) !important;
+    }
+
+    #playerHealth .health-stock.full.yellow,
+    #enemyHealth .health-stock.full.yellow,
+    .health-stock.full.yellow {
+      background: linear-gradient(90deg, #ca8a04 0%, #facc15 52%, #fef3c7 100%) !important;
+    }
+
+    #playerHealth .health-stock.full.red,
+    #enemyHealth .health-stock.full.red,
+    .health-stock.full.red {
+      background: linear-gradient(90deg, #b91c1c 0%, #ef4444 52%, #fecaca 100%) !important;
+    }
+
+    #playerHealth .health-stock.full::after,
+    #enemyHealth .health-stock.full::after,
+    .health-stock.full::after {
+      content: "" !important;
+      position: absolute !important;
+      inset: 0 !important;
+      background: linear-gradient(180deg, rgba(255,255,255,0.34), rgba(255,255,255,0.05) 42%, rgba(0,0,0,0.12)) !important;
+      pointer-events: none !important;
+    }
+
+    #playerHealth .health-stock.empty,
+    #enemyHealth .health-stock.empty,
+    .health-stock.empty {
+      background: rgba(15, 23, 42, 0.82) !important;
+      opacity: 0.9 !important;
     }
   `;
 
@@ -3868,7 +3939,7 @@ function getLayeredHealthState(health, maxHealth, barCount) {
 function renderSegmentedHealth(el, f) {
   if (!el || !f) return;
   const barCount = Math.max(1, Math.round(f.healthBars || 1));
-  if (el.dataset.barCount !== String(barCount) || !el.querySelector(".health-main")) {
+  if (el.dataset.barCount !== String(barCount) || !el.querySelector(".health-main") || !el.querySelector(".health-stack")) {
     el.dataset.barCount = String(barCount);
     el.innerHTML = "";
     const main = document.createElement("div");
