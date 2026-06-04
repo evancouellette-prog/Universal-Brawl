@@ -2818,7 +2818,17 @@ function applyJoinerFighterStateOnHost(remoteFighter) {
   ];
 
   fields.forEach((field) => {
-    if (Object.prototype.hasOwnProperty.call(remoteFighter, field)) enemy[field] = remoteFighter[field];
+    if (!Object.prototype.hasOwnProperty.call(remoteFighter, field)) return;
+
+    // ONLINE_SPECIAL_STATE_PRESERVE_FIX
+    if (
+      (mouseTechniqueHeld.fuga && (field === "fugaAiming" || field === "fugaChargeTicks" || field === "techniqueAim")) ||
+      (mouseTechniqueHeld.teleport && (field === "teleportAiming" || field === "techniqueAim"))
+    ) {
+      return;
+    }
+
+    enemy[field] = remoteFighter[field];
   });
 
   if (isValidTechnique(remoteFighter.technique)) {
@@ -2910,9 +2920,19 @@ if (data.type === "role") {
       if (data.action === "ultimate-start") beginUltimateAim(enemy, data.aim);
       if (data.action === "ultimate-release") releaseUltimateAim(enemy, data.aim);
       if (data.action === "fuga-start") prepareFuga(enemy, data.aim);
-      if (data.action === "fuga") startFuga(enemy, data.aim);
+      if (data.action === "fuga") {
+        // ONLINE_SPECIAL_RELEASE_FIX
+        enemy.fugaAiming = true;
+        enemy.techniqueAim = sanitizeAimPoint(data.aim) || enemy.techniqueAim;
+        enemy.fugaChargeTicks = Math.max(enemy.fugaChargeTicks || 0, FUGA_CHARGE_TICKS);
+        startFuga(enemy, data.aim);
+      }
       if (data.action === "teleport-start") prepareTeleport(enemy, data.aim);
-      if (data.action === "teleport") performTeleport(enemy, data.aim);
+      if (data.action === "teleport") {
+        enemy.teleportAiming = true;
+        enemy.techniqueAim = sanitizeAimPoint(data.aim) || enemy.techniqueAim;
+        performTeleport(enemy, data.aim);
+      }
       if (data.action === "ct1") useTechniqueInput(enemy, 1, data.aim);
       if (data.action === "ct2") useTechniqueInput(enemy, 2, data.aim);
       if (data.action === "ct1-release") releaseTechniqueInput(enemy, 1, data.aim);
@@ -3004,6 +3024,10 @@ if (data.type === "role") {
   });
 }
 
+function isOnlineJoinerControlledFighter(f) {
+  return gameMode === "online" && onlineRole === "p2" && f === enemy;
+}
+
 function getOnlineInput() {
   return {
     left: isPressed("a", "keya"),
@@ -3086,6 +3110,10 @@ function handleTechniqueMouseUp(event) {
     const fighter = getActiveMouseTechniqueFighter();
     mouseTechniqueHeld.ct1 = false;
     mouseTechniqueHeld.ct2 = false;
+    if (isOnlineJoinerControlledFighter(fighter)) {
+      fighter.teleportAiming = true;
+      fighter.techniqueAim = sanitizeAimPoint(aim) || fighter.techniqueAim;
+    }
     clearSpecialHoldState(fighter);
     performTeleport(fighter, aim);
     if (gameMode === "online" && onlineRole === "p2") sendOnlineInput("teleport", aim);
@@ -3095,6 +3123,11 @@ function handleTechniqueMouseUp(event) {
     const fighter = getActiveMouseTechniqueFighter();
     mouseTechniqueHeld.ct1 = false;
     mouseTechniqueHeld.ct2 = false;
+    if (isOnlineJoinerControlledFighter(fighter)) {
+      fighter.fugaAiming = true;
+      fighter.techniqueAim = sanitizeAimPoint(aim) || fighter.techniqueAim;
+      fighter.fugaChargeTicks = Math.max(fighter.fugaChargeTicks || 0, FUGA_CHARGE_TICKS);
+    }
     clearSpecialHoldState(fighter);
     startFuga(fighter, aim);
     if (gameMode === "online" && onlineRole === "p2") sendOnlineInput("fuga", aim);
@@ -6896,7 +6929,12 @@ function updateCpuTechniqueCharge(cpu) {
   enemy.aiGoal = "technique";
   enemy.vx *= 0.72;
   if ((enemy.cpuTechniqueReleaseTicks || 0) > 0 && enemy.chargeTicks >= enemy.cpuTechniqueReleaseTicks) {
-    releaseTechniqueCharge(enemy, enemy.chargingTechnique, aim);
+    const slot = enemy.chargingTechnique;
+    releaseTechniqueCharge(enemy, slot, aim);
+    if (enemy.chargingTechnique === slot && enemy.chargeTicks > LIMITLESS_CHARGE_MAX_TICKS + 45) {
+      resetCpuBrokenState("failed technique release");
+      return false;
+    }
   }
   return true;
 }
@@ -7103,9 +7141,190 @@ function tryCpuThrow(cpu, distance) {
   return true;
 }
 
+
+// CPU_STUCK_RECOVERY_PATCH
+// The CPU could sometimes get trapped in an unfinished special state
+// such as charging, Fuga aim, domain startup, blocking, or a bad cooldown.
+// This watchdog clears broken states and gives the CPU a new goal.
+const cpuStuckWatchdog = {
+  x: null,
+  y: null,
+  goal: "",
+  stillFrames: 0,
+  specialFrames: 0
+};
+
+function resetCpuBrokenState(reason = "stuck") {
+  if (!enemy || enemy.ko || gameMode !== "cpu" || pacifistBot) return;
+
+  console.warn("[cpu recovery]", reason);
+
+  enemy.attacking = null;
+  enemy.attackFrame = 0;
+  enemy.hasHit = false;
+  enemy.queuedAttack = null;
+  enemy.attackType = null;
+
+  enemy.chargingTechnique = 0;
+  enemy.chargeTicks = 0;
+  enemy.cpuTechniqueReleaseTicks = 0;
+  enemy.techniqueAim = null;
+
+  enemy.fugaAiming = false;
+  enemy.fugaChargeTicks = 0;
+  enemy.teleportAiming = false;
+  enemy.ultimateAiming = false;
+  enemy.ultimateAimTicks = 0;
+  enemy.ultimateStartup = 0;
+  enemy.ultimateRecovery = 0;
+  enemy.ultimateFinalCharge = 0;
+  enemy.ultimateMove = null;
+  enemy.ultimateHasReleased = false;
+
+  // Clear a broken domain windup only if it is not currently the active domain.
+  const enemyOwner = getFighterOwner(enemy);
+  if (!activeDomain || activeDomain.owner !== enemyOwner) {
+    enemy.domainStartup = 0;
+    enemy.domainAttemptType = null;
+    if (pendingDomain && pendingDomain.owner === enemyOwner) pendingDomain = null;
+  }
+
+  enemy.rctHealing = false;
+  enemy.blocking = false;
+  setShielding(enemy, false);
+
+  enemy.dodging = 0;
+  enemy.stun = Math.min(enemy.stun || 0, 6);
+  enemy.hurt = Math.min(enemy.hurt || 0, 4);
+
+  if (enemy.knockdown && enemy.grounded) {
+    enemy.knockdown = false;
+    enemy.knockdownTimer = 0;
+  }
+
+  enemy.aiCooldown = 0;
+  enemy.aiGoal = "approach";
+
+  if (!Number.isFinite(enemy.x)) enemy.x = STAGE_W - 210;
+  if (!Number.isFinite(enemy.y)) enemy.y = GROUND - enemy.h;
+  if (!Number.isFinite(enemy.vx)) enemy.vx = 0;
+  if (!Number.isFinite(enemy.vy)) enemy.vy = 0;
+
+  enemy.x = clampStageX(enemy.x, enemy.w);
+  enemy.y = Math.max(-900, Math.min(GROUND - enemy.h, enemy.y));
+
+  if (player && !player.ko) {
+    enemy.dir = enemy.x + enemy.w / 2 < player.x + player.w / 2 ? 1 : -1;
+    enemy.vx = enemy.dir * enemy.speed * 0.65;
+  }
+
+  cpuStuckWatchdog.stillFrames = 0;
+  cpuStuckWatchdog.specialFrames = 0;
+  cpuStuckWatchdog.x = enemy.x;
+  cpuStuckWatchdog.y = enemy.y;
+  cpuStuckWatchdog.goal = enemy.aiGoal;
+}
+
+function updateCpuStuckRecovery() {
+  if (!enemy || !player || gameMode !== "cpu" || pacifistBot || gameState !== "playing" || gameOver || paused) {
+    cpuStuckWatchdog.x = null;
+    cpuStuckWatchdog.y = null;
+    cpuStuckWatchdog.stillFrames = 0;
+    cpuStuckWatchdog.specialFrames = 0;
+    return;
+  }
+
+  if (!Number.isFinite(enemy.aiCooldown)) enemy.aiCooldown = 0;
+  if (!Number.isFinite(enemy.vx)) enemy.vx = 0;
+  if (!Number.isFinite(enemy.vy)) enemy.vy = 0;
+  if (!Number.isFinite(enemy.ce)) enemy.ce = Math.max(0, enemy.maxCe || MAX_CE);
+  if (!Number.isFinite(enemy.ultimateMeter)) enemy.ultimateMeter = 0;
+
+  const cpu = cpuSettings[cpuDifficulty] || cpuSettings.medium;
+
+  // If Fuga aim becomes impossible, cancel it instead of letting CPU stay frozen.
+  if (enemy.fugaAiming) {
+    if (!canMaintainFugaCharge(enemy)) {
+      resetCpuBrokenState("invalid fuga aim");
+      return;
+    }
+    if ((enemy.fugaChargeTicks || 0) > FUGA_CHARGE_TICKS + 45) {
+      if (!startFuga(enemy, getCpuAimPoint(cpu))) resetCpuBrokenState("fuga overcharge");
+      return;
+    }
+  }
+
+  // If Limitless charge gets stuck past full charge, release it or cancel it.
+  if (enemy.chargingTechnique) {
+    const limit = enemy.technique === "limitless" ? LIMITLESS_CHARGE_MAX_TICKS + 60 : 90;
+    if ((enemy.chargeTicks || 0) > limit) {
+      const slot = enemy.chargingTechnique;
+      releaseTechniqueCharge(enemy, slot, getCpuAimPoint(cpu));
+      if (enemy.chargingTechnique) resetCpuBrokenState("technique charge stuck");
+      return;
+    }
+  }
+
+  // Domain startup should never last way beyond the startup timer.
+  if ((enemy.domainStartup || 0) > DOMAIN_STARTUP_TICKS + 45) {
+    resetCpuBrokenState("domain startup stuck");
+    return;
+  }
+
+  // Ultimate locks should also clear if they somehow survive too long.
+  const ultimateLocked =
+    enemy.ultimateAiming ||
+    (enemy.ultimateStartup || 0) > WORLD_SLASH_STARTUP_TICKS + 90 ||
+    (enemy.ultimateRecovery || 0) > WORLD_SLASH_RECOVERY_TICKS + 90 ||
+    (enemy.ultimateFinalCharge || 0) > ULT_AIM_TOTAL_TICKS + 90;
+  if (ultimateLocked) {
+    cpuStuckWatchdog.specialFrames += 1;
+    if (cpuStuckWatchdog.specialFrames > 150) {
+      resetCpuBrokenState("ultimate state stuck");
+      return;
+    }
+  } else if (!enemy.fugaAiming && !enemy.chargingTechnique && !(enemy.domainStartup || 0)) {
+    cpuStuckWatchdog.specialFrames = 0;
+  }
+
+  const lastX = cpuStuckWatchdog.x;
+  const lastY = cpuStuckWatchdog.y;
+  const moved = lastX === null || lastY === null
+    ? true
+    : Math.hypot(enemy.x - lastX, enemy.y - lastY) > 0.35 || Math.abs(enemy.vx || 0) > 0.08 || Math.abs(enemy.vy || 0) > 0.08;
+
+  const distance = Math.abs((player.x + player.w / 2) - (enemy.x + enemy.w / 2));
+  const lightAttack = getAttackSpec(enemy, "light");
+  const lightHitDistance = lightAttack.range + (player.w + enemy.w) / 2 - 10;
+  const shouldBeDoingSomething = distance > lightHitDistance + 18 && !enemy.attacking && !enemy.rctHealing && enemy.stun <= 0 && !enemy.knockdown && !enemy.ko;
+
+  if (moved || enemy.aiGoal !== cpuStuckWatchdog.goal) {
+    cpuStuckWatchdog.stillFrames = 0;
+    cpuStuckWatchdog.x = enemy.x;
+    cpuStuckWatchdog.y = enemy.y;
+    cpuStuckWatchdog.goal = enemy.aiGoal;
+    return;
+  }
+
+  if (shouldBeDoingSomething) {
+    cpuStuckWatchdog.stillFrames += 1;
+  } else {
+    cpuStuckWatchdog.stillFrames = Math.max(0, cpuStuckWatchdog.stillFrames - 2);
+  }
+
+  // Four seconds of doing nothing is treated as broken AI.
+  if (cpuStuckWatchdog.stillFrames > 240) {
+    resetCpuBrokenState("idle watchdog");
+  }
+}
+
+
 function updateEnemyAi() {
+  updateCpuStuckRecovery();
+
   if (gameOver || isSpecialLocked(enemy) || enemy.stun > 0 || enemy.knockdown) return;
-  enemy.aiCooldown -= 1;
+
+  enemy.aiCooldown = Number.isFinite(enemy.aiCooldown) ? enemy.aiCooldown - 1 : 0;
   const cpu = cpuSettings[cpuDifficulty] || cpuSettings.medium;
   const distance = Math.abs((player.x + player.w / 2) - (enemy.x + enemy.w / 2));
   const lightAttack = getAttackSpec(enemy, "light");
@@ -7899,6 +8118,54 @@ function drawBuildings(offset, baseY, color) {
 }
 
 function drawViewportBackdrop() {
+  // DOMAIN_VIEWPORT_BLEND_PATCH
+  // Blend the entire visible canvas into the active domain so the top band
+  // does not stay as a flat gray/blue box.
+  if (activeDomain || pendingDomain || domainClash) {
+    const type = activeDomain?.type || pendingDomain?.type || "domainClash";
+
+    if (domainClash) {
+      const split = W * 0.5;
+      const left = ctx.createLinearGradient(0, 0, 0, H);
+      left.addColorStop(0, "#223253");
+      left.addColorStop(1, "#050812");
+      ctx.fillStyle = left;
+      ctx.fillRect(0, 0, split, H);
+
+      const right = ctx.createLinearGradient(split, 0, split, H);
+      right.addColorStop(0, "#3a0a10");
+      right.addColorStop(1, "#090103");
+      ctx.fillStyle = right;
+      ctx.fillRect(split, 0, W - split, H);
+
+      ctx.fillStyle = "rgba(255,255,255,0.08)";
+      ctx.fillRect(split - 2, 0, 4, H);
+      return;
+    }
+
+    if (type === "unlimitedVoid") {
+      const bg = ctx.createLinearGradient(0, 0, 0, H);
+      bg.addColorStop(0, "#101931");
+      bg.addColorStop(0.22, "#091020");
+      bg.addColorStop(0.58, "#040913");
+      bg.addColorStop(1, "#010205");
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, W, H);
+      return;
+    }
+
+    if (type === "malevolentShrine") {
+      const bg = ctx.createLinearGradient(0, 0, 0, H);
+      bg.addColorStop(0, "#39080e");
+      bg.addColorStop(0.28, "#240206");
+      bg.addColorStop(0.62, "#130103");
+      bg.addColorStop(1, "#090102");
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, W, H);
+      return;
+    }
+  }
+
   ctx.fillStyle = "#202b48";
   ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = "#27202a";
@@ -10710,12 +10977,20 @@ window.addEventListener("keyup", (event) => {
   if (isEventForAction("specialAim", key, code) && !homeOpen && !paused && gameState === "playing") {
     const active = gameMode === "online" && onlineRole === "p2" ? enemy : player;
     if (active?.fugaAiming) {
+      if (isOnlineJoinerControlledFighter(active)) {
+        active.techniqueAim = sanitizeAimPoint(active?.techniqueAim || mouseAimWorld) || active.techniqueAim;
+        active.fugaChargeTicks = Math.max(active.fugaChargeTicks || 0, FUGA_CHARGE_TICKS);
+      }
       startFuga(active, active?.techniqueAim || mouseAimWorld);
       clearSpecialHoldState(active);
       if (gameMode === "online" && onlineRole === "p2") sendOnlineInput("fuga", active?.techniqueAim || mouseAimWorld);
       return;
     }
     if (active?.teleportAiming) {
+      if (isOnlineJoinerControlledFighter(active)) {
+        active.techniqueAim = sanitizeAimPoint(active?.techniqueAim || mouseAimWorld) || active.techniqueAim;
+        active.teleportAiming = true;
+      }
       performTeleport(active, active?.techniqueAim || mouseAimWorld);
       clearSpecialHoldState(active);
       if (gameMode === "online" && onlineRole === "p2") sendOnlineInput("teleport", active?.techniqueAim || mouseAimWorld);
