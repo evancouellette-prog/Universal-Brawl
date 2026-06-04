@@ -705,6 +705,7 @@ function updateMusicProgressUi() {
   musicProgressTracks.forEach((track) => {
     track.setAttribute("aria-valuenow", String(Math.round(progressPercent)));
   });
+  updateRadioSeekSliderUi(progress);
 }
 
 function updateMusicToggleButtons() {
@@ -859,38 +860,16 @@ function closeRadioScreen() {
   radioScreen.classList.add("hidden");
 }
 
-function getEventClientX(event) {
-  if (Number.isFinite(event?.clientX)) return event.clientX;
-  if (event?.touches && event.touches[0] && Number.isFinite(event.touches[0].clientX)) return event.touches[0].clientX;
-  if (event?.changedTouches && event.changedTouches[0] && Number.isFinite(event.changedTouches[0].clientX)) return event.changedTouches[0].clientX;
-  return NaN;
-}
-
-function getRadioSeekTrackFromEvent(event) {
-  const target = event?.target;
-
-  if (target && target.closest) {
-    const direct = target.closest(".music-progress-track");
-    if (direct) return direct;
-  }
-
-  const clientX = getEventClientX(event);
-  const clientY = Number.isFinite(event?.clientY) ? event.clientY : NaN;
-  if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return null;
-
-  return Array.from(document.querySelectorAll(".music-progress-track")).find((track) => {
-    const rect = track.getBoundingClientRect();
-    return rect.width > 0 &&
-      rect.height > 0 &&
-      clientX >= rect.left &&
-      clientX <= rect.right &&
-      clientY >= rect.top - 12 &&
-      clientY <= rect.bottom + 12;
-  }) || null;
-}
+// RADIO_SEEK_RANGE_PATCH
+// Checked fix: the old seek code used pointer coordinates and sometimes called
+// audio reload paths, which made seeking look like a song restart.
+// This patch puts an actual invisible range slider over every progress bar.
+let pendingMusicSeekRatio = null;
 
 function getSeekableMusicDuration() {
-  if (Number.isFinite(battleMusic.duration) && battleMusic.duration > 0) return battleMusic.duration;
+  if (Number.isFinite(battleMusic.duration) && battleMusic.duration > 0) {
+    return battleMusic.duration;
+  }
 
   try {
     if (battleMusic.seekable && battleMusic.seekable.length > 0) {
@@ -902,21 +881,27 @@ function getSeekableMusicDuration() {
   return 0;
 }
 
-let pendingMusicSeekRatio = null;
-
-function applyMusicSeekRatio(ratio) {
+function seekRadioToRatio(ratio) {
+  const cleanRatio = Math.max(0, Math.min(1, Number(ratio) || 0));
   const duration = getSeekableMusicDuration();
-  if (duration <= 0) return false;
 
-  const seekTime = Math.max(0, Math.min(duration - 0.08, ratio * duration));
+  if (duration <= 0) {
+    pendingMusicSeekRatio = cleanRatio;
+    // Start/load the current track if needed, but do not call battleMusic.load()
+    // directly from seeking because that resets playback to 0.
+    startBackgroundMusic();
+    return false;
+  }
 
-  // IMPORTANT: do not call battleMusic.load() or updateBattleMusicState() here.
-  // Both can restart the song. Seeking should only change currentTime.
+  pendingMusicSeekRatio = null;
+  const targetTime = Math.max(0, Math.min(duration - 0.05, cleanRatio * duration));
+  const wasPlaying = !battleMusic.paused && !musicMuted;
+
   try {
-    battleMusic.currentTime = seekTime;
+    battleMusic.currentTime = targetTime;
   } catch (err) {
     try {
-      if (typeof battleMusic.fastSeek === "function") battleMusic.fastSeek(seekTime);
+      if (typeof battleMusic.fastSeek === "function") battleMusic.fastSeek(targetTime);
       else return false;
     } catch (err2) {
       return false;
@@ -925,7 +910,7 @@ function applyMusicSeekRatio(ratio) {
 
   updateMusicProgressUi();
 
-  if (!musicMuted && backgroundMusicStarted) {
+  if ((wasPlaying || backgroundMusicStarted) && !musicMuted) {
     const playPromise = battleMusic.play();
     if (playPromise) playPromise.catch(() => {});
   }
@@ -933,132 +918,88 @@ function applyMusicSeekRatio(ratio) {
   return true;
 }
 
-function seekMusicFromProgressTrack(event) {
-  const track = event.currentTarget?.classList?.contains("music-progress-track")
-    ? event.currentTarget
-    : getRadioSeekTrackFromEvent(event);
-
-  if (!track) return;
-
-  event.preventDefault();
-  event.stopPropagation();
-  if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
-
-  const rect = track.getBoundingClientRect();
-  const clientX = getEventClientX(event);
-  if (!Number.isFinite(clientX) || rect.width <= 0) return;
-
-  const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-  pendingMusicSeekRatio = ratio;
-
-  if (applyMusicSeekRatio(ratio)) {
-    pendingMusicSeekRatio = null;
-    return;
-  }
-
-  // Metadata is not ready yet. Do NOT call load(); that restarts audio.
-  // Just make sure the current track source exists and apply the seek when metadata arrives.
-  updateBattleMusicState(false);
+function updateRadioSeekSliderUi(progress) {
+  const value = String(Math.round(Math.max(0, Math.min(1, progress || 0)) * 1000));
+  document.querySelectorAll(".radio-seek-range").forEach((slider) => {
+    if (slider.dataset.dragging === "1") return;
+    if (String(slider.value) !== value) slider.value = value;
+  });
 }
-
-battleMusic.addEventListener("loadedmetadata", () => {
-  if (pendingMusicSeekRatio === null) return;
-  if (applyMusicSeekRatio(pendingMusicSeekRatio)) pendingMusicSeekRatio = null;
-});
-
-battleMusic.addEventListener("durationchange", () => {
-  if (pendingMusicSeekRatio === null) return;
-  if (applyMusicSeekRatio(pendingMusicSeekRatio)) pendingMusicSeekRatio = null;
-});
-
-
-// RADIO_SEEK_BAR_PATCH
-// Click or drag on the radio song time bar to jump to that exact point.
-// This version only seeks once per pointer event and never calls audio.load().
-let musicSeekingPointerDown = false;
 
 function installRadioSeekListeners() {
   const tracks = Array.from(document.querySelectorAll(".music-progress-track"));
   tracks.forEach((track) => {
-    if (track.dataset.seekInstalled === "1") return;
-    track.dataset.seekInstalled = "1";
-
+    track.style.position = track.style.position || "relative";
     track.style.cursor = "pointer";
     track.style.pointerEvents = "auto";
-    track.setAttribute("title", "Click to seek");
+    track.setAttribute("title", "Click or drag to seek");
 
-    const fills = track.querySelectorAll(".music-progress-fill, *");
-    fills.forEach((el) => {
-      if (el.classList && el.classList.contains("music-progress-fill")) {
-        el.style.pointerEvents = "none";
-      }
-    });
+    const fill = track.querySelector(".music-progress-fill");
+    if (fill) fill.style.pointerEvents = "none";
 
-    track.addEventListener("pointerdown", (event) => {
-      musicSeekingPointerDown = true;
-      seekMusicFromProgressTrack(event);
+    if (track.querySelector(".radio-seek-range")) return;
+
+    const slider = document.createElement("input");
+    slider.type = "range";
+    slider.min = "0";
+    slider.max = "1000";
+    slider.step = "1";
+    slider.value = "0";
+    slider.className = "radio-seek-range";
+    slider.setAttribute("aria-label", "Song position");
+
+    slider.addEventListener("pointerdown", (event) => {
+      event.stopPropagation();
+      if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
+      slider.dataset.dragging = "1";
+      startBackgroundMusic();
     }, true);
 
-    track.addEventListener("pointermove", (event) => {
-      if (!musicSeekingPointerDown) return;
-      seekMusicFromProgressTrack(event);
+    slider.addEventListener("input", (event) => {
+      event.stopPropagation();
+      if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
+      seekRadioToRatio(Number(slider.value) / 1000);
     }, true);
 
-    track.addEventListener("pointerup", (event) => {
-      if (!musicSeekingPointerDown) return;
-      musicSeekingPointerDown = false;
-      seekMusicFromProgressTrack(event);
+    slider.addEventListener("change", (event) => {
+      event.stopPropagation();
+      if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
+      seekRadioToRatio(Number(slider.value) / 1000);
+      slider.dataset.dragging = "0";
     }, true);
 
-    track.addEventListener("click", (event) => {
-      seekMusicFromProgressTrack(event);
+    slider.addEventListener("pointerup", (event) => {
+      event.stopPropagation();
+      if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
+      seekRadioToRatio(Number(slider.value) / 1000);
+      slider.dataset.dragging = "0";
     }, true);
+
+    slider.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
+      seekRadioToRatio(Number(slider.value) / 1000);
+    }, true);
+
+    track.appendChild(slider);
   });
 }
 
-// Document fallback is only for drags after the pointer leaves the bar.
-// Initial clicks are handled by the bar itself, preventing double-seek/restart bugs.
-document.addEventListener("pointermove", (event) => {
-  if (!musicSeekingPointerDown) return;
-  seekMusicFromProgressTrack(event);
-}, true);
+battleMusic.addEventListener("loadedmetadata", () => {
+  if (pendingMusicSeekRatio === null) return;
+  seekRadioToRatio(pendingMusicSeekRatio);
+});
 
-document.addEventListener("pointerup", (event) => {
-  if (!musicSeekingPointerDown) return;
-  musicSeekingPointerDown = false;
-  seekMusicFromProgressTrack(event);
-}, true);
-
-document.addEventListener("pointercancel", () => {
-  musicSeekingPointerDown = false;
-}, true);
+battleMusic.addEventListener("durationchange", () => {
+  if (pendingMusicSeekRatio === null) return;
+  seekRadioToRatio(pendingMusicSeekRatio);
+});
 
 installRadioSeekListeners();
 window.addEventListener("DOMContentLoaded", installRadioSeekListeners);
 window.addEventListener("load", installRadioSeekListeners);
 window.setTimeout(installRadioSeekListeners, 0);
 window.setInterval(installRadioSeekListeners, 1000);
-
-
-// RADIO_SEEK_CLICK_AREA_STYLE_PATCH
-window.setTimeout(() => {
-  if (document.getElementById("radioSeekClickAreaStyle")) return;
-  const style = document.createElement("style");
-  style.id = "radioSeekClickAreaStyle";
-  style.textContent = `
-    .music-progress-track {
-      min-height: 14px !important;
-      cursor: pointer !important;
-      pointer-events: auto !important;
-      position: relative;
-    }
-    .music-progress-fill {
-      pointer-events: none !important;
-    }
-  `;
-  document.head.appendChild(style);
-}, 0);
-
 
 // RADIO_SEEK_CLICK_AREA_STYLE_PATCH
 window.setTimeout(() => {
@@ -1070,10 +1011,27 @@ window.setTimeout(() => {
       min-height: 18px !important;
       cursor: pointer !important;
       pointer-events: auto !important;
-      position: relative;
+      position: relative !important;
     }
     .music-progress-fill {
       pointer-events: none !important;
+    }
+    .radio-seek-range {
+      position: absolute !important;
+      left: 0 !important;
+      right: 0 !important;
+      top: -8px !important;
+      bottom: -8px !important;
+      width: 100% !important;
+      height: calc(100% + 16px) !important;
+      opacity: 0 !important;
+      cursor: pointer !important;
+      z-index: 30 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      appearance: none !important;
+      -webkit-appearance: none !important;
+      pointer-events: auto !important;
     }
   `;
   document.head.appendChild(style);
