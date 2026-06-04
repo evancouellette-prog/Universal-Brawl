@@ -243,9 +243,19 @@ let musicMuted = false;
 let currentRadioTrackIndex = loadSavedTrackIndex();
 let lastMusicSeekStamp = 0;
 // MUSIC_CONTINUES_THROUGH_MATCH_START
-const battleMusic = new Audio();
+// RADIO_AUDIO_ELEMENT_PATCH
+// Use a real <audio> element so seeking works like:
+// seekBar.value / 100 * audio.duration -> audio.currentTime.
+let battleMusic = document.getElementById("gameSong");
+if (!battleMusic) {
+  battleMusic = document.createElement("audio");
+  battleMusic.id = "gameSong";
+  battleMusic.preload = "metadata";
+  battleMusic.style.display = "none";
+  document.body.appendChild(battleMusic);
+}
 battleMusic.loop = false;
-battleMusic.preload = "auto";
+battleMusic.preload = "metadata";
 const countdownSound = new Audio("assets/countdown.mp3");
 countdownSound.preload = "auto";
 countdownSound.volume = 0.95;
@@ -804,9 +814,11 @@ function updateBattleMusicState(restart = false) {
   if (battleMusic.src !== targetSrc) {
     battleMusic.pause();
     battleMusic.src = targetSrc;
+    battleMusic.preload = "metadata";
     battleMusic.currentTime = 0;
     battleMusic.load();
     updateMusicProgressUi();
+    installRadioSeekListeners();
   } else if (restart) {
     // Keep the same song playing from the same timestamp when a match starts.
     // Manual track changes still restart because those change battleMusic.src.
@@ -861,16 +873,23 @@ function closeRadioScreen() {
 }
 
 // RADIO_SEEK_RANGE_PATCH
-// Simple version: every progress bar gets a real <input type="range">.
-// On input: audio.currentTime = percent * audio.duration.
+// Uses <audio id="gameSong"> and direct range input seeking.
 let pendingMusicSeekPercent = null;
 
+function getRadioAudio() {
+  return document.getElementById("gameSong") || battleMusic;
+}
+
 function getRadioAudioDuration() {
-  if (Number.isFinite(battleMusic.duration) && battleMusic.duration > 0) return battleMusic.duration;
+  const audio = getRadioAudio();
+  if (audio && Number.isFinite(audio.duration) && audio.duration > 0) return audio.duration;
   return 0;
 }
 
 function seekRadioPercent(percent) {
+  const audio = getRadioAudio();
+  if (!audio) return false;
+
   const cleanPercent = Math.max(0, Math.min(100, Number(percent) || 0));
   const duration = getRadioAudioDuration();
 
@@ -882,14 +901,15 @@ function seekRadioPercent(percent) {
   pendingMusicSeekPercent = null;
 
   const newTime = (cleanPercent / 100) * duration;
+  audio.currentTime = Math.max(0, Math.min(duration - 0.05, newTime));
 
-  // This is the important part. Do not call load(), do not call setRadioTrack(),
-  // and do not call updateBattleMusicState() here, because those can restart the song.
-  battleMusic.currentTime = Math.max(0, Math.min(duration - 0.05, newTime));
+  // Keep the variable in sync in case any old code still references battleMusic.
+  battleMusic = audio;
+
   updateMusicProgressUi();
 
-  if (backgroundMusicStarted && !musicMuted && battleMusic.paused) {
-    const playPromise = battleMusic.play();
+  if (backgroundMusicStarted && !musicMuted && audio.paused) {
+    const playPromise = audio.play();
     if (playPromise) playPromise.catch(() => {});
   }
 
@@ -934,52 +954,47 @@ function installRadioSeekListeners() {
 
     seekBar.addEventListener("pointerdown", (event) => {
       event.stopPropagation();
+      if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
       seekBar.dataset.userSeeking = "1";
       startBackgroundMusic();
-    });
+    }, true);
 
     seekBar.addEventListener("input", (event) => {
       event.stopPropagation();
-
-      const percent = Number(seekBar.value);
-      const duration = getRadioAudioDuration();
-      if (duration > 0) {
-        const newTime = (percent / 100) * duration;
-        battleMusic.currentTime = Math.max(0, Math.min(duration - 0.05, newTime));
-        updateMusicProgressUi();
-      } else {
-        pendingMusicSeekPercent = percent;
-      }
-    });
+      if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
+      seekRadioPercent(Number(seekBar.value));
+    }, true);
 
     seekBar.addEventListener("change", (event) => {
       event.stopPropagation();
+      if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
       seekRadioPercent(Number(seekBar.value));
       seekBar.dataset.userSeeking = "0";
-    });
+    }, true);
 
     seekBar.addEventListener("pointerup", (event) => {
       event.stopPropagation();
+      if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
       seekRadioPercent(Number(seekBar.value));
       seekBar.dataset.userSeeking = "0";
-    });
+    }, true);
 
     seekBar.addEventListener("click", (event) => {
       event.stopPropagation();
+      if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
       seekRadioPercent(Number(seekBar.value));
-    });
+    }, true);
   });
 }
 
-battleMusic.addEventListener("loadedmetadata", () => {
+function applyPendingRadioSeek() {
   if (pendingMusicSeekPercent === null) return;
   seekRadioPercent(pendingMusicSeekPercent);
-});
+}
 
-battleMusic.addEventListener("durationchange", () => {
-  if (pendingMusicSeekPercent === null) return;
-  seekRadioPercent(pendingMusicSeekPercent);
-});
+battleMusic.addEventListener("loadedmetadata", applyPendingRadioSeek);
+battleMusic.addEventListener("durationchange", applyPendingRadioSeek);
+battleMusic.addEventListener("canplay", applyPendingRadioSeek);
 
 installRadioSeekListeners();
 window.addEventListener("DOMContentLoaded", installRadioSeekListeners);
@@ -994,7 +1009,7 @@ window.setTimeout(() => {
   style.id = "radioSeekClickAreaStyle";
   style.textContent = `
     .music-progress-track {
-      min-height: 22px !important;
+      min-height: 24px !important;
       cursor: pointer !important;
       pointer-events: auto !important;
       position: relative !important;
@@ -1008,9 +1023,9 @@ window.setTimeout(() => {
     .radio-seek-bar {
       position: absolute !important;
       left: 0 !important;
-      top: -8px !important;
+      top: -9px !important;
       width: 100% !important;
-      height: calc(100% + 16px) !important;
+      height: calc(100% + 18px) !important;
       z-index: 9999 !important;
       cursor: pointer !important;
       margin: 0 !important;
