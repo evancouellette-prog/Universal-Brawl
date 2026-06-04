@@ -851,12 +851,30 @@ function closeRadioScreen() {
 }
 
 // RADIO_SEEK_RANGE_PATCH
-// Adapted from the uploaded music-bar-copy-paste-kit.
-// Uses this game's existing classes:
-// .music-progress-track, .music-progress-fill, .music-time-current, .music-time-duration,
-// .music-toggle-button, .music-prev-button, .music-next-button.
+// Conflict-checked seek system.
+// The bug was caused by old/global music-start code firing on the progress bar.
+// This version only sets currentTime and never calls load(), setRadioTrack(), or restart paths while seeking.
+let pendingRadioSeekPercent = null;
+
 function getRadioAudio() {
   return document.getElementById("gameSong") || battleMusic;
+}
+
+function getRadioAudioDuration() {
+  const song = getRadioAudio();
+  return song && Number.isFinite(song.duration) && song.duration > 0 ? song.duration : 0;
+}
+
+function getRadioClickPercent(track, event) {
+  if (!track || !event) return null;
+  const box = track.getBoundingClientRect();
+  if (!box || box.width <= 0) return null;
+
+  const clientX = Number.isFinite(event.clientX) ? event.clientX : null;
+  if (clientX === null) return null;
+
+  const clickX = clientX - box.left;
+  return Math.min(Math.max(clickX / box.width, 0), 1);
 }
 
 function updateMusicProgressUi() {
@@ -884,45 +902,58 @@ function updateMusicProgressUi() {
   });
 }
 
-async function playRadioSong() {
+function applyRadioSeekPercent(percent) {
   const song = getRadioAudio();
-  if (!song) return;
+  if (!song) return false;
 
-  try {
-    await song.play();
-    backgroundMusicStarted = true;
-    musicMuted = false;
-    updateMusicToggleButtons();
-  } catch (error) {
-    updateMusicToggleButtons();
+  const cleanPercent = Math.min(Math.max(Number(percent) || 0, 0), 1);
+  const duration = getRadioAudioDuration();
+
+  if (duration <= 0) {
+    pendingRadioSeekPercent = cleanPercent;
+
+    // Make sure the current track source is selected, but do not restart if already selected.
+    const track = getCurrentRadioTrack();
+    if (track?.src) {
+      const targetSrc = new URL(track.src, window.location.href).href;
+      if (song.src !== targetSrc) {
+        song.src = targetSrc;
+        song.preload = "metadata";
+      }
+    }
+    return false;
   }
+
+  pendingRadioSeekPercent = null;
+  song.currentTime = Math.max(0, Math.min(duration - 0.05, cleanPercent * duration));
+  battleMusic = song;
+  updateMusicProgressUi();
+
+  // If it was already playing, keep it playing. Do not start/reload from 0.
+  if (backgroundMusicStarted && !musicMuted && song.paused) {
+    const playPromise = song.play();
+    if (playPromise) playPromise.catch(() => {});
+  }
+
+  return true;
 }
 
-function pauseRadioSong() {
-  const song = getRadioAudio();
-  if (!song) return;
-
-  song.pause();
-  updateMusicToggleButtons();
+function applyPendingRadioSeek() {
+  if (pendingRadioSeekPercent === null) return;
+  applyRadioSeekPercent(pendingRadioSeekPercent);
 }
 
 function seekRadioFromTrack(track, event) {
-  const song = getRadioAudio();
-  if (!song || !track || !song.duration) return;
+  if (!track || !event) return;
 
   event.preventDefault();
   event.stopPropagation();
   if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
 
-  const trackBox = track.getBoundingClientRect();
-  if (!trackBox || trackBox.width <= 0) return;
+  const percent = getRadioClickPercent(track, event);
+  if (percent === null) return;
 
-  const clickX = event.clientX - trackBox.left;
-  const percent = Math.min(Math.max(clickX / trackBox.width, 0), 1);
-
-  song.currentTime = percent * song.duration;
-  battleMusic = song;
-  updateMusicProgressUi();
+  applyRadioSeekPercent(percent);
 }
 
 function installRadioSeekListeners() {
@@ -938,15 +969,28 @@ function installRadioSeekListeners() {
     const fill = track.querySelector(".music-progress-fill");
     if (fill) fill.style.pointerEvents = "none";
 
+    track.addEventListener("pointerdown", (event) => {
+      // Seek immediately on pointerdown so it feels responsive.
+      seekRadioFromTrack(track, event);
+    }, true);
+
     track.addEventListener("click", (event) => {
+      // Click backup for browsers that don't fire pointerdown normally.
       seekRadioFromTrack(track, event);
     }, true);
   });
 }
 
-battleMusic.addEventListener("loadedmetadata", updateMusicProgressUi);
+battleMusic.addEventListener("loadedmetadata", () => {
+  applyPendingRadioSeek();
+  updateMusicProgressUi();
+});
+battleMusic.addEventListener("durationchange", () => {
+  applyPendingRadioSeek();
+  updateMusicProgressUi();
+});
+battleMusic.addEventListener("canplay", applyPendingRadioSeek);
 battleMusic.addEventListener("timeupdate", updateMusicProgressUi);
-battleMusic.addEventListener("durationchange", updateMusicProgressUi);
 battleMusic.addEventListener("ended", () => {
   updateMusicProgressUi();
   playNextSong();
@@ -966,8 +1010,8 @@ window.setTimeout(() => {
   style.textContent = `
     .music-progress-track {
       flex: 1;
-      height: 16px !important;
-      min-height: 16px !important;
+      height: 12px !important;
+      min-height: 12px !important;
       border-radius: 999px !important;
       background: #11131a !important;
       cursor: pointer !important;
@@ -992,7 +1036,8 @@ window.setTimeout(() => {
     }
 
     .radio-seek-disabled,
-    .radio-seek-disabled {
+    .radio-seek-bar,
+    .radio-seek-range {
       display: none !important;
       pointer-events: none !important;
     }
@@ -1244,7 +1289,13 @@ document.addEventListener("click", (event) => {
   playButtonClickSound();
 }, true);
 
-document.addEventListener("pointerdown", () => {
+document.addEventListener("pointerdown", (event) => {
+  // RADIO_SEEK_CONFLICT_FIX:
+  // Do not let the global "start music" handler run on the seek bar.
+  // That handler can load/restart the audio before the seek click is processed.
+  if (event.target && event.target.closest && event.target.closest(".music-progress-track, .music-progress-fill, .music-player, #radioScreen")) {
+    return;
+  }
   startBackgroundMusic();
 }, true);
 
