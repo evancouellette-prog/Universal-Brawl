@@ -1367,6 +1367,8 @@ const W = canvas.width;
 const H = canvas.height;
 const STAGE_W = 1600;
 const GROUND = 438;
+const OPEN_TOP_BOUNDARY = -900; // No solid roof: fighters/projectiles can go above the visible map.
+
 const NORMAL_JUMP_VELOCITY = -16.8;
 const BASE_PLATFORMS = [
   { x: 255, y: 270, w: 260, h: 22 },
@@ -1652,7 +1654,7 @@ function sanitizeAimPoint(aimPoint) {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
   return {
     x: Math.max(0, Math.min(STAGE_W, x)),
-    y: Math.max(-90, Math.min(H + 90, y))
+    y: Math.max(-900, Math.min(H + 180, y))
   };
 }
 
@@ -6266,7 +6268,7 @@ function applyOnlineDamageToPlayer(hit) {
 
   if (hasPredictedDefenderPosition) {
     player.x = clampStageX(Number(hit.defenderX), player.w);
-    player.y = Math.max(-100, Math.min(GROUND - player.h, Number(hit.defenderY)));
+    player.y = Math.max(-900, Math.min(GROUND - player.h, Number(hit.defenderY)));
   }
 
   if (Number.isFinite(Number(hit.defenderVx))) player.vx = Number(hit.defenderVx);
