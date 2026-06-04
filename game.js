@@ -2604,7 +2604,8 @@ function applyJoinerFighterStateOnHost(remoteFighter) {
     "barrageTimer", "barrageDuration", "barrageHitsDone", "barrageDamageRemaining", "barrageKnockback", "barrageDir", "barrageTarget", "barrageLockX", "barrageLockY",
     "grabThrowTimer", "grabThrowDuration", "grabThrowDir", "grabThrowTarget", "grabThrowAim", "grabThrowLockX", "grabThrowLockY",
     "bluePunchHoldTicks", "bluePunchActiveTicks", "bluePunchCooldown", "bluePunchChases", "bluePunchFlash",
-    "teleportAiming", "teleportCooldown", "fugaAiming", "fugaChargeTicks", "fugaCooldown", "fugaCooldownMax", "ultimateAiming", "ultimateAimPoint"
+    "teleportAiming", "teleportCooldown", "fugaAiming", "fugaChargeTicks", "fugaCooldown", "fugaCooldownMax", "ultimateAiming", "ultimateAimPoint",
+    "ce", "maxCe", "ultimateMeter", "domainStartup", "domainAttemptType", "ctLockTimer"
   ];
 
   fields.forEach((field) => {
@@ -2767,6 +2768,7 @@ if (data.type === "role") {
       activeDomain = data.activeDomain || null;
       pendingDomain = data.pendingDomain || null;
       domainClash = data.domainClash || null;
+      syncDomainStartupLocks();
       setPaused(Boolean(data.paused), false);
       syncOnlineRoundMessage();
       updateControlsVisibility();
@@ -3008,6 +3010,9 @@ function getFighterNetworkState(f) {
     fugaCooldownMax: f.fugaCooldownMax,
     rctHealing: f.rctHealing,
     rctCooldown: f.rctCooldown,
+    domainStartup: f.domainStartup,
+    domainAttemptType: f.domainAttemptType,
+    ctLockTimer: f.ctLockTimer,
     walkCycle: f.walkCycle,
     onPlatform: f.onPlatform
   };
@@ -3931,7 +3936,7 @@ function startKnockout(attacker, defender) {
 
 function jumpEnemy() {
   if (gameOver || enemy.stun > 0 || enemy.dodging > 0 || enemy.attacking || enemy.knockdown || !enemy.grounded) return;
-  enemy.vy = -14.5;
+  enemy.vy = -14.5 * getDomainJumpMultiplier(enemy);
   enemy.grounded = false;
   enemy.jumpsUsed = 1;
   enemy.vx = enemy.dir * enemy.speed * 1.18;
@@ -3939,7 +3944,7 @@ function jumpEnemy() {
 
 function enemyAirHop() {
   if (gameOver || enemy.stun > 0 || enemy.dodging > 0 || enemy.attacking || enemy.knockdown || enemy.jumpsUsed >= 2) return;
-  enemy.vy = -5.4;
+  enemy.vy = -5.4 * getDomainJumpMultiplier(enemy);
   enemy.jumpsUsed = 2;
   enemy.vx = enemy.dir * enemy.speed * 2.25;
 }
@@ -3948,7 +3953,7 @@ function jumpFighterWithMove(f, moveDir) {
   if (gameOver || paused || f.stun > 0 || f.dodging > 0 || f.knockdown) return;
 
   if (f.grounded) {
-    f.vy = NORMAL_JUMP_VELOCITY;
+    f.vy = NORMAL_JUMP_VELOCITY * getDomainJumpMultiplier(f);
     f.grounded = false;
     f.jumpsUsed = 1;
     if (moveDir !== 0) {
@@ -3959,7 +3964,7 @@ function jumpFighterWithMove(f, moveDir) {
   }
 
   if (f.jumpsUsed < 2) {
-    f.vy = -9.2;
+    f.vy = -9.2 * getDomainJumpMultiplier(f);
     f.jumpsUsed = 2;
     const airDir = moveDir || Math.sign(f.vx) || f.dir;
     const jumpingAway = airDir === -f.dir;
@@ -5182,15 +5187,60 @@ function applyActiveDomainTick() {
   if (activeDomain.ticks <= 0) endActiveDomain();
 }
 
+
+// DOMAIN_RUNTIME_FIX
+function syncDomainStartupLocks() {
+  if (!player || !enemy) return;
+
+  const clearBoth = () => {
+    player.domainStartup = 0;
+    player.domainAttemptType = null;
+    enemy.domainStartup = 0;
+    enemy.domainAttemptType = null;
+  };
+
+  if (activeDomain) {
+    clearBoth();
+    return;
+  }
+
+  if (domainClash) {
+    ["player", "enemy"].forEach((owner) => {
+      const attempt = domainClash.attempts?.[owner];
+      const fighter = getFighterByOwner(owner);
+      if (fighter && attempt) {
+        fighter.domainStartup = Math.max(1, domainClash.ticks || 1);
+        fighter.domainAttemptType = attempt.type;
+      }
+    });
+    return;
+  }
+
+  clearBoth();
+
+  if (pendingDomain) {
+    const fighter = getFighterByOwner(pendingDomain.owner);
+    if (fighter) {
+      fighter.domainStartup = Math.max(1, pendingDomain.ticks || 1);
+      fighter.domainAttemptType = pendingDomain.type;
+    }
+  }
+}
+
 function updateDomainSystem() {
   if (gameState !== "playing" || paused || !player || !enemy) return;
   const authoritative = gameMode !== "online" || onlineRole === "p1";
+
   if (domainClash && authoritative) updateDomainClash();
   else if (domainClash) domainClash.ticks = Math.max(0, (domainClash.ticks || 0) - 1);
+
   if (!domainClash && pendingDomain && authoritative) updatePendingDomain();
   else if (!domainClash && pendingDomain) pendingDomain.ticks = Math.max(0, (pendingDomain.ticks || 0) - 1);
+
   if (activeDomain && authoritative) applyActiveDomainTick();
   else if (activeDomain) activeDomain.ticks = Math.max(0, (activeDomain.ticks || 0) - 1);
+
+  syncDomainStartupLocks();
 }
 
 function isBluePunchActive(f) {
@@ -6366,7 +6416,8 @@ function updatePlayer() {
     const backingAway = move !== 0 && move === -player.dir;
     const chargeSlow = player.fugaAiming ? 0.26 : player.chargingTechnique ? 0.28 : 1;
     const rctSlow = player.rctHealing ? RCT_MOVE_MULTIPLIER : 1;
-    const moveSpeed = player.speed * (backingAway ? 0.82 : 1) * chargeSlow * rctSlow;
+    const domainSpeed = getDomainMovementMultiplier(player);
+    const moveSpeed = player.speed * domainSpeed * (backingAway ? 0.82 : 1) * chargeSlow * rctSlow;
     if (player.attacking) {
       if (move !== 0) player.vx = move * moveSpeed * 0.48;
     } else {
@@ -6389,7 +6440,8 @@ function updateRivalPlayer() {
     const move = (right ? 1 : 0) - (left ? 1 : 0);
     const backingAway = move !== 0 && move === -enemy.dir;
     const chargeSlow = enemy.fugaAiming ? 0.26 : enemy.chargingTechnique ? 0.28 : 1;
-    const moveSpeed = enemy.speed * (backingAway ? 0.82 : 1) * chargeSlow;
+    const domainSpeed = getDomainMovementMultiplier(enemy);
+    const moveSpeed = enemy.speed * domainSpeed * (backingAway ? 0.82 : 1) * chargeSlow;
     if (enemy.attacking) {
       if (move !== 0) enemy.vx = move * moveSpeed * 0.48;
     } else {
@@ -6412,7 +6464,8 @@ function applyRemoteRivalInput() {
     const backingAway = move !== 0 && move === -enemy.dir;
     const chargeSlow = enemy.fugaAiming ? 0.26 : enemy.chargingTechnique ? 0.28 : 1;
     const rctSlow = enemy.rctHealing ? RCT_MOVE_MULTIPLIER : 1;
-    const moveSpeed = enemy.speed * (backingAway ? 0.82 : 1) * chargeSlow * rctSlow;
+    const domainSpeed = getDomainMovementMultiplier(enemy);
+    const moveSpeed = enemy.speed * domainSpeed * (backingAway ? 0.82 : 1) * chargeSlow * rctSlow;
     if (enemy.attacking) {
       if (move !== 0) enemy.vx = move * moveSpeed * 0.48;
     } else {
@@ -6440,7 +6493,8 @@ function updateOnlineRivalSelf() {
     const backingAway = move !== 0 && move === -enemy.dir;
     const chargeSlow = enemy.fugaAiming ? 0.26 : enemy.chargingTechnique ? 0.28 : 1;
     const rctSlow = enemy.rctHealing ? RCT_MOVE_MULTIPLIER : 1;
-    const moveSpeed = enemy.speed * (backingAway ? 0.82 : 1) * chargeSlow * rctSlow;
+    const domainSpeed = getDomainMovementMultiplier(enemy);
+    const moveSpeed = enemy.speed * domainSpeed * (backingAway ? 0.82 : 1) * chargeSlow * rctSlow;
     if (enemy.attacking) {
       if (move !== 0) enemy.vx = move * moveSpeed * 0.48;
     } else {
@@ -6998,7 +7052,7 @@ function updateFighter(f, opponent) {
   }
   if (!f.rctHealing && f.ce < f.maxCe) {
     const lowCeBonus = f.ce < f.maxCe * 0.35 ? f.ceLowRegenBonus : 0;
-    f.ce = Math.min(f.maxCe, f.ce + f.ceRegenRate + lowCeBonus);
+    f.ce = Math.min(f.maxCe, f.ce + (f.ceRegenRate + lowCeBonus) * getDomainCeRegenMultiplier(f));
   }
   updateShield(f);
   updateInfinity(f);
@@ -9882,6 +9936,13 @@ function drawUltimateScreenEffects() {
 
 function fixedUpdate() {
   frame += 1;
+
+  // DOMAIN_RUNTIME_FIX
+  // The domain system was defined but never ticked. That meant pending domains
+  // never activated, active domain effects never ran, and the caster could stay
+  // stuck in domainStartup forever.
+  updateDomainSystem();
+
   if (joinerLocalHitLockTicks > 0) joinerLocalHitLockTicks -= 1;
   if (hitStopTicks > 0) {
     hitStopTicks -= 1;
