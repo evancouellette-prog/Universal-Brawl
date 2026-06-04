@@ -1486,6 +1486,9 @@ const DOMAIN_CLASH_WINDOW_TICKS = 180;
 const DOMAIN_CLASH_TICKS = 180;
 const DOMAIN_CT_LOCK_TICKS = 15 * 60;
 const SIMPLE_DOMAIN_TICKS = 6 * 60;
+const BINDING_VOW_TICKS = 12 * 60;
+const BINDING_VOW_CHOICE_TICKS = 4 * 60;
+const BINDING_VOW_QUOTE_TICKS = 96;
 const SIMPLE_DOMAIN_CE_COST_RATIO = 0.32;
 const SIMPLE_DOMAIN_CT_DAMAGE_MULTIPLIER = 1.10;
 const SIMPLE_DOMAIN_SHRINE_DAMAGE_TAKEN_MULTIPLIER = 0.65;
@@ -1944,9 +1947,11 @@ function getTechniqueDisplayName(move) {
   return move.toUpperCase();
 }
 
-function getTechniqueCooldownTicks(move) {
+function getTechniqueCooldownTicks(move, f = null) {
   if (move === "fuga") return techniqueMoves.fuga.cooldown;
-  return move === "red" || move === "cleave" ? TECHNIQUE_HEAVY_COOLDOWN : TECHNIQUE_FAST_COOLDOWN;
+  let base = move === "red" || move === "cleave" ? TECHNIQUE_HEAVY_COOLDOWN : TECHNIQUE_FAST_COOLDOWN;
+  if (move === "cleave" && hasBindingVow(f, "cleave")) base = Math.max(10, Math.ceil(base * 0.55));
+  return base;
 }
 
 function getTechniqueCost(f, move) {
@@ -1954,7 +1959,11 @@ function getTechniqueCost(f, move) {
   if (!spec) return Infinity;
   const multiplier = getCtCostMultiplier(f);
   if (!Number.isFinite(multiplier)) return Infinity;
-  if (f.technique !== "limitless") return Math.ceil(spec.cost * multiplier);
+  if (f.technique !== "limitless") {
+    let cost = spec.cost;
+    if (move === "slash" && hasBindingVow(f, "dismantle")) cost = Math.ceil(cost * 0.65);
+    return Math.ceil(cost * multiplier);
+  }
   const minCost = LIMITLESS_MIN_COSTS[move] || Math.ceil(spec.cost * 0.6);
   return Math.ceil(Math.min(Math.floor(f.maxCe * 0.5), minCost) * multiplier);
 }
@@ -2117,6 +2126,12 @@ function makeFighter(config) {
     simpleDomainTicks: 0,
     simpleDomainFlash: 0,
     simpleDomainCooldown: 0,
+    bindingVowType: null,
+    bindingVowTicks: 0,
+    bindingVowChoiceTicks: 0,
+    bindingVowQuote: "",
+    bindingVowQuoteTicks: 0,
+    bindingVowFlash: 0,
     ctLockTimer: 0,
     damageTakenMultiplier: 1,
     knockbackTakenMultiplier: 1,
@@ -2280,7 +2295,7 @@ function getTechniqueHudState(f, move) {
     };
   }
   if (move === "fuga") {
-    const chargeRatio = Math.max(0, Math.min(1, (f.fugaChargeTicks || 0) / FUGA_CHARGE_TICKS));
+    const chargeRatio = Math.max(0, Math.min(1, (f.fugaChargeTicks || 0) / getFugaRequiredChargeTicks(f)));
     const cost = getTechniqueCost(f, move);
     return {
       cost,
@@ -2298,7 +2313,7 @@ function getTechniqueHudState(f, move) {
     cost,
     cooling: f.techniqueCooldown > 0,
     cooldown: f.techniqueCooldown,
-    maxCooldown: f.techniqueCooldownMax || getTechniqueCooldownTicks(move),
+    maxCooldown: f.techniqueCooldownMax || getTechniqueCooldownTicks(move, f),
     lowCe: f.ce < cost,
     blocked
   };
@@ -2866,7 +2881,8 @@ function applyJoinerFighterStateOnHost(remoteFighter) {
     "grabThrowTimer", "grabThrowDuration", "grabThrowDir", "grabThrowTarget", "grabThrowAim", "grabThrowLockX", "grabThrowLockY",
     "bluePunchHoldTicks", "bluePunchActiveTicks", "bluePunchCooldown", "bluePunchChases", "bluePunchFlash",
     "teleportAiming", "teleportCooldown", "fugaAiming", "fugaChargeTicks", "fugaCooldown", "fugaCooldownMax", "ultimateAiming", "ultimateAimPoint",
-    "ce", "maxCe", "ultimateMeter", "domainStartup", "domainAttemptType", "simpleDomainTicks", "simpleDomainFlash", "simpleDomainCooldown", "ctLockTimer"
+    "ce", "maxCe", "ultimateMeter", "domainStartup", "domainAttemptType", "simpleDomainTicks", "simpleDomainFlash", "simpleDomainCooldown",
+    "bindingVowType", "bindingVowTicks", "bindingVowChoiceTicks", "bindingVowQuote", "bindingVowQuoteTicks", "bindingVowFlash", "ctLockTimer"
   ];
 
   fields.forEach((field) => {
@@ -2969,6 +2985,8 @@ if (data.type === "role") {
         startDomainExpansion(enemy);
       }
       if (data.action === "simpleDomain") startSimpleDomain(enemy);
+      if (data.action === "bindingVowOpen") openBindingVowChoice(enemy);
+      if (data.action === "bindingVowSelect") activateBindingVow(enemy, data.vowType);
       if (data.action === "ultimate") startUltimate(enemy);
       if (data.action === "ultimate-start") beginUltimateAim(enemy, data.aim);
       if (data.action === "ultimate-release") releaseUltimateAim(enemy, data.aim);
@@ -2977,7 +2995,7 @@ if (data.type === "role") {
         // ONLINE_SPECIAL_RELEASE_FIX
         enemy.fugaAiming = true;
         enemy.techniqueAim = sanitizeAimPoint(data.aim) || enemy.techniqueAim;
-        enemy.fugaChargeTicks = Math.max(enemy.fugaChargeTicks || 0, FUGA_CHARGE_TICKS);
+        enemy.fugaChargeTicks = Math.max(enemy.fugaChargeTicks || 0, getFugaRequiredChargeTicks(enemy));
         startFuga(enemy, data.aim);
       }
       if (data.action === "teleport-start") prepareTeleport(enemy, data.aim);
@@ -3102,6 +3120,7 @@ function getOnlineAction(key, code, repeat) {
   if (isEventForAction("infinity", key, code) && !repeat && enemy?.technique === "limitless") return "infinity";
   if ((key === "x" || code === "keyx") && !repeat) return "domain";
   if ((key === "z" || code === "keyz") && !repeat) return "simpleDomain";
+  if ((key === "t" || code === "keyt") && !repeat && enemy?.technique === "shrine") return "bindingVowOpen";
   if (isEventForAction("ultimate", key, code) && !repeat) return "ultimate-start";
   if (isEventForAction("specialAim", key, code) && !repeat) return enemy?.technique === "shrine" ? "fuga-start" : "teleport-start";
   return null;
@@ -3180,7 +3199,7 @@ function handleTechniqueMouseUp(event) {
     if (isOnlineJoinerControlledFighter(fighter)) {
       fighter.fugaAiming = true;
       fighter.techniqueAim = sanitizeAimPoint(aim) || fighter.techniqueAim;
-      fighter.fugaChargeTicks = Math.max(fighter.fugaChargeTicks || 0, FUGA_CHARGE_TICKS);
+      fighter.fugaChargeTicks = Math.max(fighter.fugaChargeTicks || 0, getFugaRequiredChargeTicks(fighter));
     }
     clearSpecialHoldState(fighter);
     startFuga(fighter, aim);
@@ -3209,7 +3228,7 @@ function clearSpecialHoldState(f = null) {
   }
 }
 
-function sendOnlineInput(action = null, aim = null) {
+function sendOnlineInput(action = null, aim = null, extra = null) {
   if (!canSendOnlinePacket() || onlineRole !== "p2") return;
   lastOnlineInputKey = JSON.stringify(getOnlineInput());
   lastOnlineInputSent = performance.now();
@@ -3222,6 +3241,7 @@ function sendOnlineInput(action = null, aim = null) {
     action,
     aim: aimPoint
   };
+  if (extra && typeof extra === "object") Object.assign(payload, extra);
 
   // DOMAIN_ONLINE_ACTIVATION_FIX
   // P2 locally spends CE/ult before this input reaches the host. Send the
@@ -3346,6 +3366,12 @@ function getFighterNetworkState(f) {
     simpleDomainTicks: f.simpleDomainTicks,
     simpleDomainFlash: f.simpleDomainFlash,
     simpleDomainCooldown: f.simpleDomainCooldown,
+    bindingVowType: f.bindingVowType,
+    bindingVowTicks: f.bindingVowTicks,
+    bindingVowChoiceTicks: f.bindingVowChoiceTicks,
+    bindingVowQuote: f.bindingVowQuote,
+    bindingVowQuoteTicks: f.bindingVowQuoteTicks,
+    bindingVowFlash: f.bindingVowFlash,
     ctLockTimer: f.ctLockTimer,
     walkCycle: f.walkCycle,
     onPlatform: f.onPlatform
@@ -4468,6 +4494,10 @@ function performTeleport(f, aimPoint = null) {
   return true;
 }
 
+function getFugaRequiredChargeTicks(f) {
+  return hasBindingVow(f, "fuga") ? Math.ceil(FUGA_CHARGE_TICKS * 0.55) : FUGA_CHARGE_TICKS;
+}
+
 function canPrepareFuga(f) {
   return Boolean(
     f &&
@@ -4544,19 +4574,21 @@ function startTechnique(f, slot, chargeRatio = 0, aimPoint = null, releasingChar
   if (Math.abs(aimVector.x) > 0.08) f.dir = aimVector.dir;
 
   f.ce -= cost;
-  f.techniqueCooldown = getTechniqueCooldownTicks(move);
+  f.techniqueCooldown = getTechniqueCooldownTicks(move, f);
   if (isDomainOwner(f, "malevolentShrine")) f.techniqueCooldown = Math.max(8, Math.ceil(f.techniqueCooldown * 0.55));
   f.techniqueCooldownMax = f.techniqueCooldown;
   const chargedLimitless = f.technique === "limitless";
   const voidBoost = isDomainOwner(f, "unlimitedVoid");
   const shrineBoost = isDomainOwner(f, "malevolentShrine");
-  const domainRadiusBoost = voidBoost && move === "red" ? 1.45 : voidBoost && move === "blue" ? 1.18 : shrineBoost && move === "cleave" ? 1.2 : 1;
+  const bindingRadiusBoost = move === "cleave" && hasBindingVow(f, "cleave") ? 1.45 : 1;
+  const domainRadiusBoost = (voidBoost && move === "red" ? 1.45 : voidBoost && move === "blue" ? 1.18 : shrineBoost && move === "cleave" ? 1.2 : 1) * bindingRadiusBoost;
   const radiusScale = (chargedLimitless ? 1 + finalCharge * (move === "red" ? 0.95 : 0.85) : 1) * domainRadiusBoost;
   const finalRadius = spec.radius * radiusScale;
   const previewDistance = getAimPreviewDistance(move, spec, finalCharge, aimVector, f, finalRadius);
   const spawnOffset = move === "cleave" ? previewDistance : Math.min(36, Math.max(0, previewDistance - 6));
   const travelDistance = Math.max(0, previewDistance - spawnOffset);
-  const damageScale = (chargedLimitless ? 1 + finalCharge * (move === "red" ? 1.45 : 1.25) : 1) * (voidBoost ? 1.28 : shrineBoost ? 1.12 : 1);
+  const bindingDamageBoost = move === "slash" && hasBindingVow(f, "dismantle") ? 1.32 : 1;
+  const damageScale = (chargedLimitless ? 1 + finalCharge * (move === "red" ? 1.45 : 1.25) : 1) * (voidBoost ? 1.28 : shrineBoost ? 1.12 : 1) * bindingDamageBoost;
   const knockbackScale = (chargedLimitless ? 1 + finalCharge * (move === "red" ? 1.25 : 1.08) : 1) * (move === "red" ? 1.28 : move === "blue" ? 1.32 : 1) * (voidBoost && move === "blue" ? 1.9 : voidBoost ? 1.32 : shrineBoost ? 1.16 : 1);
   projectiles.push({
     owner: f === player ? "player" : "enemy",
@@ -4603,7 +4635,7 @@ function startFuga(f, aimPoint = null) {
     !isHoldingShield(f) &&
     (f.fugaCooldown || 0) <= 0 &&
     f.ce >= cost &&
-    (f.fugaChargeTicks || 0) >= FUGA_CHARGE_TICKS;
+    (f.fugaChargeTicks || 0) >= getFugaRequiredChargeTicks(f);
   const canFuga = canReleaseAimedFuga;
   f.fugaAiming = false;
   if (!canFuga || !spec || f.ce < cost) {
@@ -4637,7 +4669,7 @@ function startFuga(f, aimPoint = null) {
     owner: f === player ? "player" : "enemy",
     move,
     radius: spec.radius * getDomainProjectileSizeMultiplier(f, move),
-    explosionRadius: spec.explosionRadius,
+    explosionRadius: spec.explosionRadius * (hasBindingVow(f, "fuga") ? 1.35 : 1),
     damage: Math.ceil(spec.damage * getOutgoingDamageMultiplier(f)),
     knockback: spec.knockback * getDomainProjectileKnockbackMultiplier(f, move),
     dir: aimVector.dir,
@@ -5291,6 +5323,76 @@ function isDomainVictim(f, type = null) {
   return activeDomain.owner !== getFighterOwner(f);
 }
 
+function hasBindingVow(f, type = null) {
+  if (!f || f.technique !== "shrine" || (f.bindingVowTicks || 0) <= 0) return false;
+  return type ? f.bindingVowType === type : true;
+}
+
+function getBindingVowLabel(type) {
+  if (type === "dismantle") return "DISMANTLE";
+  if (type === "cleave") return "CLEAVE";
+  if (type === "fuga") return "FUGA";
+  if (type === "domain") return "DOMAIN";
+  return "BINDING VOW";
+}
+
+function bindingVowKeyToType(key) {
+  const clean = String(key || "").toLowerCase();
+  if (clean === "u") return "dismantle";
+  if (clean === "i") return "cleave";
+  if (clean === "o") return "fuga";
+  if (clean === "p") return "domain";
+  return null;
+}
+
+function canOpenBindingVowChoice(f) {
+  return Boolean(
+    f &&
+    f.technique === "shrine" &&
+    gameState === "playing" &&
+    !gameOver &&
+    !paused &&
+    !f.ko &&
+    !f.knockdown &&
+    f.stun <= 0
+  );
+}
+
+function openBindingVowChoice(f) {
+  if (!canOpenBindingVowChoice(f)) return false;
+  f.bindingVowChoiceTicks = BINDING_VOW_CHOICE_TICKS;
+  showActionWarning("Binding Vow: U Dismantle / I Cleave / O Fuga / P Domain", 150);
+  return true;
+}
+
+function activateBindingVow(f, type) {
+  if (!f || f.technique !== "shrine" || !type) return false;
+  f.bindingVowType = type;
+  f.bindingVowTicks = BINDING_VOW_TICKS;
+  f.bindingVowChoiceTicks = 0;
+  f.bindingVowQuote = getBindingVowLabel(type);
+  f.bindingVowQuoteTicks = BINDING_VOW_QUOTE_TICKS;
+  f.bindingVowFlash = 20;
+  showActionWarning(`Sukuna: ${getBindingVowLabel(type)}`, BINDING_VOW_QUOTE_TICKS);
+  const center = getFighterCenter(f);
+  spawnHitSpark(center.x, center.y, f.dir, "slash");
+  spawnHitSpark(center.x - f.dir * 28, center.y + 18, -f.dir, "slash");
+  shake = Math.max(shake, 5);
+  updateHud();
+  return true;
+}
+
+function updateBindingVow(f) {
+  if (!f) return;
+  if (f.bindingVowChoiceTicks > 0) f.bindingVowChoiceTicks -= 1;
+  if (f.bindingVowTicks > 0) {
+    f.bindingVowTicks -= 1;
+    if (f.bindingVowTicks <= 0) f.bindingVowType = null;
+  }
+  if (f.bindingVowQuoteTicks > 0) f.bindingVowQuoteTicks -= 1;
+  if (f.bindingVowFlash > 0) f.bindingVowFlash -= 1;
+}
+
 function hasSimpleDomain(f) {
   return Boolean(f && (f.simpleDomainTicks || 0) > 0);
 }
@@ -5416,7 +5518,8 @@ function createDomainAttempt(f) {
     maxTicks: DOMAIN_STARTUP_TICKS,
     startFrame: frame,
     preCe: f.ce,
-    preUltimate: f.ultimateMeter
+    preUltimate: f.ultimateMeter,
+    bindingVowType: hasBindingVow(f, "domain") ? "domain" : null
   };
 }
 
@@ -5518,12 +5621,15 @@ function activateDomainFromAttempt(attempt) {
     ownerFighter.domainStartup = 0;
     ownerFighter.domainAttemptType = null;
   }
+  const bindingVowDomain = attempt.bindingVowType === "domain";
+  const baseTicks = attempt.type === "malevolentShrine" ? MALEVOLENT_SHRINE_TICKS : UNLIMITED_VOID_TICKS;
   activeDomain = {
     owner: attempt.owner,
     type: attempt.type,
-    ticks: attempt.type === "malevolentShrine" ? MALEVOLENT_SHRINE_TICKS : UNLIMITED_VOID_TICKS,
-    maxTicks: attempt.type === "malevolentShrine" ? MALEVOLENT_SHRINE_TICKS : UNLIMITED_VOID_TICKS,
-    slashTimer: 18,
+    bindingVowDomain,
+    ticks: bindingVowDomain ? baseTicks + 3 * 60 : baseTicks,
+    maxTicks: bindingVowDomain ? baseTicks + 3 * 60 : baseTicks,
+    slashTimer: bindingVowDomain ? 10 : 18,
     cleaveTimer: MALEVOLENT_CLEAVE_INTERVAL,
     pulse: 0
   };
@@ -5679,9 +5785,10 @@ function applyActiveDomainTick() {
     activeDomain.slashTimer -= 1;
     activeDomain.cleaveTimer -= 1;
     if (activeDomain.slashTimer <= 0) {
-      activeDomain.slashTimer = MALEVOLENT_SLASH_INTERVAL;
+      activeDomain.slashTimer = activeDomain.bindingVowDomain ? Math.max(12, Math.ceil(MALEVOLENT_SLASH_INTERVAL * 0.62)) : MALEVOLENT_SLASH_INTERVAL;
       spawnDomainDismantle(ownerFighter, target);
-      if (Math.random() < 0.2) spawnDomainDismantle(ownerFighter, target);
+      if (Math.random() < (activeDomain.bindingVowDomain ? 0.85 : 0.2)) spawnDomainDismantle(ownerFighter, target);
+      if (activeDomain.bindingVowDomain && Math.random() < 0.35) spawnDomainDismantle(ownerFighter, target);
     }
     if (activeDomain.cleaveTimer <= 0) {
       activeDomain.cleaveTimer = MALEVOLENT_CLEAVE_INTERVAL;
@@ -7419,7 +7526,7 @@ function updateCpuStuckRecovery() {
       resetCpuBrokenState("invalid fuga aim");
       return;
     }
-    if ((enemy.fugaChargeTicks || 0) > FUGA_CHARGE_TICKS + 45) {
+    if ((enemy.fugaChargeTicks || 0) > getFugaRequiredChargeTicks(enemy) + 45) {
       if (!startFuga(enemy, getCpuAimPoint(cpu))) resetCpuBrokenState("fuga overcharge");
       return;
     }
@@ -7648,6 +7755,7 @@ function updateEnemyAi() {
 function updateFighter(f, opponent) {
   f.rctCooldown = Math.max(0, (f.rctCooldown || 0) - 1);
   updateSimpleDomain(f);
+  updateBindingVow(f);
 
   if (!f.ko) f.dir = f.x + f.w / 2 < opponent.x + opponent.w / 2 ? 1 : -1;
   updateBluePunchTimers(f);
@@ -7659,6 +7767,10 @@ function updateFighter(f, opponent) {
     f.infinityActive = false;
     f.simpleDomainTicks = 0;
     f.simpleDomainFlash = 0;
+    f.bindingVowType = null;
+    f.bindingVowTicks = 0;
+    f.bindingVowChoiceTicks = 0;
+    f.bindingVowQuoteTicks = 0;
     f.fugaAiming = false;
     f.fugaChargeTicks = 0;
     f.teleportAiming = false;
@@ -8649,7 +8761,7 @@ function drawFugaAimPreview(f) {
   if (!shouldShowFugaPreview(f)) return;
   const move = "fuga";
   const spec = techniqueMoves.fuga;
-  const chargeRatio = Math.max(0, Math.min(1, (f.fugaChargeTicks || 0) / FUGA_CHARGE_TICKS));
+  const chargeRatio = Math.max(0, Math.min(1, (f.fugaChargeTicks || 0) / getFugaRequiredChargeTicks(f)));
   const aimVector = getTechniqueAimVector(f, move, f.techniqueAim);
   const previewDistance = getAimPreviewDistance(move, spec, 0, aimVector, f, spec.radius);
   const endX = aimVector.origin.x + aimVector.x * previewDistance;
@@ -8998,7 +9110,7 @@ function drawGojoPushPullEffect(f) {
 function drawSukunaFugaChargeEffect(f) {
   if (!f || f.technique !== "shrine" || !f.fugaAiming) return;
   const center = getFighterCenter(f);
-  const chargeRatio = Math.max(0, Math.min(1, (f.fugaChargeTicks || 0) / FUGA_CHARGE_TICKS));
+  const chargeRatio = Math.max(0, Math.min(1, (f.fugaChargeTicks || 0) / getFugaRequiredChargeTicks(f)));
   const pulse = 1 + Math.sin(frame * 0.28) * (0.05 + chargeRatio * 0.05);
   const radius = 28 + chargeRatio * 34;
 
@@ -9081,6 +9193,33 @@ function drawSukunaGrabThrowHud(f) {
 }
 
 
+
+function drawBindingVowEffect(f) {
+  if (!hasBindingVow(f) && (f.bindingVowChoiceTicks || 0) <= 0) return;
+  const center = getFighterCenter(f);
+  const choice = (f.bindingVowChoiceTicks || 0) > 0;
+  const pulse = 0.5 + 0.5 * Math.sin(frame * 0.18);
+  const alpha = choice ? 0.22 + pulse * 0.18 : 0.18 + pulse * 0.12;
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.strokeStyle = choice ? `rgba(255,255,255,${alpha})` : `rgba(248, 113, 113, ${alpha})`;
+  ctx.lineWidth = choice ? 3 : 2.5;
+  ctx.beginPath();
+  ctx.ellipse(center.x, center.y + 28, choice ? 88 : 74, choice ? 32 : 26, frame * 0.018, 0, Math.PI * 2);
+  ctx.stroke();
+
+  if (hasBindingVow(f)) {
+    ctx.strokeStyle = `rgba(127, 29, 29, ${0.24 + pulse * 0.18})`;
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, 62 + pulse * 8, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+
 function drawSimpleDomainEffect(f) {
   if (!hasSimpleDomain(f)) return;
 
@@ -9151,6 +9290,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   const shoeColor = skin.shoe;
   const idle = !running && !jumpPose && !f.attacking && !f.blocking && !f.ko ? Math.sin(frame * 0.08) : 0;
   drawSukunaKingPassiveEffect(f);
+  drawBindingVowEffect(f);
   drawSimpleDomainEffect(f);
   drawGojoBluePunchEffect(f);
   drawGojoPushPullEffect(f);
@@ -11055,7 +11195,32 @@ function draw() {
   drawShieldBreakEffects();
   ctx.restore();
   drawUltimateScreenEffects();
+  drawBindingVowQuote();
   drawActionWarning();
+}
+
+function drawBindingVowQuote() {
+  const speakers = [player, enemy].filter((f) => f && (f.bindingVowQuoteTicks || 0) > 0 && f.bindingVowQuote);
+  if (!speakers.length) return;
+  const f = speakers[speakers.length - 1];
+  const t = Math.max(0, Math.min(1, (f.bindingVowQuoteTicks || 0) / BINDING_VOW_QUOTE_TICKS));
+  const center = getFighterCenter(f);
+
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, Math.min(1, t));
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = "900 42px system-ui, sans-serif";
+  ctx.shadowColor = "rgba(185, 28, 28, 0.95)";
+  ctx.shadowBlur = 18;
+  ctx.fillStyle = "#fff7ed";
+  ctx.strokeStyle = "rgba(0,0,0,0.85)";
+  ctx.lineWidth = 7;
+  const x = Math.max(170, Math.min(W - 170, (center.x - cameraX) * cameraZoom));
+  const y = 122;
+  ctx.strokeText(f.bindingVowQuote, x, y);
+  ctx.fillText(f.bindingVowQuote, x, y);
+  ctx.restore();
 }
 
 function drawActionWarning() {
@@ -11281,8 +11446,8 @@ window.addEventListener("keydown", (event) => {
   if (event.target && ["INPUT", "TEXTAREA"].includes(event.target.tagName)) return;
   const key = event.key.toLowerCase();
   const code = event.code.toLowerCase();
-  const handledKeys = ["a", "d", "w", "e", "q", "r", "f", "s", "c", "x", "z", " ", "shift", "tab", "arrowleft", "arrowright", "arrowup", "arrowdown", "p", "n", "m", "/", "escape"];
-  const handledCodes = ["keya", "keyd", "keyw", "keye", "keyq", "keyr", "keyf", "keys", "keyc", "keyx", "keyz", "space", "shiftleft", "shiftright", "tab", "arrowleft", "arrowright", "arrowup", "arrowdown", "keyp", "keyn", "keym", "slash", "escape"];
+  const handledKeys = ["a", "d", "w", "e", "q", "r", "f", "s", "c", "x", "z", "t", "u", "i", "o", "p", " ", "shift", "tab", "arrowleft", "arrowright", "arrowup", "arrowdown", "n", "m", "/", "escape"];
+  const handledCodes = ["keya", "keyd", "keyw", "keye", "keyq", "keyr", "keyf", "keys", "keyc", "keyx", "keyz", "keyt", "keyu", "keyi", "keyo", "keyp", "space", "shiftleft", "shiftright", "tab", "arrowleft", "arrowright", "arrowup", "arrowdown", "keyn", "keym", "slash", "escape"];
   if (handledKeys.includes(key) || handledCodes.includes(code)) event.preventDefault();
   if (key === "escape" && !homeOpen) {
     setPaused(!paused);
@@ -11300,6 +11465,17 @@ window.addEventListener("keydown", (event) => {
   keys.add(code);
   keys.add(event.key);
   keys.add(event.code);
+
+  const activeKeyFighter = gameMode === "online" && onlineRole === "p2" ? enemy : player;
+  if (!event.repeat && activeKeyFighter?.technique === "shrine" && (activeKeyFighter.bindingVowChoiceTicks || 0) > 0) {
+    const vowType = bindingVowKeyToType(key);
+    if (vowType) {
+      activateBindingVow(activeKeyFighter, vowType);
+      if (gameMode === "online" && onlineRole === "p2") sendOnlineInput("bindingVowSelect", null, { vowType });
+      return;
+    }
+  }
+
   if (gameMode === "online" && onlineRole === "p2") {
     if (!event.repeat && isEventForAction("light", key, code)) noteAttackButtonPress(enemy, "light");
     if (!event.repeat && isEventForAction("heavy", key, code)) noteAttackButtonPress(enemy, "heavy");
@@ -11315,6 +11491,7 @@ window.addEventListener("keydown", (event) => {
     if (action === "infinity") toggleInfinity(enemy);
     if (action === "domain") startDomainExpansion(enemy);
     if (action === "simpleDomain") startSimpleDomain(enemy);
+    if (action === "bindingVowOpen") openBindingVowChoice(enemy);
     if (action === "ultimate") startUltimate(enemy);
     if (action === "ultimate-start") beginUltimateAim(enemy, enemy.techniqueAim || mouseAimWorld);
     sendOnlineInput(action);
@@ -11327,6 +11504,10 @@ window.addEventListener("keydown", (event) => {
   if (!event.repeat && isEventForAction("heavy", key, code)) startAttack(player, "heavy");
   if ((key === "f" || code === "keyf") && !event.repeat) {
     if (player.technique === "limitless") toggleInfinity(player);
+  }
+  if ((key === "t" || code === "keyt") && !event.repeat && player.technique === "shrine") {
+    openBindingVowChoice(player);
+    return;
   }
   if ((key === "x" || code === "keyx") && !event.repeat) {
     startDomainExpansion(player);
@@ -11375,7 +11556,7 @@ window.addEventListener("keyup", (event) => {
     if (active?.fugaAiming) {
       if (isOnlineJoinerControlledFighter(active)) {
         active.techniqueAim = sanitizeAimPoint(active?.techniqueAim || mouseAimWorld) || active.techniqueAim;
-        active.fugaChargeTicks = Math.max(active.fugaChargeTicks || 0, FUGA_CHARGE_TICKS);
+        active.fugaChargeTicks = Math.max(active.fugaChargeTicks || 0, getFugaRequiredChargeTicks(active));
       }
       startFuga(active, active?.techniqueAim || mouseAimWorld);
       clearSpecialHoldState(active);
