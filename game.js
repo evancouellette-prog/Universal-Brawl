@@ -367,10 +367,12 @@ function getLocalFighterForSfx() {
 function playRoundResultSfx(attacker, defender) {
   if (pacifistBot || gameMode === "practice") return;
 
-  // CPU mode is local player vs CPU:
-  // play win when the user wins, but do not play lose when the CPU wins.
+  // LOSE_SOUND_CPU_FIX:
+  // In CPU mode, the local player should still hear lose-sound when they die.
+  // The CPU itself never needs a win/lose sound.
   if (gameMode === "cpu") {
     if (attacker === player) playGameSfx("win");
+    else if (defender === player) playGameSfx("lose");
     return;
   }
 
@@ -3795,46 +3797,118 @@ function getOutgoingDamageMultiplier(f) {
 }
 
 function installHealthBarSizePatch() {
-  if (document.getElementById("twoMoreHpBarsStyle")) return;
+  const oldStyle = document.getElementById("twoMoreHpBarsStyle");
+  if (oldStyle) oldStyle.remove();
 
   const style = document.createElement("style");
   style.id = "twoMoreHpBarsStyle";
   style.textContent = `
+    /* HEALTH_BAR_VISUAL_FIX:
+       The extra HP bars were showing as gray lines because the dynamic
+       .health-main/.health-current/.health-stock elements did not have full
+       fill styling. This makes every segment look like the original green bar. */
+    #playerHealth,
+    #enemyHealth,
     .health-bar,
     .health-meter,
-    .hud-health,
-    #playerHealth,
-    #enemyHealth {
+    .hud-health {
       display: flex !important;
-      align-items: center !important;
+      align-items: stretch !important;
       gap: 4px !important;
       min-width: 0 !important;
       max-width: 100% !important;
-      overflow: hidden !important;
+      overflow: visible !important;
+      height: 18px !important;
+      border-radius: 999px !important;
     }
 
+    #playerHealth .health-main,
+    #enemyHealth .health-main,
     .health-main {
+      position: relative !important;
       flex: 1 1 auto !important;
-      min-width: 72px !important;
-      max-width: none !important;
+      min-width: 68px !important;
+      height: 18px !important;
+      border-radius: 999px !important;
       overflow: hidden !important;
+      background: rgba(15, 23, 42, 0.88) !important;
+      border: 1px solid rgba(148, 163, 184, 0.45) !important;
+      box-shadow: inset 0 1px 4px rgba(0,0,0,0.55) !important;
     }
 
+    #playerHealth .health-current,
+    #enemyHealth .health-current,
+    #playerHealth .health-lag,
+    #enemyHealth .health-lag,
+    .health-current,
+    .health-lag {
+      position: absolute !important;
+      left: 0 !important;
+      top: 0 !important;
+      bottom: 0 !important;
+      height: 100% !important;
+      border-radius: inherit !important;
+      transition: width 120ms linear !important;
+    }
+
+    #playerHealth .health-lag,
+    #enemyHealth .health-lag,
+    .health-lag {
+      background: rgba(248, 113, 113, 0.62) !important;
+      z-index: 1 !important;
+    }
+
+    #playerHealth .health-current,
+    #enemyHealth .health-current,
+    .health-current {
+      z-index: 2 !important;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.28), 0 0 12px rgba(34,197,94,0.22) !important;
+    }
+
+    .health-current.green,
+    .health-stock.full.green {
+      background: linear-gradient(90deg, #16a34a, #22c55e, #86efac) !important;
+    }
+
+    .health-current.yellow,
+    .health-stock.full.yellow {
+      background: linear-gradient(90deg, #ca8a04, #facc15, #fde68a) !important;
+    }
+
+    .health-current.red,
+    .health-stock.full.red {
+      background: linear-gradient(90deg, #b91c1c, #ef4444, #fecaca) !important;
+    }
+
+    #playerHealth .health-stack,
+    #enemyHealth .health-stack,
     .health-stack {
       flex: 0 0 auto !important;
       display: flex !important;
-      align-items: center !important;
+      align-items: stretch !important;
       gap: 3px !important;
+      height: 18px !important;
       min-width: 0 !important;
     }
 
+    #playerHealth .health-stock,
+    #enemyHealth .health-stock,
     .health-stock {
       flex: 0 0 15px !important;
       width: 15px !important;
       min-width: 15px !important;
       max-width: 15px !important;
-      height: 100% !important;
+      height: 18px !important;
       box-sizing: border-box !important;
+      border-radius: 999px !important;
+      border: 1px solid rgba(148, 163, 184, 0.45) !important;
+      background: rgba(15, 23, 42, 0.88) !important;
+      box-shadow: inset 0 1px 4px rgba(0,0,0,0.55) !important;
+    }
+
+    .health-stock.empty {
+      background: rgba(15, 23, 42, 0.88) !important;
+      opacity: 0.92 !important;
     }
   `;
 
@@ -3865,7 +3939,7 @@ function getLayeredHealthState(health, maxHealth, barCount) {
 function renderSegmentedHealth(el, f) {
   if (!el || !f) return;
   const barCount = Math.max(1, Math.round(f.healthBars || 1));
-  if (el.dataset.barCount !== String(barCount) || !el.querySelector(".health-main")) {
+  if (el.dataset.barCount !== String(barCount) || !el.querySelector(".health-main") || !el.querySelector(".health-current") || !el.querySelector(".health-stack")) {
     el.dataset.barCount = String(barCount);
     el.innerHTML = "";
     const main = document.createElement("div");
