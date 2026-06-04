@@ -695,27 +695,6 @@ function getMusicDuration() {
   return Number.isFinite(battleMusic.duration) && battleMusic.duration > 0 ? battleMusic.duration : 0;
 }
 
-function updateMusicProgressUi() {
-  const duration = getMusicDuration();
-  const currentTime = duration > 0 ? Math.max(0, Math.min(duration, battleMusic.currentTime || 0)) : 0;
-  const progress = duration > 0 ? currentTime / duration : 0;
-  const progressPercent = Math.max(0, Math.min(100, progress * 100));
-  const currentLabel = formatMusicTime(currentTime);
-  const durationLabel = duration > 0 ? formatMusicTime(duration) : "--:--";
-
-  musicCurrentTimeEls.forEach((el) => {
-    el.textContent = currentLabel;
-  });
-  musicDurationEls.forEach((el) => {
-    el.textContent = durationLabel;
-  });
-  musicProgressFills.forEach((fill) => {
-    fill.style.width = `${progressPercent}%`;
-  });
-  musicProgressTracks.forEach((track) => {
-    track.setAttribute("aria-valuenow", String(Math.round(progressPercent)));
-  });
-}
 
 function updateMusicToggleButtons() {
   musicToggleButtons.forEach((button) => {
@@ -871,127 +850,106 @@ function closeRadioScreen() {
   radioScreen.classList.add("hidden");
 }
 
-// RADIO_SEEK_CLICK_TRACK_PATCH
-// Uses the same idea as:
-// seekTrack.addEventListener("click", event => {
-//   const percent = clickX / trackBox.width;
-//   song.currentTime = percent * song.duration;
-// });
-let pendingMusicSeekPercent = null;
-
+// RADIO_SEEK_RANGE_PATCH
+// Adapted from the uploaded music-bar-copy-paste-kit.
+// Uses this game's existing classes:
+// .music-progress-track, .music-progress-fill, .music-time-current, .music-time-duration,
+// .music-toggle-button, .music-prev-button, .music-next-button.
 function getRadioAudio() {
   return document.getElementById("gameSong") || battleMusic;
 }
 
-function getRadioAudioDuration() {
+function updateMusicProgressUi() {
   const song = getRadioAudio();
-  if (song && Number.isFinite(song.duration) && song.duration > 0) return song.duration;
-  return 0;
-}
-
-function updateRadioSeekUiOnly() {
-  const song = getRadioAudio();
-  if (!song) return;
-
-  const duration = song.duration || 0;
-  const currentTime = song.currentTime || 0;
-  const progress = duration > 0 ? currentTime / duration : 0;
-  const progressPercent = Math.max(0, Math.min(100, progress * 100));
+  const duration = song?.duration || 0;
+  const currentTime = song?.currentTime || 0;
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   musicProgressFills.forEach((fill) => {
-    fill.style.width = `${progressPercent}%`;
+    fill.style.width = `${Math.max(0, Math.min(100, progress))}%`;
   });
 
-  musicCurrentTimeEls.forEach((el) => {
-    el.textContent = formatMusicTime(currentTime);
+  musicCurrentTimeEls.forEach((text) => {
+    text.textContent = formatMusicTime(currentTime);
   });
 
-  musicDurationEls.forEach((el) => {
-    el.textContent = duration > 0 ? `-${formatMusicTime(Math.max(duration - currentTime, 0))}` : "--:--";
+  musicDurationEls.forEach((text) => {
+    text.textContent = duration > 0
+      ? `-${formatMusicTime(Math.max(duration - currentTime, 0))}`
+      : "-0:00";
   });
 
   musicProgressTracks.forEach((track) => {
-    track.setAttribute("aria-valuenow", String(Math.round(progressPercent)));
+    track.setAttribute("aria-valuenow", String(Math.round(Math.max(0, Math.min(100, progress)))));
   });
 }
 
-function seekRadioTrackFromClick(track, event) {
+async function playRadioSong() {
   const song = getRadioAudio();
-  if (!song || !track) return false;
+  if (!song) return;
 
-  if (!song.duration || !Number.isFinite(song.duration)) {
-    pendingMusicSeekPercent = null;
-    return false;
+  try {
+    await song.play();
+    backgroundMusicStarted = true;
+    musicMuted = false;
+    updateMusicToggleButtons();
+  } catch (error) {
+    updateMusicToggleButtons();
   }
+}
+
+function pauseRadioSong() {
+  const song = getRadioAudio();
+  if (!song) return;
+
+  song.pause();
+  updateMusicToggleButtons();
+}
+
+function seekRadioFromTrack(track, event) {
+  const song = getRadioAudio();
+  if (!song || !track || !song.duration) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+  if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
 
   const trackBox = track.getBoundingClientRect();
-  if (!trackBox || trackBox.width <= 0) return false;
+  if (!trackBox || trackBox.width <= 0) return;
 
   const clickX = event.clientX - trackBox.left;
   const percent = Math.min(Math.max(clickX / trackBox.width, 0), 1);
 
   song.currentTime = percent * song.duration;
   battleMusic = song;
-  updateRadioSeekUiOnly();
-  return true;
-}
-
-function getSeekTrackFromEvent(event) {
-  const target = event?.target;
-  if (!target || !target.closest) return null;
-  return target.closest(".music-progress-track");
+  updateMusicProgressUi();
 }
 
 function installRadioSeekListeners() {
   const tracks = Array.from(document.querySelectorAll(".music-progress-track"));
 
   tracks.forEach((track) => {
-    if (track.dataset.seekInstalled === "1") return;
-    track.dataset.seekInstalled = "1";
+    if (track.dataset.musicBarKitInstalled === "1") return;
+    track.dataset.musicBarKitInstalled = "1";
 
     track.style.cursor = "pointer";
     track.style.pointerEvents = "auto";
-    track.style.position = "relative";
-    track.setAttribute("title", "Click to seek");
 
     const fill = track.querySelector(".music-progress-fill");
     if (fill) fill.style.pointerEvents = "none";
 
     track.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
-
-      startBackgroundMusic();
-      seekRadioTrackFromClick(track, event);
-    }, true);
-
-    track.addEventListener("pointerdown", (event) => {
-      // Stop the game-wide pointerdown handler from treating the seek bar like a normal game click.
-      event.stopPropagation();
-      if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
+      seekRadioFromTrack(track, event);
     }, true);
   });
 }
 
-document.addEventListener("click", (event) => {
-  const track = getSeekTrackFromEvent(event);
-  if (!track) return;
-
-  event.preventDefault();
-  event.stopPropagation();
-  if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
-
-  startBackgroundMusic();
-  seekRadioTrackFromClick(track, event);
-}, true);
-
-battleMusic.addEventListener("loadedmetadata", updateRadioSeekUiOnly);
-battleMusic.addEventListener("timeupdate", updateRadioSeekUiOnly);
-battleMusic.addEventListener("durationchange", updateRadioSeekUiOnly);
-
+battleMusic.addEventListener("loadedmetadata", updateMusicProgressUi);
+battleMusic.addEventListener("timeupdate", updateMusicProgressUi);
+battleMusic.addEventListener("durationchange", updateMusicProgressUi);
 battleMusic.addEventListener("ended", () => {
-  updateRadioSeekUiOnly();
+  updateMusicProgressUi();
+  playNextSong();
 });
 
 installRadioSeekListeners();
@@ -1007,29 +965,34 @@ window.setTimeout(() => {
   style.id = "radioSeekClickAreaStyle";
   style.textContent = `
     .music-progress-track {
-      min-height: 24px !important;
+      flex: 1;
+      height: 16px !important;
+      min-height: 16px !important;
+      border-radius: 999px !important;
+      background: #11131a !important;
       cursor: pointer !important;
+      overflow: hidden !important;
       pointer-events: auto !important;
       position: relative !important;
-      overflow: visible !important;
-    }
-
-    .music-progress-track::before {
-      content: "";
-      position: absolute;
-      left: 0;
-      right: 0;
-      top: -9px;
-      bottom: -9px;
-      z-index: 20;
     }
 
     .music-progress-fill {
+      width: 0%;
+      height: 100%;
+      border-radius: 999px !important;
+      background: #61d394 !important;
       pointer-events: none !important;
     }
 
-    .radio-seek-bar,
-    .radio-seek-range {
+    .music-time-current,
+    .music-time-duration {
+      min-width: 48px;
+      font-size: 14px;
+      text-align: center;
+    }
+
+    .radio-seek-disabled,
+    .radio-seek-disabled {
       display: none !important;
       pointer-events: none !important;
     }
