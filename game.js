@@ -1481,10 +1481,15 @@ const HOLLOW_PURPLE_BLOCK_CHIP = 0.56;
 const WORLD_SLASH_DAMAGE = 152;
 const WORLD_SLASH_BLOCK_CHIP = 0.62;
 const DOMAIN_CE_REQUIREMENT_RATIO = 0.9;
-const DOMAIN_STARTUP_TICKS = 120;
+const DOMAIN_STARTUP_TICKS = 84;
 const DOMAIN_CLASH_WINDOW_TICKS = 180;
 const DOMAIN_CLASH_TICKS = 180;
 const DOMAIN_CT_LOCK_TICKS = 15 * 60;
+const SIMPLE_DOMAIN_TICKS = 6 * 60;
+const SIMPLE_DOMAIN_CE_COST_RATIO = 0.32;
+const SIMPLE_DOMAIN_CT_DAMAGE_MULTIPLIER = 1.10;
+const SIMPLE_DOMAIN_SHRINE_DAMAGE_TAKEN_MULTIPLIER = 0.65;
+const SIMPLE_DOMAIN_VOID_MOVEMENT_MULTIPLIER = 3.8;
 const UNLIMITED_VOID_TICKS = 7 * 60;
 const MALEVOLENT_SHRINE_TICKS = 7 * 60;
 const MALEVOLENT_SLASH_INTERVAL = 27;
@@ -2109,6 +2114,9 @@ function makeFighter(config) {
     ultimateAimPoint: null,
     domainStartup: 0,
     domainAttemptType: null,
+    simpleDomainTicks: 0,
+    simpleDomainFlash: 0,
+    simpleDomainCooldown: 0,
     ctLockTimer: 0,
     damageTakenMultiplier: 1,
     knockbackTakenMultiplier: 1,
@@ -2858,7 +2866,7 @@ function applyJoinerFighterStateOnHost(remoteFighter) {
     "grabThrowTimer", "grabThrowDuration", "grabThrowDir", "grabThrowTarget", "grabThrowAim", "grabThrowLockX", "grabThrowLockY",
     "bluePunchHoldTicks", "bluePunchActiveTicks", "bluePunchCooldown", "bluePunchChases", "bluePunchFlash",
     "teleportAiming", "teleportCooldown", "fugaAiming", "fugaChargeTicks", "fugaCooldown", "fugaCooldownMax", "ultimateAiming", "ultimateAimPoint",
-    "ce", "maxCe", "ultimateMeter", "domainStartup", "domainAttemptType", "ctLockTimer"
+    "ce", "maxCe", "ultimateMeter", "domainStartup", "domainAttemptType", "simpleDomainTicks", "simpleDomainFlash", "simpleDomainCooldown", "ctLockTimer"
   ];
 
   fields.forEach((field) => {
@@ -2960,6 +2968,7 @@ if (data.type === "role") {
         if (data.domainTechnique === "limitless" || data.domainTechnique === "shrine") enemy.technique = data.domainTechnique;
         startDomainExpansion(enemy);
       }
+      if (data.action === "simpleDomain") startSimpleDomain(enemy);
       if (data.action === "ultimate") startUltimate(enemy);
       if (data.action === "ultimate-start") beginUltimateAim(enemy, data.aim);
       if (data.action === "ultimate-release") releaseUltimateAim(enemy, data.aim);
@@ -3092,6 +3101,7 @@ function getOnlineAction(key, code, repeat) {
   if (isEventForAction("jump", key, code) && !repeat) return "jump";
   if (isEventForAction("infinity", key, code) && !repeat && enemy?.technique === "limitless") return "infinity";
   if ((key === "x" || code === "keyx") && !repeat) return "domain";
+  if ((key === "z" || code === "keyz") && !repeat) return "simpleDomain";
   if (isEventForAction("ultimate", key, code) && !repeat) return "ultimate-start";
   if (isEventForAction("specialAim", key, code) && !repeat) return enemy?.technique === "shrine" ? "fuga-start" : "teleport-start";
   return null;
@@ -3333,6 +3343,9 @@ function getFighterNetworkState(f) {
     rctCooldown: f.rctCooldown,
     domainStartup: f.domainStartup,
     domainAttemptType: f.domainAttemptType,
+    simpleDomainTicks: f.simpleDomainTicks,
+    simpleDomainFlash: f.simpleDomainFlash,
+    simpleDomainCooldown: f.simpleDomainCooldown,
     ctLockTimer: f.ctLockTimer,
     walkCycle: f.walkCycle,
     onPlatform: f.onPlatform
@@ -3545,7 +3558,8 @@ function getSukunaPassiveDamageMultiplier(f) {
 }
 
 function getOutgoingDamageMultiplier(f) {
-  return (f?.outgoingDamageMultiplier || 1) * getSukunaPassiveDamageMultiplier(f);
+  const simpleDomainBonus = hasSimpleDomain(f) ? SIMPLE_DOMAIN_CT_DAMAGE_MULTIPLIER : 1;
+  return (f?.outgoingDamageMultiplier || 1) * getSukunaPassiveDamageMultiplier(f) * simpleDomainBonus;
 }
 
 function getLayeredHealthState(health, maxHealth, barCount) {
@@ -3971,7 +3985,10 @@ function getRayRectHitDistance(aimVector, maxDistance, radius, rect) {
 }
 
 function getTakenDamage(defender, rawDamage) {
-  const multiplier = defender.damageTakenMultiplier ?? 1;
+  let multiplier = defender.damageTakenMultiplier ?? 1;
+  if (hasSimpleDomain(defender) && isDomainVictim(defender, "malevolentShrine")) {
+    multiplier *= SIMPLE_DOMAIN_SHRINE_DAMAGE_TAKEN_MULTIPLIER;
+  }
   return Math.max(1, Math.ceil(rawDamage * multiplier));
 }
 
@@ -5274,15 +5291,68 @@ function isDomainVictim(f, type = null) {
   return activeDomain.owner !== getFighterOwner(f);
 }
 
+function hasSimpleDomain(f) {
+  return Boolean(f && (f.simpleDomainTicks || 0) > 0);
+}
+
+function canStartSimpleDomain(f) {
+  return Boolean(
+    f &&
+    gameState === "playing" &&
+    !gameOver &&
+    !paused &&
+    !f.ko &&
+    !f.knockdown &&
+    f.stun <= 0 &&
+    f.dodging <= 0 &&
+    !f.rctHealing &&
+    !isSpecialLocked(f) &&
+    (f.simpleDomainCooldown || 0) <= 0 &&
+    f.ce >= Math.ceil(f.maxCe * SIMPLE_DOMAIN_CE_COST_RATIO)
+  );
+}
+
+function startSimpleDomain(f) {
+  if (!canStartSimpleDomain(f)) {
+    showActionWarning(f && f.ce < Math.ceil(f.maxCe * SIMPLE_DOMAIN_CE_COST_RATIO) ? "Not Enough Cursed Energy" : "Can't Use Simple Domain");
+    return false;
+  }
+
+  f.ce = Math.max(0, f.ce - Math.ceil(f.maxCe * SIMPLE_DOMAIN_CE_COST_RATIO));
+  f.simpleDomainTicks = SIMPLE_DOMAIN_TICKS;
+  f.simpleDomainFlash = 18;
+  f.simpleDomainCooldown = SIMPLE_DOMAIN_TICKS + 180;
+  f.blocking = false;
+  f.rctHealing = false;
+
+  const center = getFighterCenter(f);
+  spawnHitSpark(center.x, center.y, f.dir, "blue");
+  spawnHitSpark(center.x - f.dir * 26, center.y + 24, -f.dir, "blue");
+  shake = Math.max(shake, 4);
+  updateHud();
+  return true;
+}
+
+function updateSimpleDomain(f) {
+  if (!f) return;
+  if (f.simpleDomainTicks > 0) f.simpleDomainTicks -= 1;
+  if (f.simpleDomainFlash > 0) f.simpleDomainFlash -= 1;
+  if (f.simpleDomainCooldown > 0) f.simpleDomainCooldown -= 1;
+}
+
 function getDomainMovementMultiplier(f) {
-  if (isDomainVictim(f, "unlimitedVoid")) return 0.07;
+  if (isDomainVictim(f, "unlimitedVoid")) {
+    return hasSimpleDomain(f) ? 0.27 : 0.07;
+  }
   if (isDomainOwner(f, "unlimitedVoid")) return 1.3;
   if (isDomainOwner(f, "malevolentShrine")) return 1.3;
   return 1;
 }
 
 function getDomainJumpMultiplier(f) {
-  if (isDomainVictim(f, "unlimitedVoid")) return 0.28;
+  if (isDomainVictim(f, "unlimitedVoid")) {
+    return hasSimpleDomain(f) ? 0.62 : 0.28;
+  }
   if (isDomainOwner(f, "unlimitedVoid")) return 1.08;
   if (isDomainOwner(f, "malevolentShrine")) return 1.08;
   return 1;
@@ -5491,7 +5561,8 @@ function updatePendingDomain() {
   const starter = getFighterByOwner(pendingDomain.owner);
   if (starter) {
     starter.domainStartup = Math.max(0, pendingDomain.ticks);
-    starter.vx *= 0.42;
+    starter.vx *= 0.22;
+    starter.vy *= 0.5;
   }
   if (pendingDomain.ticks <= 0) activateDomainFromAttempt(pendingDomain);
 }
@@ -5597,8 +5668,8 @@ function applyActiveDomainTick() {
     if (target && activeDomain.pulse % 18 === 0) {
       const center = getFighterCenter(target);
       spawnHitSpark(center.x + (Math.random() - 0.5) * 50, center.y + (Math.random() - 0.5) * 62, ownerFighter?.dir || 1, "blue");
-      target.hurt = Math.max(target.hurt || 0, 5);
-      target.stun = Math.max(target.stun || 0, 10);
+      target.hurt = Math.max(target.hurt || 0, hasSimpleDomain(target) ? 2 : 5);
+      target.stun = Math.max(target.stun || 0, hasSimpleDomain(target) ? 4 : 10);
     }
   }
 
@@ -7576,6 +7647,7 @@ function updateEnemyAi() {
 
 function updateFighter(f, opponent) {
   f.rctCooldown = Math.max(0, (f.rctCooldown || 0) - 1);
+  updateSimpleDomain(f);
 
   if (!f.ko) f.dir = f.x + f.w / 2 < opponent.x + opponent.w / 2 ? 1 : -1;
   updateBluePunchTimers(f);
@@ -7585,6 +7657,8 @@ function updateFighter(f, opponent) {
     f.attacking = null;
     f.blocking = false;
     f.infinityActive = false;
+    f.simpleDomainTicks = 0;
+    f.simpleDomainFlash = 0;
     f.fugaAiming = false;
     f.fugaChargeTicks = 0;
     f.teleportAiming = false;
@@ -7814,6 +7888,103 @@ function drawCity() {
 
 
 
+
+function drawDomainStartupCinematic() {
+  if (!pendingDomain || domainClash) return;
+
+  const starter = getFighterByOwner(pendingDomain.owner);
+  if (!starter) return;
+
+  const type = pendingDomain.type || getDomainTypeForFighter(starter);
+  const center = getFighterCenter(starter);
+  const progress = 1 - Math.max(0, Math.min(1, pendingDomain.ticks / Math.max(1, pendingDomain.maxTicks || DOMAIN_STARTUP_TICKS)));
+  const sign = type === "malevolentShrine" ? -1 : 1;
+
+  // Darken the world for a short cinematic feel.
+  const overlay = type === "malevolentShrine"
+    ? `rgba(70, 8, 12, ${0.18 + progress * 0.32})`
+    : `rgba(10, 18, 38, ${0.16 + progress * 0.30})`;
+  ctx.fillStyle = overlay;
+  ctx.fillRect(-cameraX - 2000, -1200, STAGE_W + 4000, H + 2600);
+
+  // Barrier rings forming around the caster.
+  ctx.save();
+  ctx.translate(center.x, center.y - 8);
+
+  for (let i = 0; i < 4; i += 1) {
+    const ringProgress = Math.max(0, progress - i * 0.12);
+    if (ringProgress <= 0) continue;
+    const ringR = 38 + i * 24 + ringProgress * 118;
+    ctx.strokeStyle = type === "malevolentShrine"
+      ? `rgba(255, 110, 110, ${0.12 + ringProgress * 0.30})`
+      : `rgba(190, 225, 255, ${0.12 + ringProgress * 0.30})`;
+    ctx.lineWidth = Math.max(1.5, 6 - i);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, ringR, ringR * 0.58, frame * 0.018 * sign + i * 0.2, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // A brighter inner barrier / aura.
+  const coreGlow = ctx.createRadialGradient(0, 0, 6, 0, 0, 92 + progress * 32);
+  if (type === "malevolentShrine") {
+    coreGlow.addColorStop(0, `rgba(255, 90, 90, ${0.25 + progress * 0.25})`);
+    coreGlow.addColorStop(0.55, `rgba(150, 18, 22, ${0.18 + progress * 0.14})`);
+  } else {
+    coreGlow.addColorStop(0, `rgba(255, 255, 255, ${0.12 + progress * 0.20})`);
+    coreGlow.addColorStop(0.55, `rgba(120, 170, 255, ${0.16 + progress * 0.14})`);
+  }
+  coreGlow.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = coreGlow;
+  ctx.beginPath();
+  ctx.arc(0, 0, 120 + progress * 25, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Hand-sign style silhouette in front of the caster.
+  const handY = -26;
+  const fingerLift = 10 + progress * 10 + Math.sin(frame * 0.2) * 2;
+  ctx.globalAlpha = 0.75;
+  ctx.strokeStyle = type === "malevolentShrine" ? "rgba(40, 0, 0, 0.95)" : "rgba(225, 235, 255, 0.92)";
+  ctx.lineWidth = 4.5;
+  ctx.lineCap = "round";
+
+  // left hand / forearm
+  ctx.beginPath();
+  ctx.moveTo(-18, 26);
+  ctx.lineTo(-10, 6);
+  ctx.lineTo(-2, handY);
+  ctx.lineTo(-2, handY - fingerLift);
+  ctx.moveTo(-8, handY + 4);
+  ctx.lineTo(-10, handY - fingerLift + 10);
+  ctx.moveTo(-14, handY + 7);
+  ctx.lineTo(-18, handY - fingerLift + 14);
+  ctx.stroke();
+
+  // right hand / forearm
+  ctx.beginPath();
+  ctx.moveTo(18, 26);
+  ctx.lineTo(10, 6);
+  ctx.lineTo(2, handY);
+  ctx.lineTo(2, handY - fingerLift);
+  ctx.moveTo(8, handY + 4);
+  ctx.lineTo(10, handY - fingerLift + 10);
+  ctx.moveTo(14, handY + 7);
+  ctx.lineTo(18, handY - fingerLift + 14);
+  ctx.stroke();
+
+  // crossing fingers / seal center
+  ctx.strokeStyle = type === "malevolentShrine" ? "rgba(255, 210, 210, 0.85)" : "rgba(255,255,255,0.92)";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(-7, handY - 8);
+  ctx.lineTo(7, handY - 14);
+  ctx.moveTo(-6, handY - 16);
+  ctx.lineTo(6, handY - 5);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+
 function drawActiveDomainBackdrop() {
   if (!activeDomain && !pendingDomain && !domainClash) return;
 
@@ -7825,6 +7996,10 @@ function drawActiveDomainBackdrop() {
 
   ctx.save();
   ctx.globalCompositeOperation = "source-over";
+
+  if (pendingDomain && !activeDomain && !domainClash) {
+    drawDomainStartupCinematic();
+  }
 
   if (domainClash) {
     const split = STAGE_W * 0.5;
@@ -8905,6 +9080,43 @@ function drawSukunaGrabThrowHud(f) {
   ctx.restore();
 }
 
+
+function drawSimpleDomainEffect(f) {
+  if (!hasSimpleDomain(f)) return;
+
+  const center = getFighterCenter(f);
+  const progress = Math.max(0, Math.min(1, (f.simpleDomainTicks || 0) / SIMPLE_DOMAIN_TICKS));
+  const flash = Math.max(0, Math.min(1, (f.simpleDomainFlash || 0) / 18));
+  const ringAlpha = 0.22 + flash * 0.35;
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+
+  const aura = ctx.createRadialGradient(center.x, center.y, 12, center.x, center.y, 130);
+  aura.addColorStop(0, `rgba(190, 230, 255, ${0.10 + flash * 0.12})`);
+  aura.addColorStop(0.45, `rgba(90, 180, 255, ${0.08 + flash * 0.08})`);
+  aura.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = aura;
+  ctx.beginPath();
+  ctx.arc(center.x, center.y, 130, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = `rgba(205, 240, 255, ${ringAlpha})`;
+  ctx.lineWidth = 3 + flash * 4;
+  ctx.beginPath();
+  ctx.ellipse(center.x, center.y + 30, 76 + flash * 18, 28 + flash * 5, frame * 0.012, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.strokeStyle = `rgba(255, 255, 255, ${0.10 + progress * 0.18})`;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.ellipse(center.x, center.y + 30, 92, 36, -frame * 0.009, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+
 function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   const flash = f.hurt > 0 && Math.floor(frame / 3) % 2 === 0;
   const dodgeAlpha = f.dodging > 0 ? 0.48 : 1;
@@ -8939,6 +9151,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   const shoeColor = skin.shoe;
   const idle = !running && !jumpPose && !f.attacking && !f.blocking && !f.ko ? Math.sin(frame * 0.08) : 0;
   drawSukunaKingPassiveEffect(f);
+  drawSimpleDomainEffect(f);
   drawGojoBluePunchEffect(f);
   drawGojoPushPullEffect(f);
   drawSukunaFugaChargeEffect(f);
@@ -10805,6 +11018,24 @@ function draw() {
     shake *= 0.78;
     if (shake < 0.4) shake = 0;
   }
+
+  // DOMAIN_CINEMATIC_CAMERA_PATCH
+  // Give domain startup a short cinematic rotation/zoom.
+  let domainCinematicRotation = 0;
+  let domainCinematicZoom = 1;
+  if (pendingDomain && !domainClash) {
+    const progress = 1 - Math.max(0, Math.min(1, pendingDomain.ticks / Math.max(1, pendingDomain.maxTicks || DOMAIN_STARTUP_TICKS)));
+    const sign = pendingDomain.type === "malevolentShrine" ? -1 : 1;
+    domainCinematicRotation = sign * (0.02 + progress * 0.045) + Math.sin(frame * 0.12) * 0.005;
+    domainCinematicZoom = 1 + progress * 0.08;
+  }
+  if (domainCinematicRotation !== 0 || domainCinematicZoom !== 1) {
+    ctx.translate(W / 2, H / 2);
+    ctx.rotate(domainCinematicRotation);
+    ctx.scale(domainCinematicZoom, domainCinematicZoom);
+    ctx.translate(-W / 2, -H / 2);
+  }
+
   ctx.translate(0, getCameraYOffset());
   ctx.scale(cameraZoom, cameraZoom);
   ctx.translate(-cameraX, 0);
@@ -11050,8 +11281,8 @@ window.addEventListener("keydown", (event) => {
   if (event.target && ["INPUT", "TEXTAREA"].includes(event.target.tagName)) return;
   const key = event.key.toLowerCase();
   const code = event.code.toLowerCase();
-  const handledKeys = ["a", "d", "w", "e", "q", "r", "f", "s", "c", "x", " ", "shift", "tab", "arrowleft", "arrowright", "arrowup", "arrowdown", "p", "n", "m", "/", "escape"];
-  const handledCodes = ["keya", "keyd", "keyw", "keye", "keyq", "keyr", "keyf", "keys", "keyc", "keyx", "space", "shiftleft", "shiftright", "tab", "arrowleft", "arrowright", "arrowup", "arrowdown", "keyp", "keyn", "keym", "slash", "escape"];
+  const handledKeys = ["a", "d", "w", "e", "q", "r", "f", "s", "c", "x", "z", " ", "shift", "tab", "arrowleft", "arrowright", "arrowup", "arrowdown", "p", "n", "m", "/", "escape"];
+  const handledCodes = ["keya", "keyd", "keyw", "keye", "keyq", "keyr", "keyf", "keys", "keyc", "keyx", "keyz", "space", "shiftleft", "shiftright", "tab", "arrowleft", "arrowright", "arrowup", "arrowdown", "keyp", "keyn", "keym", "slash", "escape"];
   if (handledKeys.includes(key) || handledCodes.includes(code)) event.preventDefault();
   if (key === "escape" && !homeOpen) {
     setPaused(!paused);
@@ -11083,6 +11314,7 @@ window.addEventListener("keydown", (event) => {
     if (action === "jump") jumpFighterWithMove(enemy, (getOnlineInput().right ? 1 : 0) - (getOnlineInput().left ? 1 : 0));
     if (action === "infinity") toggleInfinity(enemy);
     if (action === "domain") startDomainExpansion(enemy);
+    if (action === "simpleDomain") startSimpleDomain(enemy);
     if (action === "ultimate") startUltimate(enemy);
     if (action === "ultimate-start") beginUltimateAim(enemy, enemy.techniqueAim || mouseAimWorld);
     sendOnlineInput(action);
@@ -11098,6 +11330,10 @@ window.addEventListener("keydown", (event) => {
   }
   if ((key === "x" || code === "keyx") && !event.repeat) {
     startDomainExpansion(player);
+    return;
+  }
+  if ((key === "z" || code === "keyz") && !event.repeat) {
+    startSimpleDomain(player);
     return;
   }
   if (isEventForAction("specialAim", key, code) && !event.repeat && !homeOpen && !paused && gameState === "playing") {
