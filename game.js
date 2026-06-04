@@ -1487,6 +1487,7 @@ const DOMAIN_CLASH_TICKS = 180;
 const DOMAIN_CT_LOCK_TICKS = 15 * 60;
 const SIMPLE_DOMAIN_TICKS = 6 * 60;
 const BINDING_VOW_TICKS = 12 * 60;
+const BINDING_VOW_COOLDOWN_TICKS = 20 * 60;
 const BINDING_VOW_CHOICE_TICKS = 4 * 60;
 const BINDING_VOW_QUOTE_TICKS = 96;
 const SIMPLE_DOMAIN_CE_COST_RATIO = 0.32;
@@ -2128,6 +2129,7 @@ function makeFighter(config) {
     simpleDomainCooldown: 0,
     bindingVowType: null,
     bindingVowTicks: 0,
+    bindingVowCooldown: 0,
     bindingVowChoiceTicks: 0,
     bindingVowQuote: "",
     bindingVowQuoteTicks: 0,
@@ -2496,6 +2498,8 @@ function applyPracticeSettingsTick() {
     player.pendingPunchCooldown = false;
     player.rctCooldown = 0;
     player.shieldCooldown = 0;
+    player.simpleDomainCooldown = 0;
+    player.bindingVowCooldown = 0;
   }
   pinStationaryPracticeDummy(enemy);
 }
@@ -2520,6 +2524,13 @@ function getTechniqueControlHtml(technique) {
   return '<span><kbd>Left Click</kbd> Blue</span><span><kbd>Right Click</kbd> Red</span><span><kbd>Hold S</kbd> Teleport</span><span><kbd>Hold T</kbd> Blue Punch</span><span><kbd>F</kbd> Infinity</span><span><kbd>Hold C</kbd> Aim Ultimate</span><span><kbd>R</kbd> hold RCT</span>';
 }
 
+function getExtraBattleControlHtml(technique) {
+  if (technique === "shrine") {
+    return '<span><kbd>X</kbd> Domain Expansion</span><span><kbd>Z</kbd> Simple Domain</span><span><kbd>T</kbd> Binding Vow</span><span><kbd>U</kbd> Dismantle Vow</span><span><kbd>I</kbd> Cleave Vow</span><span><kbd>O</kbd> Fuga Vow</span><span><kbd>P</kbd> Domain Vow</span>';
+  }
+  return '<span><kbd>X</kbd> Domain Expansion</span><span><kbd>Z</kbd> Simple Domain</span>';
+}
+
 function updateControlsPanel() {
   if (!controlsGrid) return;
   const technique = getControlledTechniqueForControls();
@@ -2528,6 +2539,7 @@ function updateControlsPanel() {
     <p><strong>Attack</strong><span><kbd>W</kbd> light punch</span><span><kbd>E</kbd> heavy punch</span><span><kbd>Toward</kbd><kbd>Tab</kbd> throw</span></p>
     <p><strong>Defend</strong><span><kbd>Q</kbd> block</span><span><kbd>Shift</kbd> dodge</span></p>
     <p><strong>Technique</strong>${getTechniqueControlHtml(technique)}</p>
+    <p><strong>Domains / Vows</strong>${getExtraBattleControlHtml(technique)}</p>
   `;
 }
 
@@ -2882,7 +2894,7 @@ function applyJoinerFighterStateOnHost(remoteFighter) {
     "bluePunchHoldTicks", "bluePunchActiveTicks", "bluePunchCooldown", "bluePunchChases", "bluePunchFlash",
     "teleportAiming", "teleportCooldown", "fugaAiming", "fugaChargeTicks", "fugaCooldown", "fugaCooldownMax", "ultimateAiming", "ultimateAimPoint",
     "ce", "maxCe", "ultimateMeter", "domainStartup", "domainAttemptType", "simpleDomainTicks", "simpleDomainFlash", "simpleDomainCooldown",
-    "bindingVowType", "bindingVowTicks", "bindingVowChoiceTicks", "bindingVowQuote", "bindingVowQuoteTicks", "bindingVowFlash", "ctLockTimer"
+    "bindingVowType", "bindingVowTicks", "bindingVowCooldown", "bindingVowChoiceTicks", "bindingVowQuote", "bindingVowQuoteTicks", "bindingVowFlash", "ctLockTimer"
   ];
 
   fields.forEach((field) => {
@@ -3368,6 +3380,7 @@ function getFighterNetworkState(f) {
     simpleDomainCooldown: f.simpleDomainCooldown,
     bindingVowType: f.bindingVowType,
     bindingVowTicks: f.bindingVowTicks,
+    bindingVowCooldown: f.bindingVowCooldown,
     bindingVowChoiceTicks: f.bindingVowChoiceTicks,
     bindingVowQuote: f.bindingVowQuote,
     bindingVowQuoteTicks: f.bindingVowQuoteTicks,
@@ -3685,6 +3698,22 @@ function getExtraCooldownItems(f) {
     items.push({ name: "CT LOCK", current: f.ctLockTimer || 0, max: DOMAIN_CT_LOCK_TICKS || 900 });
   }
 
+  if ((f.simpleDomainTicks || 0) > 0) {
+    items.push({ name: "SIMPLE DOMAIN", current: f.simpleDomainTicks || 0, max: SIMPLE_DOMAIN_TICKS });
+  } else {
+    items.push({ name: "SIMPLE DOMAIN", current: f.simpleDomainCooldown || 0, max: SIMPLE_DOMAIN_TICKS + 180 });
+  }
+
+  if (f.technique === "shrine") {
+    if ((f.bindingVowTicks || 0) > 0) {
+      items.push({ name: `VOW: ${getBindingVowLabel(f.bindingVowType)}`, current: f.bindingVowTicks || 0, max: BINDING_VOW_TICKS });
+    } else if ((f.bindingVowChoiceTicks || 0) > 0) {
+      items.push({ name: "BINDING VOW PICK", current: f.bindingVowChoiceTicks || 0, max: BINDING_VOW_CHOICE_TICKS });
+    } else {
+      items.push({ name: "BINDING VOW", current: f.bindingVowCooldown || 0, max: BINDING_VOW_COOLDOWN_TICKS });
+    }
+  }
+
   const rctMax = RCT_COOLDOWN_TICKS[f.technique] || 180;
   items.push({ name: "RCT", current: f.rctCooldown || 0, max: rctMax });
 
@@ -3732,7 +3761,10 @@ function updateExtraCooldownHud(container, f) {
 
     const status = document.createElement("span");
     status.className = "extra-cooldown-status ct-status";
-    status.textContent = ready ? "READY" : `${Math.ceil(item.current / 60)}s`;
+    const isActiveBuff = item.name === "SIMPLE DOMAIN" && (f.simpleDomainTicks || 0) > 0
+      || item.name.startsWith("VOW: ")
+      || item.name === "BINDING VOW PICK";
+    status.textContent = ready ? "READY" : isActiveBuff ? `${Math.ceil(item.current / 60)}s ACTIVE` : `${Math.ceil(item.current / 60)}s`;
 
     meter.appendChild(fill);
     row.append(label, meter, status);
@@ -5354,12 +5386,19 @@ function canOpenBindingVowChoice(f) {
     !paused &&
     !f.ko &&
     !f.knockdown &&
-    f.stun <= 0
+    f.stun <= 0 &&
+    (f.bindingVowCooldown || 0) <= 0 &&
+    (f.bindingVowTicks || 0) <= 0
   );
 }
 
 function openBindingVowChoice(f) {
-  if (!canOpenBindingVowChoice(f)) return false;
+  if (!canOpenBindingVowChoice(f)) {
+    if (f?.technique === "shrine" && (f.bindingVowCooldown || 0) > 0) {
+      showActionWarning(`Binding Vow Cooldown: ${Math.ceil(f.bindingVowCooldown / 60)}s`);
+    }
+    return false;
+  }
   f.bindingVowChoiceTicks = BINDING_VOW_CHOICE_TICKS;
   showActionWarning("Binding Vow: U Dismantle / I Cleave / O Fuga / P Domain", 150);
   return true;
@@ -5369,6 +5408,7 @@ function activateBindingVow(f, type) {
   if (!f || f.technique !== "shrine" || !type) return false;
   f.bindingVowType = type;
   f.bindingVowTicks = BINDING_VOW_TICKS;
+  f.bindingVowCooldown = BINDING_VOW_COOLDOWN_TICKS;
   f.bindingVowChoiceTicks = 0;
   f.bindingVowQuote = getBindingVowLabel(type);
   f.bindingVowQuoteTicks = BINDING_VOW_QUOTE_TICKS;
@@ -5384,6 +5424,7 @@ function activateBindingVow(f, type) {
 
 function updateBindingVow(f) {
   if (!f) return;
+  if (f.bindingVowCooldown > 0) f.bindingVowCooldown -= 1;
   if (f.bindingVowChoiceTicks > 0) f.bindingVowChoiceTicks -= 1;
   if (f.bindingVowTicks > 0) {
     f.bindingVowTicks -= 1;
