@@ -11400,8 +11400,16 @@ function drawTechniqueAimSizePreview() {
 
   if (!move || !techniqueMoves[move]) return;
 
-  const aimPoint = sanitizeAimPoint(active.techniqueAim || mouseAimWorld);
   const spec = techniqueMoves[move];
+
+  // CLEAVE_PREVIEW_CE_FIX
+  // Do not show the Cleave/Dismantle aim art if the move cannot actually be used,
+  // especially when the player does not have enough CE.
+  const moveCost = getTechniqueCost(active, move);
+  if (active.ce < moveCost) return;
+  if ((active.techniqueCooldown || 0) > 0 && (move === "cleave" || move === "slash")) return;
+
+  const aimPoint = sanitizeAimPoint(active.techniqueAim || mouseAimWorld);
   const origin = getTechniqueOrigin(active, move);
   const aimVector = getTechniqueAimVector(active, move, aimPoint);
   const vowBoost = move === "cleave" && hasBindingVow(active, "cleave");
