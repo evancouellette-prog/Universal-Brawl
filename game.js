@@ -2570,12 +2570,24 @@ function syncHostPlayerToJoiner(remotePlayer) {
 
   Object.assign(player, remotePlayer);
 
-  // While P2's combo is actively hitting P1, do not let the host's last
-  // 16ms-old snapshot erase the local stun/hold frames before the damage packet
-  // reaches the host and comes back in the next state update.
+  // While P2's hit is still being confirmed, keep the joiner's predicted
+  // knockback/position so Player 1 visibly moves on P2's screen.
+  // Health still comes from the host so damage stays authoritative.
   Object.assign(player, local);
   if (Number.isFinite(Number(remotePlayer.health))) {
     player.health = Math.min(localHealth, Number(remotePlayer.health));
+  }
+
+  // If the host has caught up to a stronger knockback/knockdown, accept it.
+  if (Number.isFinite(Number(remotePlayer.vx)) && Math.abs(Number(remotePlayer.vx)) > Math.abs(player.vx || 0)) {
+    player.vx = Number(remotePlayer.vx);
+  }
+  if (Number.isFinite(Number(remotePlayer.vy)) && Number(remotePlayer.vy) < (player.vy || 0)) {
+    player.vy = Number(remotePlayer.vy);
+  }
+  if (remotePlayer.knockdown) {
+    player.knockdown = true;
+    player.knockdownTimer = Math.max(player.knockdownTimer || 0, remotePlayer.knockdownTimer || 0);
   }
 }
 
@@ -3011,10 +3023,30 @@ function sendOnlineFighterState() {
 
 function sendOnlineDamage(hit) {
   if (!onlineSocket || onlineSocket.readyState !== WebSocket.OPEN || onlineRole !== "p2") return;
+
   const holdLock = hit && (hit.barrageHold || hit.grabHold);
   const bigLock = hit && (hit.knockdown || hit.gojoPushPull || hit.gojoRedHeavy || hit.blueChase);
-  joinerLocalHitLockTicks = Math.max(joinerLocalHitLockTicks || 0, holdLock ? 55 : bigLock ? 42 : 24);
-  onlineSocket.send(JSON.stringify({ type: "damage", ...hit }));
+
+  // ONLINE_P2_HIT_MOVEMENT_FIX
+  // P2 predicts their own hit locally first. Send the host the exact post-hit
+  // position/velocity too, so the host state does not snap Player 1 back in place.
+  const localDefenderState = player ? {
+    defenderX: player.x,
+    defenderY: player.y,
+    defenderVx: player.vx,
+    defenderVy: player.vy,
+    defenderGrounded: player.grounded,
+    defenderKnockdown: player.knockdown,
+    defenderKnockdownTimer: player.knockdownTimer
+  } : {};
+
+  joinerLocalHitLockTicks = Math.max(joinerLocalHitLockTicks || 0, holdLock ? 75 : bigLock ? 70 : 48);
+
+  onlineSocket.send(JSON.stringify({
+    type: "damage",
+    ...hit,
+    ...localDefenderState
+  }));
 }
 
 function sendOnlineReady() {
@@ -5856,6 +5888,27 @@ function applyHit(attacker, defender) {
 function applyOnlineDamageToPlayer(hit) {
   if (roundEnding || roundResolved || player.ko || pacifistBot) return;
   enemy.hasHit = true;
+
+  // ONLINE_P2_HIT_MOVEMENT_FIX
+  // Trust the joiner's immediate hit prediction for Player 1's movement.
+  // Without this, the host can send an older player snapshot back to P2 and
+  // Player 1 appears frozen on the joiner's screen after being hit.
+  const hasPredictedDefenderPosition =
+    Number.isFinite(Number(hit.defenderX)) &&
+    Number.isFinite(Number(hit.defenderY));
+
+  if (hasPredictedDefenderPosition) {
+    player.x = clampStageX(Number(hit.defenderX), player.w);
+    player.y = Math.max(-100, Math.min(GROUND - player.h, Number(hit.defenderY)));
+  }
+
+  if (Number.isFinite(Number(hit.defenderVx))) player.vx = Number(hit.defenderVx);
+  if (Number.isFinite(Number(hit.defenderVy))) player.vy = Number(hit.defenderVy);
+  if (typeof hit.defenderGrounded === "boolean") player.grounded = hit.defenderGrounded;
+  if (typeof hit.defenderKnockdown === "boolean") player.knockdown = hit.defenderKnockdown;
+  if (Number.isFinite(Number(hit.defenderKnockdownTimer))) {
+    player.knockdownTimer = Math.max(player.knockdownTimer || 0, Number(hit.defenderKnockdownTimer));
+  }
   const damage = Number(hit.damage) || 0;
   player.health = Math.max(0, player.health - damage);
   if (damage > 0 && !hit.ultimateHit) {
