@@ -244,7 +244,7 @@ let musicMasterGain = null;
 const MUSIC_VOLUME_STORAGE_KEY = "jujutsuBrawlMusicVolume";
 const MUSIC_TRACK_STORAGE_KEY = "jujutsuBrawlMusicTrack";
 const RADIO_TRACKS = [
-  { title: "Judas", artist: "Lady Gaga", type: "audio", src: "assets/judas.mp3?v=14?v=14", style: "battle" },
+  { title: "Judas", artist: "Lady Gaga", type: "audio", src: "assets/judas.mp3?v=14", style: "battle" },
   { title: "If I Am With You", artist: "Yoshimasa Terui", type: "audio", src: "assets/if-i-am-with-you.mp3?v=14", style: "menu" },
   { title: "Kaikai Kitan", artist: "Eve", type: "audio", src: "assets/kaikai-kitan.mp3?v=14", style: "battle" },
   { title: "Inferno", artist: "Mrs. GREEN APPLE", type: "audio", src: "assets/inferno.mp3?v=14", style: "battle" },
@@ -257,6 +257,7 @@ let musicVolume = loadSavedMusicVolume();
 let musicMuted = false;
 let currentRadioTrackIndex = loadSavedTrackIndex();
 let lastMusicSeekStamp = 0;
+const failedRadioAudioSrcs = new Set();
 // MUSIC_CONTINUES_THROUGH_MATCH_START
 // RADIO_AUDIO_ELEMENT_PATCH
 // Use a real <audio> element so seeking works like:
@@ -946,6 +947,19 @@ function updateRadioUi() {
     button.disabled = RADIO_TRACKS.length < 2;
   });
   updateMusicProgressUi();
+  normalizeRadioButtonGlyphs();
+}
+
+function normalizeRadioButtonGlyphs() {
+  musicToggleButtons.forEach((button) => {
+    button.textContent = musicMuted ? "\u25b6" : "\u23f8";
+  });
+  musicPrevButtons.forEach((button) => {
+    button.textContent = "\u23ee";
+  });
+  musicNextButtons.forEach((button) => {
+    button.textContent = "\u23ed";
+  });
 }
 
 function setMusicVolume(value) {
@@ -979,7 +993,13 @@ function isLocalAudioHost() {
 }
 
 function canUseAudioTrack(track = getCurrentRadioTrack()) {
-  return Boolean(track && track.type === "audio" && track.src);
+  if (!track || track.type !== "audio" || !track.src) return false;
+  try {
+    const targetSrc = new URL(track.src, window.location.href).href;
+    return !failedRadioAudioSrcs.has(targetSrc);
+  } catch (err) {
+    return false;
+  }
 }
 
 function updateBattleMusicState(restart = false) {
@@ -1198,6 +1218,24 @@ battleMusic.addEventListener("timeupdate", updateMusicProgressUi);
 battleMusic.addEventListener("ended", () => {
   updateMusicProgressUi();
   playNextSong();
+});
+battleMusic.addEventListener("error", () => {
+  const track = getCurrentRadioTrack();
+  try {
+    if (track?.src) failedRadioAudioSrcs.add(new URL(track.src, window.location.href).href);
+  } catch (err) {}
+  battleMusic.pause();
+  battleMusic.removeAttribute("src");
+  battleMusic.load();
+  updateMusicProgressUi();
+  updateRadioUi();
+  if (backgroundMusicStarted && !musicMuted) {
+    const audio = getAudioContext();
+    if (audio) {
+      activeMusicMode = getMusicMode();
+      nextMusicTime = audio.currentTime + 0.05;
+    }
+  }
 });
 
 installRadioSeekListeners();
@@ -1976,13 +2014,20 @@ const LIGHT_INFO_MAX = 100;
 const LIGHT_IDENTITY_MAX = 100;
 const LIGHT_POTATO_COOLDOWN_TICKS = 5 * 60;
 const LIGHT_POTATO_FOCUS_TICKS = 10 * 60;
+const LIGHT_SUMMON_MISA_TICKS = 16 * 60;
+const LIGHT_SUMMON_SOICHIRO_TICKS = 18 * 60;
+const LIGHT_EYE_DEAL_FOCUS_TICKS = 5 * 60;
 
 function isLight(f) {
   return Boolean(f && f.technique === "deathnote");
 }
 
 function getLightFocusedCooldown(f, baseTicks) {
-  return (f && (f.potatoFocusTicks || 0) > 0) ? Math.max(12, Math.ceil(baseTicks * 0.58)) : baseTicks;
+  if (!isLight(f)) return baseTicks;
+  const infoRatio = Math.max(0, Math.min(1, (f.informationMeter || 0) / LIGHT_INFO_MAX));
+  const infoScale = 1 - infoRatio * 0.28;
+  const focusScale = (f.potatoFocusTicks || 0) > 0 ? 0.58 : 1;
+  return Math.max(12, Math.ceil(baseTicks * infoScale * focusScale));
 }
 
 function gainLightInfo(f, amount) {
@@ -2003,11 +2048,84 @@ function lightIdentityComplete(f) {
   return isLight(f) && (f.identityProgress || 0) >= LIGHT_IDENTITY_MAX;
 }
 
+function getLightInfoRatio(f) {
+  return Math.max(0, Math.min(1, ((f && f.informationMeter) || 0) / LIGHT_INFO_MAX));
+}
+
+function getLightSummonRect(f) {
+  if (!isLight(f) || !f.lightSummonType) return null;
+  const center = getFighterCenter(f);
+  const side = f.dir || 1;
+  const width = f.lightSummonType === "misa" ? 38 : 46;
+  const height = f.lightSummonType === "misa" ? 70 : 78;
+  const x = center.x - side * 92 - width / 2;
+  const y = f.y + 12;
+  return { x, y, w: width, h: height };
+}
+
+function damageLightSummon(f, amount, sourceDir = 1, kind = "slash") {
+  if (!isLight(f) || !f.lightSummonType || amount <= 0) return false;
+  f.lightSummonHealth = Math.max(0, (f.lightSummonHealth || 0) - amount);
+  f.lightSummonHitFlash = 10;
+  const rect = getLightSummonRect(f);
+  if (rect) spawnHitSpark(rect.x + rect.w / 2, rect.y + rect.h / 2, sourceDir, kind);
+  if (f.lightSummonHealth <= 0) {
+    const defeated = f.lightSummonType;
+    f.lightSummonType = null;
+    f.lightSummonTicks = 0;
+    f.lightSummonHealth = 0;
+    if (defeated === "misa") {
+      f.lightSummonStage = Math.max(f.lightSummonStage || 1, 2);
+      showActionWarning("Misa has been removed");
+    } else {
+      f.lightSummonStage = Math.max(f.lightSummonStage || 2, 3);
+      showActionWarning("Soichiro has been removed");
+    }
+    f.techniqueCooldown = Math.max(f.techniqueCooldown || 0, 2 * 60);
+  }
+  updateHud();
+  return true;
+}
+
+function updateLightSummonUnderAttack(f, opponent) {
+  if (!isLight(f) || !f.lightSummonType || !opponent || opponent.ko) return;
+  const rect = getLightSummonRect(f);
+  if (!rect) return;
+  const attack = getAttackSpec(opponent);
+  if (attack && opponent.attacking && !opponent.hasHit) {
+    const activeStart = attack.windup;
+    const activeEnd = attack.windup + attack.active;
+    if (opponent.attackFrame >= activeStart && opponent.attackFrame <= activeEnd && rectsOverlap(getHitbox(opponent), rect)) {
+      opponent.hasHit = true;
+      const damage = Math.ceil((opponent.attacking === "heavy" ? 30 : 18) * getOutgoingDamageMultiplier(opponent));
+      damageLightSummon(f, damage, opponent.dir || 1, opponent.attacking === "heavy" ? "heavy" : "light");
+      gainUltimate(opponent, damage * ULT_DAMAGE_GAIN_SCALE * 0.45);
+      hitStopTicks = Math.max(hitStopTicks, opponent.attacking === "heavy" ? HITSTOP_HEAVY : HITSTOP_LIGHT);
+      shake = Math.max(shake, opponent.attacking === "heavy" ? 9 : 5);
+    }
+  }
+}
+
+function damageLightSummonByProjectile(projectile, f) {
+  if (!projectile || projectile.visualOnly || !isLight(f) || !f.lightSummonType) return false;
+  const rect = getLightSummonRect(f);
+  if (!rect || !projectileOverlapsTarget(projectile, rect)) return false;
+  const source = projectile.owner === "player" ? player : enemy;
+  const damage = Math.max(8, Math.ceil((projectile.damage || 10) * 0.74));
+  damageLightSummon(f, damage, projectile.dir || source?.dir || 1, projectile.move || "slash");
+  if (source) gainUltimate(source, damage * ULT_DAMAGE_GAIN_SCALE * 0.4);
+  projectile.hit = true;
+  spawnProjectileDisperse(projectile);
+  return true;
+}
+
 function startRyukStrike(f, aimPoint = null, cost = 0) {
   if (!isLight(f)) return false;
   const aim = sanitizeAimPoint(aimPoint) || mouseAimWorld;
   if (cost > 0) f.ce = Math.max(0, f.ce - cost);
-  const radius = 66 + Math.floor((f.informationMeter || 0) / 100 * 18);
+  const infoRatio = getLightInfoRatio(f);
+  const radius = 66 + Math.floor(infoRatio * 28);
+  const startup = Math.max(8, Math.ceil(18 - infoRatio * 8 - ((f.potatoFocusTicks || 0) > 0 ? 4 : 0)));
   projectiles.push({
     owner: f === player ? "player" : "enemy",
     move: "ryukStrike",
@@ -2024,14 +2142,17 @@ function startRyukStrike(f, aimPoint = null, cost = 0) {
     aimX: 0,
     aimY: 1,
     angle: Math.PI / 2,
-    maxTravel: 0,
+    maxTravel: null,
     traveled: 0,
-    life: 24,
+    life: 34,
+    startup,
+    startupMax: startup,
+    warningRadius: radius,
+    maxLife: 34,
     hit: false
   });
   gainLightInfo(f, 8);
   gainLightIdentity(f, 5);
-  spawnHitSpark(aim.x, aim.y, f.dir, "slash");
   updateHud();
   return true;
 }
@@ -2042,16 +2163,16 @@ function startNameInvestigation(f, cost = 0) {
 
   if (f.lightSummonStage <= 1 && f.lightSummonType !== "misa") {
     f.lightSummonType = "misa";
-    f.lightSummonHealth = 42;
-    f.lightSummonMaxHealth = 42;
-    f.lightSummonTicks = 9 * 60;
+    f.lightSummonHealth = 50;
+    f.lightSummonMaxHealth = 50;
+    f.lightSummonTicks = LIGHT_SUMMON_MISA_TICKS;
     f.lightSummonStage = 1;
     showActionWarning("Misa is watching");
   } else if (f.lightSummonStage <= 2 && f.lightSummonType !== "soichiro") {
     f.lightSummonType = "soichiro";
-    f.lightSummonHealth = 76;
-    f.lightSummonMaxHealth = 76;
-    f.lightSummonTicks = 10 * 60;
+    f.lightSummonHealth = 110;
+    f.lightSummonMaxHealth = 110;
+    f.lightSummonTicks = LIGHT_SUMMON_SOICHIRO_TICKS;
     f.lightSummonStage = 2;
     showActionWarning("Soichiro investigates");
   } else {
@@ -2073,7 +2194,8 @@ function startEyeDeal(f) {
   f.identityProgress = LIGHT_IDENTITY_MAX;
   f.informationMeter = LIGHT_INFO_MAX;
   f.ultimateMeter = MAX_ULTIMATE;
-  f.potatoFocusTicks = Math.max(f.potatoFocusTicks || 0, 4 * 60);
+  f.potatoFocusTicks = Math.max(f.potatoFocusTicks || 0, LIGHT_EYE_DEAL_FOCUS_TICKS);
+  f.eyeDealGlowTicks = 8 * 60;
   spawnHitSpark(f.x + f.w / 2, f.y + 34, f.dir, "red");
   showActionWarning("The Eye Deal");
   updateHud();
@@ -2099,29 +2221,29 @@ function updateLightSystems(f, opponent) {
   if (f.potatoCooldown > 0) f.potatoCooldown -= 1;
   if (f.potatoFocusTicks > 0) f.potatoFocusTicks -= 1;
   if (f.deathNoteSlowTicks > 0) f.deathNoteSlowTicks -= 1;
+  if (f.eyeDealGlowTicks > 0) f.eyeDealGlowTicks -= 1;
+  if (f.lightSummonHitFlash > 0) f.lightSummonHitFlash -= 1;
 
   if (!f.ko && opponent && !opponent.ko) {
     const distance = Math.abs((f.x + f.w / 2) - (opponent.x + opponent.w / 2));
-    if (distance < 320 && f.hurt <= 0) gainLightInfo(f, 0.035);
-    if (distance < 260 && f.hurt <= 0) gainLightIdentity(f, 0.018);
+    if (distance < 340 && f.hurt <= 0) gainLightInfo(f, 0.035 + (f.grounded ? 0.01 : 0));
+    if (distance < 265 && f.hurt <= 0) gainLightIdentity(f, 0.018);
   }
 
   if (f.lightSummonType && f.lightSummonTicks > 0) {
     f.lightSummonTicks -= 1;
-    const rate = f.lightSummonType === "misa" ? 0.18 : 0.105;
+    const nearby = opponent ? Math.abs((f.x + f.w / 2) - (opponent.x + opponent.w / 2)) < 360 : false;
+    const rate = (f.lightSummonType === "misa" ? 0.2 : 0.11) * (nearby ? 1.15 : 0.82);
     gainLightIdentity(f, rate);
     gainLightInfo(f, rate * 0.75);
+    updateLightSummonUnderAttack(f, opponent);
 
-    // If Light takes pressure, the summon can be disrupted.
-    if ((f.hurt || 0) > 0 && Math.random() < 0.018) {
-      f.lightSummonHealth -= f.lightSummonType === "misa" ? 8 : 5;
-    }
-
-    if (f.lightSummonHealth <= 0) {
-      if (f.lightSummonType === "misa") f.lightSummonStage = 2;
-      else if (f.lightSummonType === "soichiro") f.lightSummonStage = 3;
-      f.lightSummonType = null;
-      f.lightSummonTicks = 0;
+    if (f.lightSummonType === "soichiro" && opponent) {
+      const rect = getLightSummonRect(f);
+      if (rect && rectsOverlap(expandRect(rect, 58), opponent)) {
+        f.shieldTicks = Math.min(SHIELD_MAX_TICKS, (f.shieldTicks || 0) + 0.18);
+        if (Math.abs(opponent.vx || 0) > 0.1) opponent.vx *= 0.992;
+      }
     }
   } else if (f.lightSummonTicks <= 0) {
     f.lightSummonType = null;
@@ -2130,10 +2252,6 @@ function updateLightSystems(f, opponent) {
 
 function startDeathNoteUltimate(f) {
   if (!isLight(f)) return false;
-  if ((f.ultimateMeter || 0) < MAX_ULTIMATE) {
-    showActionWarning("Not Enough Charge");
-    return false;
-  }
   if (!lightIdentityComplete(f)) {
     showActionWarning("Identity Not Complete");
     return false;
@@ -2146,8 +2264,8 @@ function startDeathNoteUltimate(f) {
   f.ultimateMeter = 0;
   f.ultimateAiming = false;
   f.ultimateMove = "deathNote";
-  f.ultimateStartup = 50;
-  f.ultimateRecovery = 42;
+  f.ultimateStartup = f.eyeDealUsed ? 28 : 50;
+  f.ultimateRecovery = f.eyeDealUsed ? 30 : 42;
   f.vx *= 0.25;
   f.blocking = false;
 
@@ -2157,6 +2275,7 @@ function startDeathNoteUltimate(f) {
   target.stun = Math.max(target.stun || 0, f.eyeDealUsed ? 84 : 62);
   target.hurt = Math.max(target.hurt || 0, 30);
   target.deathNoteSlowTicks = 6 * 60;
+  target.deathNoteFearTicks = 6 * 60;
   target.vx *= 0.22;
   target.vy = Math.min(target.vy || 0, -5.5);
   target.grounded = false;
@@ -2180,12 +2299,12 @@ function damageLightInformationOnHeavyHit(defender, amount) {
 function getLightExtraHudItems(f) {
   if (!isLight(f)) return [];
   const items = [
-    { name: "INFO", current: f.informationMeter || 0, max: LIGHT_INFO_MAX },
-    { name: "IDENTITY", current: f.identityProgress || 0, max: LIGHT_IDENTITY_MAX },
-    { name: "POTATO", current: f.potatoCooldown || 0, max: LIGHT_POTATO_COOLDOWN_TICKS }
+    { name: "INFORMATION", current: f.informationMeter || 0, max: LIGHT_INFO_MAX, mode: "resource", style: "light-info-meter" },
+    { name: "NAME", current: f.identityProgress || 0, max: LIGHT_IDENTITY_MAX, mode: "resource", style: "light-name-meter" },
+    { name: "POTATO", current: f.potatoCooldown || 0, max: LIGHT_POTATO_COOLDOWN_TICKS, mode: "cooldown" }
   ];
-  if ((f.potatoFocusTicks || 0) > 0) items.push({ name: "FOCUS", current: f.potatoFocusTicks, max: LIGHT_POTATO_FOCUS_TICKS });
-  if (f.lightSummonType) items.push({ name: f.lightSummonType.toUpperCase(), current: f.lightSummonTicks || 0, max: f.lightSummonType === "misa" ? 9 * 60 : 10 * 60 });
+  if ((f.potatoFocusTicks || 0) > 0) items.push({ name: "FOCUS", current: f.potatoFocusTicks, max: LIGHT_POTATO_FOCUS_TICKS, mode: "active" });
+  if (f.lightSummonType) items.push({ name: f.lightSummonType.toUpperCase(), current: f.lightSummonHealth || 0, max: f.lightSummonMaxHealth || 1, mode: "resource", style: "light-summon-meter" });
   return items;
 }
 
@@ -2353,6 +2472,23 @@ function getAttackSpec(f, type = f.attacking) {
       attack.recovery = 23;
     }
   }
+  if (f.technique === "deathnote" && type !== "backThrow") {
+    if (type === "light") {
+      attack.range += 18;
+      attack.width += 18;
+      attack.windup = 4;
+      attack.active = 6;
+      attack.recovery = 12;
+      attack.knockback += 2;
+    } else if (type === "heavy") {
+      attack.range += 24;
+      attack.width += 22;
+      attack.windup = 16;
+      attack.active = 9;
+      attack.recovery = 30;
+      attack.knockback += 4;
+    }
+  }
   if (isDomainVictim(f, "unlimitedVoid") && type !== "backThrow") {
     // Stronger Unlimited Void overload: bigger stun and much slower attacks.
     attack.windup = Math.ceil(attack.windup * 3.35);
@@ -2402,6 +2538,7 @@ function getTechniqueCooldownTicks(move, f = null) {
 function getTechniqueCost(f, move) {
   const spec = techniqueMoves[move];
   if (!spec) return Infinity;
+  if (f.technique === "deathnote") return 0;
   const multiplier = getCtCostMultiplier(f);
   if (!Number.isFinite(multiplier)) return Infinity;
   if (f.technique !== "limitless") {
@@ -2679,10 +2816,13 @@ function makeFighter(config) {
     lightSummonHealth: 0,
     lightSummonMaxHealth: 0,
     lightSummonTicks: 0,
+    lightSummonHitFlash: 0,
     potatoCooldown: 0,
     potatoFocusTicks: 0,
     eyeDealUsed: false,
-    deathNoteSlowTicks: 0
+    eyeDealGlowTicks: 0,
+    deathNoteSlowTicks: 0,
+    deathNoteFearTicks: 0
   };
 }
 
@@ -2813,7 +2953,9 @@ function updateTechniqueCooldownHud(f, slots) {
 
     const state = getTechniqueHudState(f, move);
     const maxCooldown = Math.max(1, state.maxCooldown);
-    const fillRatio = state.charging
+    const fillRatio = isLight(f) && !state.cooling && !state.charging
+      ? 1
+      : state.charging
       ? state.chargeRatio
       : state.cooling
       ? 1 - Math.min(1, state.cooldown / maxCooldown)
@@ -2826,15 +2968,16 @@ function updateTechniqueCooldownHud(f, slots) {
       : state.cooling
       ? `${Math.ceil(state.cooldown / 6) / 10}s`
       : state.blocked ? "BLOCK"
-        : state.lowCe ? "NO CE" : "READY";
-    hud.slot.classList.toggle("ready", !state.cooling && !state.blocked && !state.lowCe && !state.charging);
+        : state.lowCe && !isLight(f) ? "NO CE" : "READY";
+    hud.slot.classList.toggle("ready", !state.cooling && !state.blocked && (!state.lowCe || isLight(f)) && !state.charging);
     hud.slot.classList.toggle("cooling", state.cooling || state.charging);
     hud.slot.classList.toggle("charging", state.charging);
-    hud.slot.classList.toggle("low-ce", !state.cooling && !state.charging && state.lowCe);
+    hud.slot.classList.toggle("low-ce", !isLight(f) && !state.cooling && !state.charging && state.lowCe);
     hud.slot.classList.toggle("blocked", !state.cooling && !state.charging && state.blocked);
 
     hud.slot.classList.toggle("gojo-cooldown", f.technique === "limitless");
     hud.slot.classList.toggle("sukuna-cooldown", f.technique === "shrine");
+    hud.slot.classList.toggle("light-cooldown", f.technique === "deathnote");
   });
 }
 
@@ -3011,6 +3154,11 @@ function installLightTechniqueOption() {
     holder.appendChild(button);
   }
 
+  const lightButton = techniqueScreen.querySelector('[data-technique="deathnote"]');
+  if (lightButton) {
+    lightButton.querySelectorAll("span, small").forEach((el) => el.remove());
+  }
+
   const canvas = document.getElementById("deathnotePreview");
   if (canvas) techniquePreviewCanvases.deathnote = canvas;
 
@@ -3026,8 +3174,8 @@ function installLightTechniqueOption() {
     style.id = "lightTechniqueStyle";
     style.textContent = `
       [data-technique="deathnote"] {
-        border-color: rgba(239,68,68,0.45) !important;
-        box-shadow: 0 0 22px rgba(127,29,29,0.18) !important;
+        border-color: rgba(184,137,85,0.56) !important;
+        box-shadow: 0 0 22px rgba(120,72,35,0.24) !important;
       }
     `;
     document.head.appendChild(style);
@@ -3058,7 +3206,7 @@ function getTechniqueControlHtml(technique) {
     return '<span><kbd>Left Click</kbd> Dismantle</span><span><kbd>Right Click</kbd> Cleave</span><span><kbd>Hold S</kbd> Fuga</span><span><kbd>Hold C</kbd> Aim Ultimate</span><span><kbd>R</kbd> hold RCT</span>';
   }
   if (technique === "deathnote") {
-    return '<span><kbd>Left Click</kbd> Shinigami Strike</span><span><kbd>Right Click</kbd> Name Investigation</span><span><kbd>S</kbd> Potato Chip</span><span><kbd>C</kbd> Death Note</span><span><kbd>R</kbd> hold RCT</span>';
+    return '<span><kbd>Left Click</kbd> Shinigami Strike</span><span><kbd>Right Click</kbd> Name Investigation</span><span><kbd>S</kbd> Potato Chip</span><span><kbd>C</kbd> Death Note</span>';
   }
   return '<span><kbd>Left Click</kbd> Blue</span><span><kbd>Right Click</kbd> Red</span><span><kbd>Hold S</kbd> Teleport</span><span><kbd>Hold T</kbd> Blue Punch</span><span><kbd>F</kbd> Infinity</span><span><kbd>Hold C</kbd> Aim Ultimate</span><span><kbd>R</kbd> hold RCT</span>';
 }
@@ -3437,7 +3585,7 @@ function applyJoinerFighterStateOnHost(remoteFighter) {
     "teleportAiming", "teleportCooldown", "fugaAiming", "fugaChargeTicks", "fugaCooldown", "fugaCooldownMax", "ultimateAiming", "ultimateAimPoint",
     "ce", "maxCe", "ultimateMeter", "domainStartup", "domainAttemptType", "simpleDomainTicks", "simpleDomainFlash", "simpleDomainCooldown",
     "bindingVowType", "bindingVowTicks", "bindingVowCooldown", "bindingVowChoiceTicks", "bindingVowQuote", "bindingVowQuoteTicks", "bindingVowFlash", "sukunaThrowComboCooldown",
-    "informationMeter", "identityProgress", "lightSummonStage", "lightSummonType", "lightSummonHealth", "lightSummonMaxHealth", "lightSummonTicks", "potatoCooldown", "potatoFocusTicks", "eyeDealUsed", "deathNoteSlowTicks", "ctLockTimer"
+    "informationMeter", "identityProgress", "lightSummonStage", "lightSummonType", "lightSummonHealth", "lightSummonMaxHealth", "lightSummonTicks", "lightSummonHitFlash", "potatoCooldown", "potatoFocusTicks", "eyeDealUsed", "eyeDealGlowTicks", "deathNoteSlowTicks", "deathNoteFearTicks", "ctLockTimer"
   ];
 
   fields.forEach((field) => {
@@ -3940,10 +4088,13 @@ function getFighterNetworkState(f) {
     lightSummonHealth: f.lightSummonHealth,
     lightSummonMaxHealth: f.lightSummonMaxHealth,
     lightSummonTicks: f.lightSummonTicks,
+    lightSummonHitFlash: f.lightSummonHitFlash,
     potatoCooldown: f.potatoCooldown,
     potatoFocusTicks: f.potatoFocusTicks,
     eyeDealUsed: f.eyeDealUsed,
+    eyeDealGlowTicks: f.eyeDealGlowTicks,
     deathNoteSlowTicks: f.deathNoteSlowTicks,
+    deathNoteFearTicks: f.deathNoteFearTicks,
     ctLockTimer: f.ctLockTimer,
     walkCycle: f.walkCycle,
     onPlatform: f.onPlatform
@@ -4383,6 +4534,7 @@ function getExtraCooldownItems(f) {
 
   if (isLight(f)) {
     items.push(...getLightExtraHudItems(f));
+    return items;
   }
 
   if ((f.simpleDomainTicks || 0) > 0) {
@@ -4432,10 +4584,15 @@ function updateExtraCooldownHud(container, f) {
 
   items.forEach((item) => {
     const ratio = getCooldownRatio(item.current, item.max);
-    const ready = ratio <= 0;
+    const isResource = item.mode === "resource";
+    const isActiveTimer = item.mode === "active";
+    const ready = isResource ? ratio >= 1 : ratio <= 0;
+    const fillPercent = isResource
+      ? Math.max(4, ratio * 100)
+      : ready ? 100 : Math.max(4, ratio * 100);
 
     const row = document.createElement("div");
-    row.className = `extra-cooldown ct-slot ${ready ? "ready" : "cooling"} ${f.technique === "shrine" ? "sukuna-cooldown" : "gojo-cooldown"}`;
+    row.className = `extra-cooldown ct-slot ${ready ? "ready" : "cooling"} ${f.technique === "shrine" ? "sukuna-cooldown" : f.technique === "deathnote" ? "light-cooldown" : "gojo-cooldown"} ${item.style || ""}`;
 
     const label = document.createElement("span");
     label.className = "extra-cooldown-label ct-label";
@@ -4446,14 +4603,19 @@ function updateExtraCooldownHud(container, f) {
 
     const fill = document.createElement("div");
     fill.className = "extra-cooldown-fill ct-fill";
-    fill.style.width = `${ready ? 100 : Math.max(4, ratio * 100)}%`;
+    fill.style.width = `${fillPercent}%`;
 
     const status = document.createElement("span");
     status.className = "extra-cooldown-status ct-status";
     const isActiveBuff = item.name === "SIMPLE DOMAIN" && (f.simpleDomainTicks || 0) > 0
       || item.name.startsWith("VOW: ")
-      || item.name === "BINDING VOW PICK";
-    status.textContent = ready ? "READY" : isActiveBuff ? `${Math.ceil(item.current / 60)}s ACTIVE` : `${Math.ceil(item.current / 60)}s`;
+      || item.name === "BINDING VOW PICK"
+      || isActiveTimer;
+    status.textContent = isResource
+      ? item.name === "NAME"
+        ? ready ? "FOUND" : "SEARCH"
+        : item.name === "INFORMATION" ? "METER" : "ACTIVE"
+      : ready ? "READY" : isActiveBuff ? `${Math.ceil(item.current / 60)}s ACTIVE` : `${Math.ceil(item.current / 60)}s`;
 
     meter.appendChild(fill);
     row.append(label, meter, status);
@@ -4482,6 +4644,26 @@ function updatePracticeDummyHudVisibility() {
   if (enemyPanel) enemyPanel.classList.toggle("practice-hp-only", hideDummyMeters);
 }
 
+function updateLightHudVisibility() {
+  const playerPanel = playerHealthEl ? playerHealthEl.closest(".fighter-panel") : null;
+  const enemyPanel = enemyHealthEl ? enemyHealthEl.closest(".fighter-panel") : null;
+  const playerCeFrame = playerCeEl ? playerCeEl.closest(".ce-frame") : null;
+  const enemyCeFrame = enemyCeEl ? enemyCeEl.closest(".ce-frame") : null;
+  const playerUltFrame = playerUltimateEl ? playerUltimateEl.closest(".ultimate-frame") : null;
+  const enemyUltFrame = enemyUltimateEl ? enemyUltimateEl.closest(".ultimate-frame") : null;
+
+  const playerLight = isLight(player);
+  const enemyLight = isLight(enemy);
+  setHudElementHidden(playerCeFrame, playerLight);
+  setHudElementHidden(playerUltFrame, playerLight);
+  if (gameMode !== "practice") {
+    setHudElementHidden(enemyCeFrame, enemyLight);
+    setHudElementHidden(enemyUltFrame, enemyLight);
+  }
+  if (playerPanel) playerPanel.classList.toggle("light-hud", playerLight);
+  if (enemyPanel) enemyPanel.classList.toggle("light-hud", enemyLight);
+}
+
 function updateHud() {
   updatePlayerNameLabels();
   enemyNameEl.classList.toggle("player-two-name", gameMode !== "cpu");
@@ -4506,6 +4688,7 @@ function updateHud() {
 
   updateExtraCooldownHud(playerExtraCooldownsEl, player);
   updateExtraCooldownHud(enemyExtraCooldownsEl, enemy);
+  updateLightHudVisibility();
   updatePracticeDummyHudVisibility();
 }
 
@@ -5570,6 +5753,7 @@ function getRctHealPerTick(f) {
 }
 
 function canStartRct(f) {
+  if (isLight(f)) return false;
   if (!f || gameOver || paused || isSpecialLocked(f) || f.ko || f.knockdown || f.dodging > 0) return false;
   if (f.health >= getCurrentHealthBarCeiling(f) || f.rctCooldown > 0) return false;
   return f.ce >= f.maxCe * RCT_MIN_CE_RATIO;
@@ -5591,6 +5775,10 @@ function cancelRct(f, startCooldown = true) {
 }
 
 function setRctHealing(f, wantsRct) {
+  if (isLight(f)) {
+    cancelRct(f, false);
+    return;
+  }
   if (!wantsRct) {
     cancelRct(f, true);
     return;
@@ -5876,6 +6064,11 @@ function updateUltimateState(f) {
 
 function releaseUltimate(f) {
   f.ultimateHasReleased = true;
+  if (isLight(f) || f.ultimateMove === "deathNote") {
+    f.ultimateMove = null;
+    f.ultimateAimPoint = null;
+    return;
+  }
   if (f.ultimateMove === "worldSlash") {
     releaseWorldCuttingSlash(f);
   } else {
@@ -6197,6 +6390,7 @@ function canStartSimpleDomain(f) {
 }
 
 function startSimpleDomain(f) {
+  if (isLight(f)) return false;
   if (!canStartSimpleDomain(f)) {
     showActionWarning(f && f.ce < Math.ceil(f.maxCe * SIMPLE_DOMAIN_CE_COST_RATIO) ? "Not Enough Cursed Energy" : "Can't Use Simple Domain");
     return false;
@@ -6219,6 +6413,12 @@ function startSimpleDomain(f) {
 
 function updateSimpleDomain(f) {
   if (!f) return;
+  if (isLight(f)) {
+    f.simpleDomainTicks = 0;
+    f.simpleDomainFlash = 0;
+    f.simpleDomainCooldown = 0;
+    return;
+  }
   if (f.simpleDomainTicks > 0) {
     f.simpleDomainTicks -= 1;
     if (f.simpleDomainTicks <= 0) f.simpleDomainCooldown = SIMPLE_DOMAIN_COOLDOWN_TICKS;
@@ -7305,7 +7505,7 @@ function applyHit(attacker, defender) {
   if (!blocked) gainCe(attacker, attackType === "heavy" ? HEAVY_HIT_CE_GAIN : LIGHT_HIT_CE_GAIN);
   hitStopTicks = Math.max(hitStopTicks, blocked ? 3 : gojoRedHeavyFinisher ? HITSTOP_HEAVY + 2 : gojoPushPullFinisher ? HITSTOP_HEAVY : heavyFinisher ? HITSTOP_HEAVY : finalLightHit ? 5 : HITSTOP_LIGHT);
   shake = Math.max(shake, blocked ? 4 : gojoRedHeavyFinisher ? 14 : gojoPushPullFinisher ? 12 : didBlueChase ? 12 : heavyFinisher ? 11 : finalLightHit ? 9 : isHeavyHit ? 8 : 7);
-  spawnHitSpark(defender.x + defender.w / 2, defender.y + 44, knockbackDir, blocked ? "block" : gojoRedHeavyFinisher ? "red" : gojoPushPullFinisher ? "blue" : bluePullHit || didBlueChase ? "blue" : attackType);
+  spawnHitSpark(defender.x + defender.w / 2, defender.y + 44, knockbackDir, blocked ? "block" : isLight(attacker) ? "ryukStrike" : gojoRedHeavyFinisher ? "red" : gojoPushPullFinisher ? "blue" : bluePullHit || didBlueChase ? "blue" : attackType);
   if (gojoRedHeavyFinisher) {
     spawnHitSpark(defender.x + defender.w / 2 - knockbackDir * 16, defender.y + 58, -knockbackDir, "red");
     spawnHitSpark(defender.x + defender.w / 2 + knockbackDir * 10, defender.y + 34, knockbackDir, "red");
@@ -7493,9 +7693,18 @@ function applyProjectileHit(projectile, defender) {
     defender.knockdownTimer = Math.max(defender.knockdownTimer || 0, 30);
     defender.vy = Math.min(defender.vy, -7.8);
     spawnGroundErase(defender.x + defender.w / 2, 104);
+  } else if (projectile.move === "ryukStrike" && !blocked) {
+    defender.grounded = false;
+    defender.knockdown = true;
+    defender.knockdownTimer = Math.max(defender.knockdownTimer || 0, 22);
+    defender.vy = Math.min(defender.vy, -7.1);
+    defender.stun = Math.max(defender.stun, 24);
+    const owner = projectile.owner === "player" ? player : enemy;
+    gainLightInfo(owner, 10);
+    gainLightIdentity(owner, 6);
   }
-  hitStopTicks = Math.max(hitStopTicks, blocked ? 3 : (projectile.move === "purple" || projectile.move === "worldSlash") ? HITSTOP_HEAVY + 4 : projectile.move === "cleave" || projectile.move === "fuga" ? HITSTOP_HEAVY : HITSTOP_LIGHT);
-  shake = blocked ? 4 : (projectile.move === "purple" || projectile.move === "worldSlash") ? 15 : projectile.move === "fuga" ? 13 : 8;
+  hitStopTicks = Math.max(hitStopTicks, blocked ? 3 : (projectile.move === "purple" || projectile.move === "worldSlash") ? HITSTOP_HEAVY + 4 : projectile.move === "ryukStrike" ? HITSTOP_HEAVY + 1 : projectile.move === "cleave" || projectile.move === "fuga" ? HITSTOP_HEAVY : HITSTOP_LIGHT);
+  shake = blocked ? 4 : (projectile.move === "purple" || projectile.move === "worldSlash") ? 15 : projectile.move === "ryukStrike" ? 14 : projectile.move === "fuga" ? 13 : 8;
   spawnHitSpark(defender.x + defender.w / 2, defender.y + 48, pushDir, blocked ? "block" : projectile.move);
   if (projectile.move === "fuga") spawnFugaExplosion(projectile, false);
   updateHud();
@@ -7702,11 +7911,16 @@ function projectileOverlapsTarget(projectile, target) {
     }
   }
 
+  if (projectile.move === "ryukStrike") {
+    return circleOverlapsRect(projectile.x, projectile.y, projectile.radius, target);
+  }
+
   const box = { x: projectile.x - projectile.radius, y: projectile.y - projectile.radius, w: projectile.radius * 2, h: projectile.radius * 2 };
   return rectsOverlap(box, target);
 }
 
 function projectileHitsTerrain(projectile) {
+  if (projectile.move === "ryukStrike") return false;
   if (projectile.move === "cleave") return false;
   const radius = projectile.radius || 0;
   if (projectile.x - radius <= 0 || projectile.x + radius >= STAGE_W) return true;
@@ -7769,6 +7983,7 @@ function updateProjectiles() {
     const stepY = p.vy || 0;
     p.x += stepX;
     p.y += stepY;
+    if (p.startup > 0) p.startup -= 1;
     if (p.ultimateProjectile && (p.move === "purple" || p.move === "worldSlash")) {
       if (breakPlatformsNear(p.x, p.y, (p.radius || 36) + 28)) {
         spawnGroundErase(p.x, Math.max(72, (p.radius || 36) + 38));
@@ -7778,7 +7993,8 @@ function updateProjectiles() {
     if (Number.isFinite(p.maxTravel)) p.traveled = (p.traveled || 0) + Math.hypot(stepX, stepY);
     p.life -= 1;
     const target = p.owner === "player" ? enemy : player;
-    if (shouldResolveProjectileHit(p, target) && !p.hit && projectileOverlapsTarget(p, target)) applyProjectileHit(p, target);
+    if ((p.startup || 0) <= 0 && !p.hit && damageLightSummonByProjectile(p, target)) continue;
+    if ((p.startup || 0) <= 0 && shouldResolveProjectileHit(p, target) && !p.hit && projectileOverlapsTarget(p, target)) applyProjectileHit(p, target);
     if (p.hit) continue;
 
     if (p.move !== "cleave" && Number.isFinite(p.maxTravel) && (p.traveled || 0) >= p.maxTravel) {
@@ -7850,8 +8066,8 @@ function spawnFugaExplosion(projectile, damageTarget = true) {
 }
 
 function spawnHitSpark(x, y, dir, kind) {
-  const color = kind === "block" ? "#bae6fd" : kind === "purple" ? "#d8b4fe" : kind === "fuga" ? "#fb923c" : kind === "cleave" || kind === "slash" ? "#7f1d1d" : kind === "heavy" || kind === "red" ? "#fb7185" : kind === "blue" ? "#38bdf8" : "#fde68a";
-  const life = kind === "purple" ? 24 : kind === "red" ? 20 : kind === "fuga" ? 18 : 14;
+  const color = kind === "ryukStrike" ? "#050505" : kind === "block" ? "#bae6fd" : kind === "purple" ? "#d8b4fe" : kind === "fuga" ? "#fb923c" : kind === "cleave" || kind === "slash" ? "#7f1d1d" : kind === "heavy" || kind === "red" ? "#fb7185" : kind === "blue" ? "#38bdf8" : "#fde68a";
+  const life = kind === "ryukStrike" ? 18 : kind === "purple" ? 24 : kind === "red" ? 20 : kind === "fuga" ? 18 : 14;
   hitSparks.push({ x, y, dir, kind, color, life, maxLife: life });
 }
 
@@ -8812,6 +9028,10 @@ function updateFighter(f, opponent) {
 
   if (!f.ko) f.dir = f.x + f.w / 2 < opponent.x + opponent.w / 2 ? 1 : -1;
   if ((f.deathNoteSlowTicks || 0) > 0) f.vx *= 0.82;
+  if ((f.deathNoteFearTicks || 0) > 0) {
+    f.deathNoteFearTicks -= 1;
+    f.vx += Math.sin(frame * 0.62) * 0.05;
+  }
   updateBluePunchTimers(f);
   if (f.gojoPushPullCooldown > 0) f.gojoPushPullCooldown -= 1;
 
@@ -9619,13 +9839,13 @@ function drawViewportBackdrop() {
 function getTechniqueSkin(f, flash) {
   if (!flash && f?.technique === "deathnote") {
     return {
-      body: "#111827",
-      skin: "#f3c7a6",
-      accent: "#b91c1c",
-      pants: "#0f172a",
+      body: "#b88955",
+      skin: "#f1c7a4",
+      accent: "#8b1e22",
+      pants: "#20242f",
       shoe: "#020617",
-      hair: "#4b2e19",
-      eye: "#7f1d1d",
+      hair: "#6b3f1f",
+      eye: "#1b1410",
       mark: "#ef4444"
     };
   }
@@ -10265,51 +10485,284 @@ function drawSukunaGrabThrowHud(f) {
 
 
 
+function drawDeathNoteCharacterModel(kind, x, footY, scale = 1, options = {}) {
+  const alpha = Number.isFinite(options.alpha) ? options.alpha : 1;
+  const pose = options.pose || "idle";
+  const hitFlash = Math.max(0, Math.min(1, options.hitFlash || 0));
+  const punch = Math.max(0, Math.min(1, options.punch || 0));
+  const dir = options.dir || 1;
+  const idle = Math.sin(frame * 0.08) * 0.8;
+  const isRyuk = kind === "ryuk";
+  const isMisa = kind === "misa";
+  const isSoichiro = kind === "soichiro";
+
+  const palette = isRyuk
+    ? { skin: "#c8ced6", hair: "#050505", body: "#0a0a0a", trim: "#1f2937", pants: "#060606", shoe: "#020202", accent: "#9ca3af" }
+    : isMisa
+      ? { skin: "#f1c7a4", hair: "#f3d36b", body: "#17131c", trim: "#f8fafc", pants: "#211827", shoe: "#0f0a12", accent: "#dc2626" }
+      : { skin: "#d7b08d", hair: "#6b7280", body: "#3b2a1c", trim: "#f8f1e7", pants: "#1f2937", shoe: "#111827", accent: "#7f1d1d" };
+
+  ctx.save();
+  ctx.translate(x, footY);
+  ctx.scale(dir * scale, scale);
+  ctx.globalAlpha *= alpha;
+  if (hitFlash > 0) {
+    ctx.shadowColor = "rgba(248,113,113,0.9)";
+    ctx.shadowBlur = 12 * hitFlash;
+  }
+
+  const bodyLean = pose === "punch" ? -4 * punch : isRyuk ? -2 : 0;
+  const hipY = -46;
+  const headY = isRyuk ? -111 : -102;
+  const torsoTop = isRyuk ? -88 : -82;
+  const shoulderY = torsoTop + 6;
+  const torsoBottom = -42;
+  const leftHip = { x: -9, y: hipY };
+  const rightHip = { x: 9, y: hipY };
+  const leftFoot = { x: isRyuk ? -14 : -10, y: 0 };
+  const rightFoot = { x: isRyuk ? 15 : 11, y: 0 };
+
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  ctx.strokeStyle = "#020202";
+  ctx.lineWidth = isRyuk ? 8 : 6;
+  ctx.beginPath();
+  ctx.moveTo(leftHip.x, leftHip.y);
+  ctx.lineTo(-12, -22);
+  ctx.lineTo(leftFoot.x, leftFoot.y);
+  ctx.moveTo(rightHip.x, rightHip.y);
+  ctx.lineTo(13, -21);
+  ctx.lineTo(rightFoot.x, rightFoot.y);
+  ctx.stroke();
+
+  ctx.strokeStyle = palette.pants;
+  ctx.lineWidth = isRyuk ? 5 : 4;
+  ctx.beginPath();
+  ctx.moveTo(leftHip.x, leftHip.y);
+  ctx.lineTo(-12, -22);
+  ctx.lineTo(leftFoot.x, leftFoot.y);
+  ctx.moveTo(rightHip.x, rightHip.y);
+  ctx.lineTo(13, -21);
+  ctx.lineTo(rightFoot.x, rightFoot.y);
+  ctx.stroke();
+
+  ctx.strokeStyle = palette.shoe;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(leftFoot.x - 5, 1);
+  ctx.lineTo(leftFoot.x + 7, 1);
+  ctx.moveTo(rightFoot.x - 5, 1);
+  ctx.lineTo(rightFoot.x + 7, 1);
+  ctx.stroke();
+
+  if (isRyuk) {
+    ctx.fillStyle = "rgba(0,0,0,0.82)";
+    ctx.beginPath();
+    ctx.moveTo(-25, -84);
+    ctx.lineTo(-55, -64);
+    ctx.lineTo(-27, -56);
+    ctx.lineTo(-42, -38);
+    ctx.lineTo(-15, -45);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(25, -84);
+    ctx.lineTo(53, -64);
+    ctx.lineTo(27, -56);
+    ctx.lineTo(42, -38);
+    ctx.lineTo(15, -45);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.save();
+  ctx.translate(bodyLean, idle * 0.35);
+  ctx.fillStyle = palette.body;
+  ctx.beginPath();
+  ctx.moveTo(-15, torsoTop);
+  ctx.lineTo(16, torsoTop + 1);
+  ctx.lineTo(13, torsoBottom);
+  ctx.lineTo(0, torsoBottom + 6);
+  ctx.lineTo(-14, torsoBottom);
+  ctx.closePath();
+  ctx.fill();
+
+  if (isMisa) {
+    ctx.fillStyle = palette.trim;
+    ctx.beginPath();
+    ctx.moveTo(-9, -78);
+    ctx.lineTo(0, -66);
+    ctx.lineTo(9, -78);
+    ctx.lineTo(5, -55);
+    ctx.lineTo(-5, -55);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = palette.accent;
+    ctx.beginPath();
+    ctx.moveTo(0, -67);
+    ctx.lineTo(5, -58);
+    ctx.lineTo(0, -51);
+    ctx.lineTo(-5, -58);
+    ctx.closePath();
+    ctx.fill();
+  } else if (isSoichiro) {
+    ctx.fillStyle = palette.trim;
+    ctx.beginPath();
+    ctx.moveTo(-7, -79);
+    ctx.lineTo(0, -64);
+    ctx.lineTo(7, -79);
+    ctx.lineTo(5, -50);
+    ctx.lineTo(-5, -50);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = palette.accent;
+    ctx.fillRect(-2, -69, 4, 24);
+  } else {
+    ctx.fillStyle = palette.trim;
+    ctx.beginPath();
+    ctx.moveTo(-10, -86);
+    ctx.lineTo(0, -70);
+    ctx.lineTo(10, -86);
+    ctx.lineTo(6, -47);
+    ctx.lineTo(-6, -47);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  const leftHand = pose === "punch" && punch > 0.05
+    ? { x: 36 + punch * 18, y: -63 + punch * 5 }
+    : { x: -23, y: -50 + idle };
+  const rightHand = pose === "punch"
+    ? { x: 52 + punch * 28, y: -56 + punch * 7 }
+    : { x: 23, y: -49 - idle };
+
+  ctx.strokeStyle = isRyuk ? palette.body : palette.body;
+  ctx.lineWidth = isRyuk ? 7 : 5;
+  ctx.beginPath();
+  ctx.moveTo(-15, shoulderY);
+  ctx.lineTo(-22, -66);
+  ctx.lineTo(leftHand.x, leftHand.y);
+  ctx.moveTo(15, shoulderY);
+  ctx.lineTo(26 + punch * 12, -65 + punch * 2);
+  ctx.lineTo(rightHand.x, rightHand.y);
+  ctx.stroke();
+
+  ctx.fillStyle = isRyuk ? palette.skin : palette.skin;
+  ctx.beginPath();
+  ctx.ellipse(leftHand.x, leftHand.y, isRyuk ? 5 : 4, isRyuk ? 4 : 3.5, 0, 0, Math.PI * 2);
+  ctx.ellipse(rightHand.x, rightHand.y, isRyuk ? 8 : 4.5, isRyuk ? 6 : 3.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = palette.skin;
+  ctx.beginPath();
+  ctx.ellipse(0, headY, isRyuk ? 13 : 12, isRyuk ? 16 : 14, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (isRyuk) {
+    ctx.fillStyle = palette.hair;
+    ctx.beginPath();
+    ctx.moveTo(-18, headY - 5);
+    ctx.lineTo(-26, headY - 29);
+    ctx.lineTo(-12, headY - 17);
+    ctx.lineTo(-8, headY - 35);
+    ctx.lineTo(0, headY - 18);
+    ctx.lineTo(8, headY - 36);
+    ctx.lineTo(12, headY - 17);
+    ctx.lineTo(27, headY - 29);
+    ctx.lineTo(18, headY - 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#111111";
+    ctx.beginPath();
+    ctx.ellipse(0, headY + 25, 18, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (isMisa) {
+    ctx.fillStyle = palette.hair;
+    ctx.beginPath();
+    ctx.arc(0, headY - 4, 14, Math.PI, Math.PI * 2);
+    ctx.lineTo(12, headY + 9);
+    ctx.lineTo(-12, headY + 9);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(-19, headY + 3, 8, 18, -0.18, 0, Math.PI * 2);
+    ctx.ellipse(19, headY + 3, 8, 18, 0.18, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#0f0a12";
+    ctx.fillRect(-22, headY - 2, 6, 3);
+    ctx.fillRect(16, headY - 2, 6, 3);
+  } else {
+    ctx.fillStyle = palette.hair;
+    ctx.beginPath();
+    ctx.moveTo(-12, headY - 4);
+    ctx.quadraticCurveTo(-7, headY - 18, 4, headY - 17);
+    ctx.quadraticCurveTo(12, headY - 14, 13, headY - 2);
+    ctx.lineTo(8, headY - 7);
+    ctx.lineTo(2, headY - 2);
+    ctx.lineTo(-5, headY - 8);
+    ctx.lineTo(-12, headY - 2);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.restore();
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
 function drawLightSummonEffect(f) {
   if (!isLight(f) || !f.lightSummonType) return;
-  const center = getFighterCenter(f);
-  const side = f.dir || 1;
-  const sx = center.x - side * 86;
-  const sy = f.y + 44;
+  const rect = getLightSummonRect(f);
+  if (!rect) return;
+  const sx = rect.x + rect.w / 2;
+  const hitFlash = Math.max(0, Math.min(1, (f.lightSummonHitFlash || 0) / 10));
   ctx.save();
-  ctx.globalAlpha = 0.72;
-  ctx.fillStyle = f.lightSummonType === "misa" ? "rgba(236,72,153,0.68)" : "rgba(96,165,250,0.66)";
-  ctx.strokeStyle = "rgba(255,255,255,0.55)";
-  ctx.lineWidth = 2;
+  ctx.globalAlpha = 0.92;
+  ctx.fillStyle = "rgba(0,0,0,0.28)";
   ctx.beginPath();
-  ctx.roundRect(sx - 17, sy - 30, 34, 62, 8);
+  ctx.ellipse(sx, rect.y + rect.h + 3, rect.w * 0.62, 5, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.stroke();
+
+  drawDeathNoteCharacterModel(
+    f.lightSummonType,
+    sx,
+    rect.y + rect.h,
+    f.lightSummonType === "misa" ? 0.58 : 0.62,
+    { alpha: 0.9 + hitFlash * 0.1, hitFlash }
+  );
+
   ctx.fillStyle = "rgba(255,255,255,0.9)";
   ctx.font = "700 10px system-ui, sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText(f.lightSummonType === "misa" ? "MISA" : "SOICHIRO", sx, sy - 39);
+  ctx.fillText(f.lightSummonType === "misa" ? "MISA" : "SOICHIRO", sx, rect.y - 8);
   const hpRatio = Math.max(0, Math.min(1, (f.lightSummonHealth || 0) / Math.max(1, f.lightSummonMaxHealth || 1)));
   ctx.fillStyle = "rgba(15,23,42,0.9)";
-  ctx.fillRect(sx - 22, sy + 38, 44, 5);
+  ctx.fillRect(sx - 24, rect.y + rect.h + 6, 48, 5);
   ctx.fillStyle = "rgba(34,197,94,0.9)";
-  ctx.fillRect(sx - 22, sy + 38, 44 * hpRatio, 5);
+  ctx.fillRect(sx - 24, rect.y + rect.h + 6, 48 * hpRatio, 5);
   ctx.restore();
 }
 
 function drawLightAuraEffect(f) {
   if (!isLight(f)) return;
   const center = getFighterCenter(f);
-  const info = Math.max(0, Math.min(1, (f.informationMeter || 0) / LIGHT_INFO_MAX));
-  const identity = Math.max(0, Math.min(1, (f.identityProgress || 0) / LIGHT_IDENTITY_MAX));
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
-  ctx.strokeStyle = `rgba(239, 68, 68, ${0.10 + identity * 0.32})`;
-  ctx.lineWidth = 2 + identity * 3;
-  ctx.beginPath();
-  ctx.ellipse(center.x, center.y + 20, 48 + info * 18, 18 + info * 8, frame * 0.01, 0, Math.PI * 2);
-  ctx.stroke();
   if ((f.potatoFocusTicks || 0) > 0) {
     ctx.strokeStyle = "rgba(250, 204, 21, 0.5)";
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.arc(center.x, center.y, 54 + Math.sin(frame * 0.2) * 4, 0, Math.PI * 2);
     ctx.stroke();
+  }
+  if ((f.eyeDealGlowTicks || 0) > 0 || f.eyeDealUsed) {
+    const alpha = f.eyeDealUsed ? 0.78 : Math.min(0.78, (f.eyeDealGlowTicks || 0) / 90);
+    ctx.fillStyle = `rgba(248, 113, 113, ${alpha})`;
+    ctx.beginPath();
+    ctx.ellipse(center.x - 7 * (f.dir || 1), center.y - 18, 4, 2, 0, 0, Math.PI * 2);
+    ctx.ellipse(center.x + 7 * (f.dir || 1), center.y - 18, 4, 2, 0, 0, Math.PI * 2);
+    ctx.fill();
   }
   ctx.restore();
 }
@@ -10512,6 +10965,71 @@ function drawFighterShadow(f) {
   ctx.fill();
 }
 
+function drawRyukPunchAssist(f, attack, active) {
+  if (!isLight(f) || !attack || (f.attacking !== "light" && f.attacking !== "heavy")) return;
+
+  const heavy = f.attacking === "heavy";
+  const total = Math.max(1, attack.windup + attack.active + attack.recovery);
+  const progress = Math.max(0, Math.min(1, f.attackFrame / total));
+  const windupRatio = Math.max(0, Math.min(1, f.attackFrame / Math.max(1, attack.windup)));
+  const activeRatio = active
+    ? Math.max(0, Math.min(1, (f.attackFrame - attack.windup) / Math.max(1, attack.active)))
+    : 0;
+  const fadeOut = f.attackFrame > attack.windup + attack.active
+    ? 1 - Math.max(0, Math.min(1, (f.attackFrame - attack.windup - attack.active) / Math.max(1, attack.recovery)))
+    : 1;
+  const alpha = Math.max(0, Math.min(1, Math.min(1, windupRatio * 1.25) * fadeOut));
+  const strikeX = f.w + (heavy ? 42 : 32);
+  const strikeY = heavy ? 55 : 50;
+  const summonY = heavy ? 8 : 16;
+  const drop = active ? activeRatio : Math.min(0.72, windupRatio) * 0.45;
+  const ryukX = strikeX - (heavy ? 28 : 22);
+  const ryukY = summonY + drop * (heavy ? 26 : 18);
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.globalCompositeOperation = "source-over";
+
+  ctx.fillStyle = `rgba(0,0,0,${0.16 + alpha * 0.18})`;
+  for (let i = 0; i < 7; i += 1) {
+    const a = frame * 0.08 + i * 0.9;
+    ctx.beginPath();
+    ctx.arc(strikeX + Math.cos(a) * (20 + i * 1.8), strikeY + Math.sin(a) * (10 + i), 4 + (i % 3), 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  drawDeathNoteCharacterModel("ryuk", ryukX, ryukY + (heavy ? 76 : 70), heavy ? 0.72 : 0.64, {
+    alpha: 1,
+    pose: "punch",
+    punch: active ? 1 : windupRatio * 0.7
+  });
+
+  if (active) {
+    ctx.fillStyle = "rgba(0,0,0,0.28)";
+    ctx.beginPath();
+    ctx.ellipse(strikeX + 17, strikeY + (heavy ? 8 : 1), heavy ? 31 : 24, heavy ? 20 : 16, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(0,0,0,0.86)";
+    ctx.lineWidth = heavy ? 5 : 4;
+    ctx.beginPath();
+    ctx.ellipse(strikeX + 17, strikeY + (heavy ? 8 : 1), heavy ? 34 : 27, heavy ? 22 : 18, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  if (progress > 0.72) {
+    const vanish = (progress - 0.72) / 0.28;
+    ctx.fillStyle = `rgba(0,0,0,${0.36 * (1 - vanish)})`;
+    for (let i = 0; i < 8; i += 1) {
+      const a = i * 0.78 + frame * 0.04;
+      ctx.beginPath();
+      ctx.arc(ryukX + Math.cos(a) * (14 + vanish * 26), ryukY + 20 + Math.sin(a) * (22 + vanish * 20), 5 + (i % 2) * 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  ctx.restore();
+}
+
 
 function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   const flash = f.hurt > 0 && Math.floor(frame / 3) % 2 === 0;
@@ -10704,6 +11222,63 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   if (f.technique === "limitless") {
     ctx.fillStyle = "#020617";
     ctx.fillRect(11, 32, 32, 12);
+  } else if (f.technique === "deathnote") {
+    ctx.fillStyle = "#f8f1e7";
+    ctx.beginPath();
+    ctx.moveTo(21, 37);
+    ctx.lineTo(33, 38);
+    ctx.lineTo(35, 77);
+    ctx.lineTo(27, 82);
+    ctx.lineTo(18, 76);
+    ctx.lineTo(18, 43);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = "#8b1e22";
+    ctx.beginPath();
+    ctx.moveTo(26, 39);
+    ctx.lineTo(31, 48);
+    ctx.lineTo(29, 76);
+    ctx.lineTo(24, 78);
+    ctx.lineTo(22, 48);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = "rgba(72, 42, 22, 0.34)";
+    ctx.beginPath();
+    ctx.moveTo(15, 37);
+    ctx.lineTo(24, 48);
+    ctx.lineTo(18, 54);
+    ctx.lineTo(12, 77);
+    ctx.lineTo(11, 44);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(41, 38);
+    ctx.lineTo(31, 48);
+    ctx.lineTo(37, 55);
+    ctx.lineTo(43, 76);
+    ctx.lineTo(43, 40);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(56, 31, 18, 0.72)";
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(17, 41);
+    ctx.lineTo(24, 49);
+    ctx.lineTo(19, 56);
+    ctx.moveTo(37, 42);
+    ctx.lineTo(31, 49);
+    ctx.lineTo(37, 57);
+    ctx.moveTo(27, 39);
+    ctx.lineTo(27, 80);
+    ctx.stroke();
+
+    ctx.fillStyle = "rgba(2, 6, 23, 0.9)";
+    ctx.beginPath();
+    ctx.roundRect(12, 78, 31, 6, 3);
+    ctx.fill();
   } else if (f.technique === "shrine") {
     ctx.fillStyle = "#ffd0a6";
     ctx.beginPath();
@@ -10881,6 +11456,42 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.fillStyle = "#020617";
     ctx.fillRect(21, 22, 2, 2);
     ctx.fillRect(31, 22, 2, 2);
+  } else if (f.technique === "deathnote") {
+    const hairSway = idle;
+
+    ctx.fillStyle = "rgba(128, 73, 33, 0.35)";
+    ctx.beginPath();
+    ctx.ellipse(26, 25, 14, 14, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = skin.hair;
+    ctx.beginPath();
+    ctx.moveTo(11 + hairSway * 0.25, 18);
+    ctx.quadraticCurveTo(14, 5, 24, 4);
+    ctx.quadraticCurveTo(35, 3, 42, 15);
+    ctx.lineTo(38, 24);
+    ctx.lineTo(34, 14);
+    ctx.lineTo(31, 25);
+    ctx.lineTo(27, 13);
+    ctx.lineTo(23, 26);
+    ctx.lineTo(19, 15);
+    ctx.lineTo(15, 25);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = "#3b2414";
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(15, 17);
+    ctx.quadraticCurveTo(23, 9, 34, 13);
+    ctx.moveTo(20, 13);
+    ctx.lineTo(17, 25);
+    ctx.moveTo(27, 12);
+    ctx.lineTo(24, 25);
+    ctx.moveTo(34, 15);
+    ctx.lineTo(31, 25);
+    ctx.stroke();
+
   } else {
     ctx.fillStyle = skin.eye;
     ctx.fillRect(31, 22, 4, 4);
@@ -10890,7 +11501,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   ctx.save();
   ctx.translate(lean, 0);
   const drawArmRig = (shoulder, elbow, hand, color = f.technique === "shrine" ? skinColor : bodyColor, handColor = skinColor) => {
-    const useOutline = f.technique !== "shrine";
+    const useOutline = f.technique !== "shrine" && f.technique !== "deathnote";
     const isShrineArm = f.technique === "shrine";
     const strokeArm = (strokeColor, width) => {
       ctx.strokeStyle = strokeColor;
@@ -11053,6 +11664,9 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
         );
       }
     } else {
+    if (isLight(f)) {
+      drawRyukPunchAssist(f, attack, active);
+    } else {
     const heavy = f.attacking === "heavy";
     const shoulder = { x: 41, y: heavy ? 50 : 57 };
     const elbow = heavy
@@ -11090,6 +11704,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
         { x: 7 - extraReach, y: 87 - extraLift * 0.2 },
         skinColor
       );
+    }
     }
     }
   } else if (jumpPose) {
@@ -11170,13 +11785,20 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     const bubblePulse = 1 + Math.sin(frame * 0.2) * 0.035;
     const bubbleScale = (0.74 + shieldPower * 0.28) * bubblePulse;
     const shrineShield = f.technique === "shrine";
-    const fillColor = shrineShield
+    const lightShield = f.technique === "deathnote";
+    const fillColor = lightShield
+      ? `rgba(120, 72, 35, ${0.07 + shieldPower * 0.16 + hitFlash * 0.08})`
+      : shrineShield
       ? `rgba(127, 29, 29, ${0.05 + shieldPower * 0.14 + hitFlash * 0.08})`
       : `rgba(14, 165, 233, ${0.04 + shieldPower * 0.12 + hitFlash * 0.08})`;
-    const strokeColor = shrineShield
+    const strokeColor = lightShield
+      ? `rgba(202, 138, 74, ${0.34 + shieldPower * 0.52 + hitFlash * 0.16})`
+      : shrineShield
       ? `rgba(248, 113, 113, ${0.26 + shieldPower * 0.55 + hitFlash * 0.16})`
       : `rgba(196, 241, 255, ${0.24 + shieldPower * 0.58 + hitFlash * 0.16})`;
-    const innerColor = shrineShield
+    const innerColor = lightShield
+      ? `rgba(92, 54, 26, ${0.24 + shieldPower * 0.34})`
+      : shrineShield
       ? `rgba(2, 6, 23, ${0.26 + shieldPower * 0.32})`
       : `rgba(56, 189, 248, ${0.18 + shieldPower * 0.34})`;
 
@@ -11193,15 +11815,17 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
 
     ctx.strokeStyle = innerColor;
     ctx.lineWidth = 2;
-    ctx.setLineDash(shieldPower < 0.32 || hitFlash > 0 ? [9, 8] : shrineShield ? [12, 12] : [16, 12]);
-    ctx.lineDashOffset = -frame * (shrineShield ? 0.7 : 0.55);
+    ctx.setLineDash(shieldPower < 0.32 || hitFlash > 0 ? [9, 8] : shrineShield || lightShield ? [12, 12] : [16, 12]);
+    ctx.lineDashOffset = -frame * (shrineShield ? 0.7 : lightShield ? 0.62 : 0.55);
     ctx.beginPath();
     ctx.ellipse(f.w / 2, 66, 39 * bubbleScale, 66 * bubbleScale, 0, 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
 
     if (shieldPower < 0.34 || hitFlash > 0) {
-      ctx.strokeStyle = shrineShield
+      ctx.strokeStyle = lightShield
+        ? `rgba(253, 230, 138, ${0.28 + hitFlash * 0.5})`
+        : shrineShield
         ? `rgba(254, 202, 202, ${0.28 + hitFlash * 0.5})`
         : `rgba(224, 242, 254, ${0.3 + hitFlash * 0.5})`;
       ctx.lineWidth = 2;
@@ -11673,6 +12297,25 @@ function drawProjectileDisperses() {
         ctx.lineTo(Math.cos(a) * outer, Math.sin(a) * outer);
         ctx.stroke();
       }
+    } else if (effect.move === "ryukStrike") {
+      const spin = frame * 0.08 + effect.spin;
+      ctx.fillStyle = `rgba(0,0,0,${0.18 * t})`;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius * (0.7 + age * 0.9), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = `rgba(0,0,0,${0.72 * t})`;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius * (0.75 + age * 0.65), spin, spin + Math.PI * 1.45);
+      ctx.stroke();
+      ctx.fillStyle = `rgba(0,0,0,${0.45 * t})`;
+      for (let i = 0; i < 9; i += 1) {
+        const a = spin + i * Math.PI * 0.42;
+        const r = radius * (0.4 + age * 0.9);
+        ctx.beginPath();
+        ctx.arc(Math.cos(a) * r, Math.sin(a) * r * 0.6, 4 + (i % 3) * 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
     } else {
       const effectAngle = Number(effect.angle);
       if (Number.isFinite(effectAngle)) ctx.rotate(effectAngle);
@@ -11711,7 +12354,18 @@ function drawHitSparks() {
     ctx.lineCap = "round";
     const shrineSpark = spark.kind === "slash" || spark.kind === "cleave";
     const fugaSpark = spark.kind === "fuga";
-    if (shrineSpark) {
+    const ryukSpark = spark.kind === "ryukStrike";
+    if (ryukSpark) {
+      ctx.fillStyle = `rgba(0,0,0,${0.32 * t})`;
+      ctx.beginPath();
+      ctx.arc(0, 0, 34 * t + 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = `rgba(0,0,0,${0.9 * t})`;
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.arc(0, 0, 24 * t + 8, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (shrineSpark) {
       ctx.strokeStyle = `rgba(2, 6, 23, ${0.85 * t})`;
       ctx.lineWidth = spark.kind === "cleave" ? 8 : 5;
       ctx.beginPath();
@@ -11776,7 +12430,7 @@ function drawHitSparks() {
       ctx.strokeStyle = `rgba(254, 240, 138, ${0.9 * t})`;
       ctx.lineWidth = 3;
     }
-    for (let i = 0; i < (shrineSpark || fugaSpark ? 10 : 7); i += 1) {
+    for (let i = 0; i < (ryukSpark ? 0 : shrineSpark || fugaSpark ? 10 : 7); i += 1) {
       const angle = (Math.PI * 2 / 7) * i + spark.dir * 0.2;
       const inner = 4 + (1 - t) * 5;
       const outer = (spark.kind === "fuga" ? 36 : spark.kind === "cleave" ? 32 : spark.kind === "heavy" || spark.kind === "slash" ? 23 : 16) * t + 5;
@@ -11785,7 +12439,7 @@ function drawHitSparks() {
       ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
       ctx.stroke();
     }
-    ctx.fillStyle = shrineSpark ? `rgba(127, 29, 29, ${0.8 * t})` : fugaSpark ? `rgba(254, 240, 138, ${0.9 * t})` : "rgba(255, 255, 255, 0.85)";
+    ctx.fillStyle = ryukSpark ? `rgba(0, 0, 0, ${0.86 * t})` : shrineSpark ? `rgba(127, 29, 29, ${0.8 * t})` : fugaSpark ? `rgba(254, 240, 138, ${0.9 * t})` : "rgba(255, 255, 255, 0.85)";
     ctx.beginPath();
     ctx.arc(0, 0, 3 + 4 * t, 0, Math.PI * 2);
     ctx.fill();
@@ -12003,8 +12657,35 @@ function drawTechniqueAimPreview(f) {
   if (showOnlyChargeOrb) return;
 
   const previewDistance = getAimPreviewDistance(move, spec, chargeRatio, aimVector, f, radius);
-  const ghostX = aimVector.origin.x + aimVector.x * previewDistance;
-  const ghostY = aimVector.origin.y + aimVector.y * previewDistance;
+  let ghostX = aimVector.origin.x + aimVector.x * previewDistance;
+  let ghostY = aimVector.origin.y + aimVector.y * previewDistance;
+  if (move === "ryukStrike") {
+    const targetPoint = sanitizeAimPoint(f.techniqueAim) || sanitizeAimPoint(mouseAimWorld);
+    if (targetPoint) {
+      ghostX = Math.max(40, Math.min(STAGE_W - 40, targetPoint.x));
+      ghostY = Math.max(70, Math.min(GROUND - 60, targetPoint.y));
+    }
+  }
+
+  if (move === "ryukStrike") {
+    ctx.save();
+    ctx.globalAlpha = 0.58;
+    ctx.fillStyle = "rgba(0, 0, 0, 0.28)";
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.88)";
+    ctx.lineWidth = 4;
+    ctx.setLineDash([10, 8]);
+    ctx.beginPath();
+    ctx.arc(ghostX, ghostY, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(245, 245, 244, 0.78)";
+    ctx.font = "900 12px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("RYUK", ghostX, ghostY + 4);
+    ctx.restore();
+    return;
+  }
 
   ctx.save();
   ctx.globalAlpha = 0.5;
@@ -12154,38 +12835,85 @@ function drawProjectiles() {
       ctx.globalCompositeOperation = "source-over";
       ctx.globalAlpha = 1;
     } else if (p.move === "ryukStrike") {
-      const pulse = 1 + Math.sin(frame * 0.32) * 0.08;
-      ctx.globalCompositeOperation = "lighter";
-      const smoke = ctx.createRadialGradient(0, 0, p.radius * 0.15, 0, 0, p.radius * 1.45);
-      smoke.addColorStop(0, "rgba(255,255,255,0.9)");
-      smoke.addColorStop(0.25, "rgba(31,41,55,0.88)");
-      smoke.addColorStop(0.65, "rgba(2,6,23,0.55)");
-      smoke.addColorStop(1, "rgba(2,6,23,0)");
-      ctx.fillStyle = smoke;
-      ctx.beginPath();
-      ctx.arc(0, 0, p.radius * 1.28 * pulse, 0, Math.PI * 2);
-      ctx.fill();
+      const age = p.visualSpawnAge || 0;
+      const maxLife = p.maxLife || 34;
+      const startupTotal = Math.max(1, p.startupMax || ((p.startup || 0) + age));
+      const impactAge = Math.max(0, age - startupTotal);
+      const vanishRatio = Math.max(0, Math.min(1, (maxLife - age) / Math.max(1, maxLife * 0.35)));
+      const summonRatio = Math.max(0, Math.min(1, age / Math.max(1, startupTotal)));
+      const impactRatio = Math.max(0, Math.min(1, impactAge / 9));
+      const pulse = 1 + Math.sin(frame * 0.32) * 0.035;
+      if ((p.startup || 0) > 0) {
+        const charge = summonRatio;
+        ctx.globalCompositeOperation = "lighter";
+        ctx.fillStyle = `rgba(0,0,0,${0.16 + charge * 0.18})`;
+        ctx.strokeStyle = `rgba(0,0,0,${0.58 + charge * 0.28})`;
+        ctx.lineWidth = 4;
+        ctx.setLineDash([12, 10]);
+        ctx.beginPath();
+        ctx.arc(0, 0, p.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.setLineDash([]);
 
+        ctx.globalCompositeOperation = "source-over";
+        drawDeathNoteCharacterModel("ryuk", 0, -p.radius * (0.42 - charge * 0.16), Math.max(0.58, p.radius / 96), {
+          alpha: 0.18 + charge * 0.62
+        });
+
+        ctx.globalAlpha = 0.32 + charge * 0.38;
+        ctx.fillStyle = "rgba(0,0,0,0.75)";
+        for (let i = 0; i < 8; i += 1) {
+          const a = frame * 0.045 + i * 0.82;
+          ctx.beginPath();
+          ctx.arc(Math.cos(a) * p.radius * (0.55 + charge * 0.2), Math.sin(a) * p.radius * 0.32 - p.radius * 0.12, 5 + (i % 3) * 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+        continue;
+      }
+
+      ctx.globalAlpha = vanishRatio;
       ctx.globalCompositeOperation = "source-over";
-      ctx.fillStyle = "rgba(7, 10, 20, 0.95)";
+      ctx.fillStyle = "rgba(0,0,0,0.24)";
       ctx.beginPath();
-      ctx.ellipse(0, -p.radius * 0.12, p.radius * 0.72, p.radius * 0.46, -0.22, 0, Math.PI * 2);
+      ctx.arc(0, 0, p.radius, 0, Math.PI * 2);
       ctx.fill();
-
-      ctx.strokeStyle = "rgba(255,255,255,0.85)";
-      ctx.lineWidth = 4;
+      ctx.strokeStyle = "rgba(0,0,0,0.9)";
+      ctx.lineWidth = 5;
       ctx.beginPath();
-      ctx.moveTo(-p.radius * 0.42, -p.radius * 0.18);
-      ctx.lineTo(p.radius * 0.35, p.radius * 0.28);
-      ctx.moveTo(-p.radius * 0.25, p.radius * 0.24);
-      ctx.lineTo(p.radius * 0.45, -p.radius * 0.28);
+      ctx.arc(0, 0, p.radius * pulse, 0, Math.PI * 2);
       ctx.stroke();
 
-      ctx.fillStyle = "rgba(239,68,68,0.9)";
-      for (let i = 0; i < 5; i += 1) {
-        const a = frame * 0.05 + i * 1.2;
+      const ryukY = -p.radius * (1.48 - impactRatio * 0.18);
+      drawDeathNoteCharacterModel("ryuk", 0, ryukY + p.radius * 0.92, Math.max(0.62, p.radius / 90), {
+        alpha: 1,
+        pose: "punch",
+        punch: impactRatio
+      });
+
+      // Rounded black arrow: blunt head, thick shaft, and no slash/cleave styling.
+      const arrowDrop = 1 - Math.pow(1 - impactRatio, 3);
+      const startY = ryukY + p.radius * 0.46 + arrowDrop * p.radius * 0.58;
+      const endY = -p.radius * 0.12 + arrowDrop * p.radius * 0.36;
+      ctx.strokeStyle = "rgba(0,0,0,0.96)";
+      ctx.lineWidth = Math.max(12, p.radius * 0.18);
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+      ctx.moveTo(0, startY);
+      ctx.lineTo(0, endY);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(0,0,0,0.98)";
+      ctx.beginPath();
+      ctx.roundRect(-p.radius * 0.22, endY - p.radius * 0.08, p.radius * 0.44, p.radius * 0.28, p.radius * 0.12);
+      ctx.fill();
+
+      ctx.fillStyle = `rgba(0,0,0,${0.38 * vanishRatio})`;
+      for (let i = 0; i < 10; i += 1) {
+        const a = frame * 0.05 + i * 0.72;
         ctx.beginPath();
-        ctx.arc(Math.cos(a) * p.radius * 0.65, Math.sin(a) * p.radius * 0.35 + p.radius * 0.2, 3.5, 0, Math.PI * 2);
+        ctx.arc(Math.cos(a) * p.radius * 0.78, Math.sin(a) * p.radius * 0.42, 4 + (i % 3) * 2, 0, Math.PI * 2);
         ctx.fill();
       }
     } else if (p.move === "red") {
@@ -12700,6 +13428,58 @@ function drawUltimateScreenEffects() {
     glow.addColorStop(1, "rgba(2, 6, 23, 0)");
     ctx.fillStyle = glow;
     ctx.fillRect(0, 0, W, H);
+  } else if (ultimateScreenEffect.kind === "deathNote") {
+    const flicker = 0.65 + Math.sin(frame * 0.75) * 0.18 + Math.sin(frame * 0.21) * 0.12;
+    ctx.fillStyle = `rgba(2, 6, 23, ${0.74 * t})`;
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = `rgba(127, 29, 29, ${0.18 * t * flicker})`;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.save();
+    ctx.translate(W * 0.5, H * 0.5);
+    ctx.rotate(-0.08 + Math.sin(frame * 0.03) * 0.015);
+    ctx.fillStyle = `rgba(250, 250, 245, ${0.92 * t})`;
+    ctx.strokeStyle = `rgba(15, 23, 42, ${0.9 * t})`;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.roundRect(-132, -72, 264, 144, 6);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = `rgba(15, 23, 42, ${0.86 * t})`;
+    ctx.font = "900 26px Georgia, serif";
+    ctx.textAlign = "center";
+    ctx.fillText("DEATH NOTE", 0, -24);
+    ctx.strokeStyle = `rgba(127, 29, 29, ${0.72 * t})`;
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 5; i += 1) {
+      const y = 4 + i * 15;
+      ctx.beginPath();
+      ctx.moveTo(-96, y);
+      ctx.lineTo(96 - age * 34 + i * 4, y + Math.sin(frame * 0.08 + i) * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    ctx.fillStyle = `rgba(0,0,0,${0.62 * t})`;
+    ctx.beginPath();
+    ctx.ellipse(W * 0.73, H * 0.48, 58 + age * 18, 112, 0.08, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = `rgba(239,68,68,${0.78 * t})`;
+    ctx.beginPath();
+    ctx.arc(W * 0.71, H * 0.42, 5 + Math.sin(frame * 0.4) * 1.5, 0, Math.PI * 2);
+    ctx.arc(W * 0.75, H * 0.42, 5 + Math.cos(frame * 0.37) * 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = `rgba(248, 113, 113, ${0.68 * t})`;
+    ctx.lineWidth = 3;
+    for (let i = 0; i < 8; i += 1) {
+      const x = W * (0.12 + i * 0.11);
+      const y = H * (0.2 + ((i * 37) % 55) / 100);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + Math.sin(frame * 0.09 + i) * 26, y + 38 + age * 46);
+      ctx.stroke();
+    }
   } else {
     ctx.fillStyle = `rgba(2, 6, 23, ${0.28 * t})`;
     ctx.fillRect(0, 0, W, H);
@@ -13109,19 +13889,11 @@ if (radioScreen) {
     if (event.target === radioScreen) closeRadioScreen();
   });
 }
-battleMusic.addEventListener("ended", playNextSong);
 battleMusic.addEventListener("loadedmetadata", updateMusicProgressUi);
 battleMusic.addEventListener("durationchange", updateMusicProgressUi);
 battleMusic.addEventListener("timeupdate", updateMusicProgressUi);
 battleMusic.addEventListener("play", updateMusicProgressUi);
 battleMusic.addEventListener("pause", updateMusicProgressUi);
-battleMusic.addEventListener("error", () => {
-  const track = getCurrentRadioTrack();
-  console.warn("Music failed to load. Skipping:", track?.title, track?.src, battleMusic.error);
-  window.setTimeout(() => {
-    playNextSong();
-  }, 250);
-});
 techniqueButtons.forEach((button) => {
   button.addEventListener("click", () => finishTechniqueSelect(button.dataset.technique));
 });
