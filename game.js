@@ -2077,10 +2077,21 @@ function getLightInfoRatio(f) {
   return Math.max(0, Math.min(1, ((f && f.informationMeter) || 0) / LIGHT_INFO_MAX));
 }
 
-function setLightSummonAnchor(f) {
+function setLightSummonAnchor(f, aimPoint = null) {
   if (!isLight(f)) return;
   const center = getFighterCenter(f);
   const side = f.dir || 1;
+  const aim = sanitizeAimPoint(aimPoint);
+
+  // LIGHT_INVESTIGATION_AIM_PATCH:
+  // Investigation summons should appear where the player aimed, not follow Light.
+  if (aim) {
+    f.lightSummonAnchorDir = aim.x >= center.x ? 1 : -1;
+    f.lightSummonAnchorX = Math.max(36, Math.min(STAGE_W - 36, aim.x));
+    f.lightSummonAnchorY = Math.max(84, Math.min(GROUND, aim.y));
+    return;
+  }
+
   f.lightSummonAnchorDir = side;
   f.lightSummonAnchorX = center.x - side * 102;
   f.lightSummonAnchorY = f.y + f.h;
@@ -2131,7 +2142,8 @@ function damageLightSummon(f, amount, sourceDir = 1, kind = "slash") {
       f.lightSummonStage = Math.max(f.lightSummonStage || 2, 3);
       showActionWarning("Soichiro has been removed");
     }
-    f.techniqueCooldown = Math.max(f.techniqueCooldown || 0, 2 * 60);
+    f.lightInvestigationCooldown = Math.max(f.lightInvestigationCooldown || 0, 2 * 60);
+    f.lightInvestigationCooldownMax = Math.max(f.lightInvestigationCooldownMax || 0, f.lightInvestigationCooldown);
   }
   updateHud();
   return true;
@@ -2201,17 +2213,22 @@ function startRyukStrike(f, aimPoint = null, cost = 0) {
     maxLife: 34,
     hit: false
   });
-  gainLightInfo(f, 8);
-  gainLightIdentity(f, 5);
+  // LIGHT_INFO_NAME_FILL_RULES_PATCH:
+  // Ryuk/Shinigami Strike gives no free Info or Name just for being cast.
+  // Info is awarded only if it actually hits.
   updateHud();
   return true;
 }
 
-function startNameInvestigation(f, cost = 0) {
+function startNameInvestigation(f, cost = 0, aimPoint = null) {
   if (!isLight(f)) return false;
   if (cost > 0) f.ce = Math.max(0, f.ce - cost);
 
-  setLightSummonAnchor(f);
+  const fallbackPoint = aimPoint || (getOpponent(f) ? {
+    x: getOpponent(f).x + getOpponent(f).w / 2,
+    y: getOpponent(f).y + getOpponent(f).h
+  } : null);
+  setLightSummonAnchor(f, fallbackPoint);
 
   if (f.lightSummonStage <= 1 && f.lightSummonType !== "misa") {
     f.lightSummonType = "misa";
@@ -2219,14 +2236,12 @@ function startNameInvestigation(f, cost = 0) {
     f.lightSummonMaxHealth = 50;
     f.lightSummonTicks = LIGHT_SUMMON_MISA_TICKS;
     f.lightSummonStage = 1;
-    showActionWarning("Misa is watching");
   } else if (f.lightSummonStage <= 2 && f.lightSummonType !== "soichiro") {
     f.lightSummonType = "soichiro";
     f.lightSummonHealth = 110;
     f.lightSummonMaxHealth = 110;
     f.lightSummonTicks = LIGHT_SUMMON_SOICHIRO_TICKS;
     f.lightSummonStage = 2;
-    showActionWarning("Soichiro investigates");
   } else {
     return startEyeDeal(f);
   }
@@ -2252,7 +2267,6 @@ function startEyeDeal(f) {
   f.potatoFocusTicks = Math.max(f.potatoFocusTicks || 0, LIGHT_EYE_DEAL_FOCUS_TICKS);
   f.eyeDealGlowTicks = 8 * 60;
   spawnHitSpark(f.x + f.w / 2, f.y + 34, f.dir, "brown");
-  showActionWarning("The Eye Deal");
   updateHud();
   return true;
 }
@@ -2263,9 +2277,8 @@ function usePotatoChip(f) {
   f.delayedHealth = Math.max(f.delayedHealth || 0, f.health);
   f.potatoCooldown = LIGHT_POTATO_COOLDOWN_TICKS;
   f.potatoFocusTicks = LIGHT_POTATO_FOCUS_TICKS;
-  gainLightInfo(f, 6);
+  // Potato gives healing/focus, not free Info or Name.
   spawnHitSpark(f.x + f.w / 2, f.y + 42, f.dir, "brown");
-  showActionWarning("I'll take a potato chip... and eat it!");
   updateHud();
   return true;
 }
@@ -2280,18 +2293,19 @@ function updateLightSystems(f, opponent) {
   if (f.lightSummonHitFlash > 0) f.lightSummonHitFlash -= 1;
 
   if (!f.ko && opponent && !opponent.ko) {
-    const distance = Math.abs((f.x + f.w / 2) - (opponent.x + opponent.w / 2));
-    if (distance < 340 && f.hurt <= 0) gainLightInfo(f, 0.035 + (f.grounded ? 0.01 : 0));
-    if (distance < 265 && f.hurt <= 0) gainLightIdentity(f, 0.018);
+    // Name is only built by Name Investigation.
+    // Info is built by landing hits or keeping investigation active, not by simply standing nearby.
   }
 
   if (f.lightSummonType && f.lightSummonTicks > 0) {
     if (!Number.isFinite(f.lightSummonAnchorX) || !Number.isFinite(f.lightSummonAnchorY)) setLightSummonAnchor(f);
     f.lightSummonTicks -= 1;
     const nearby = opponent ? Math.abs((f.x + f.w / 2) - (opponent.x + opponent.w / 2)) < 360 : false;
-    const rate = (f.lightSummonType === "misa" ? 0.2 : 0.11) * (nearby ? 1.15 : 0.82);
+    // Name is filled by Investigation only.
+    // Misa is faster; Soichiro is slower but tougher.
+    const rate = (f.lightSummonType === "misa" ? 0.24 : 0.13) * (nearby ? 1.15 : 0.82);
     gainLightIdentity(f, rate);
-    gainLightInfo(f, rate * 0.75);
+    gainLightInfo(f, rate * 0.45);
     updateLightSummonUnderAttack(f, opponent);
 
     if (f.lightSummonType === "soichiro" && opponent) {
@@ -2342,7 +2356,6 @@ function startDeathNoteUltimate(f) {
   spawnHitSpark(target.x + target.w / 2, target.y + 34, target.dir, "brown");
   spawnHitSpark(target.x + target.w / 2, target.y + 68, -target.dir, "brown");
   triggerUltimateScreenEffect("deathNote", 92);
-  showActionWarning("DEATH NOTE");
   updateHud();
 
   if (!pacifistBot && target.health <= 0) startKnockout(f, target);
@@ -2595,7 +2608,9 @@ function getTechniqueDisplayName(move) {
 
 function getTechniqueCooldownTicks(move, f = null) {
   if (move === "fuga") return techniqueMoves.fuga.cooldown;
-  if (move === "ryukStrike") return getLightFocusedCooldown(f, 8 * 60);
+  // LIGHT_SEPARATE_COOLDOWNS_PATCH:
+  // Ryuk/Shinigami Strike is 4 seconds and does not share cooldown with Investigation.
+  if (move === "ryukStrike") return getLightFocusedCooldown(f, 4 * 60);
   if (move === "nameInvestigation") return getLightFocusedCooldown(f, 13 * 60);
   let base = move === "red" || move === "cleave" ? TECHNIQUE_HEAVY_COOLDOWN : TECHNIQUE_FAST_COOLDOWN;
   if (move === "cleave" && hasBindingVow(f, "cleave")) base = Math.max(10, Math.ceil(base * 0.55));
@@ -2889,6 +2904,10 @@ function makeFighter(config) {
     lightSummonAnchorDir: 0,
     potatoCooldown: 0,
     potatoFocusTicks: 0,
+    lightRyukCooldown: 0,
+    lightRyukCooldownMax: 0,
+    lightInvestigationCooldown: 0,
+    lightInvestigationCooldownMax: 0,
     eyeDealUsed: false,
     eyeDealGlowTicks: 0,
     deathNoteSlowTicks: 0,
@@ -2930,6 +2949,10 @@ function applyTechniqueStats(f, preserveMeters = false) {
     f.informationMeter = 0;
     f.potatoFocusTicks = 0;
     f.potatoCooldown = 0;
+    f.lightRyukCooldown = 0;
+    f.lightRyukCooldownMax = 0;
+    f.lightInvestigationCooldown = 0;
+    f.lightInvestigationCooldownMax = 0;
     f.eyeDealUsed = false;
   }
 }
@@ -2969,11 +2992,15 @@ function getTechniqueHudState(f, move) {
   const blocked = f.blocking || isHoldingShield(f);
   if (f.technique === "deathnote" && (move === "ryukStrike" || move === "nameInvestigation")) {
     const cost = getTechniqueCost(f, move);
+    const cooldown = move === "ryukStrike" ? (f.lightRyukCooldown || 0) : (f.lightInvestigationCooldown || 0);
+    const maxCooldown = move === "ryukStrike"
+      ? (f.lightRyukCooldownMax || getTechniqueCooldownTicks(move, f))
+      : (f.lightInvestigationCooldownMax || getTechniqueCooldownTicks(move, f));
     return {
       cost,
-      cooling: f.techniqueCooldown > 0,
-      cooldown: f.techniqueCooldown,
-      maxCooldown: f.techniqueCooldownMax || getTechniqueCooldownTicks(move, f),
+      cooling: cooldown > 0,
+      cooldown,
+      maxCooldown,
       lowCe: f.ce < cost,
       blocked
     };
@@ -3842,7 +3869,7 @@ function applyJoinerFighterStateOnHost(remoteFighter) {
     "teleportAiming", "teleportCooldown", "fugaAiming", "fugaChargeTicks", "fugaCooldown", "fugaCooldownMax", "ultimateAiming", "ultimateAimPoint",
     "ce", "maxCe", "ultimateMeter", "domainStartup", "domainAttemptType", "simpleDomainTicks", "simpleDomainFlash", "simpleDomainCooldown",
     "bindingVowType", "bindingVowTicks", "bindingVowCooldown", "bindingVowChoiceTicks", "bindingVowQuote", "bindingVowQuoteTicks", "bindingVowFlash", "sukunaThrowComboCooldown",
-    "informationMeter", "identityProgress", "lightSummonStage", "lightSummonType", "lightSummonHealth", "lightSummonMaxHealth", "lightSummonTicks", "lightSummonHitFlash", "lightSummonAnchorX", "lightSummonAnchorY", "lightSummonAnchorDir", "potatoCooldown", "potatoFocusTicks", "eyeDealUsed", "eyeDealGlowTicks", "deathNoteSlowTicks", "deathNoteFearTicks", "ctLockTimer"
+    "informationMeter", "identityProgress", "lightSummonStage", "lightSummonType", "lightSummonHealth", "lightSummonMaxHealth", "lightSummonTicks", "lightSummonHitFlash", "lightSummonAnchorX", "lightSummonAnchorY", "lightSummonAnchorDir", "potatoCooldown", "potatoFocusTicks", "lightRyukCooldown", "lightRyukCooldownMax", "lightInvestigationCooldown", "lightInvestigationCooldownMax", "eyeDealUsed", "eyeDealGlowTicks", "deathNoteSlowTicks", "deathNoteFearTicks", "ctLockTimer"
   ];
 
   fields.forEach((field) => {
@@ -4351,6 +4378,10 @@ function getFighterNetworkState(f) {
     lightSummonAnchorDir: f.lightSummonAnchorDir,
     potatoCooldown: f.potatoCooldown,
     potatoFocusTicks: f.potatoFocusTicks,
+    lightRyukCooldown: f.lightRyukCooldown,
+    lightRyukCooldownMax: f.lightRyukCooldownMax,
+    lightInvestigationCooldown: f.lightInvestigationCooldown,
+    lightInvestigationCooldownMax: f.lightInvestigationCooldownMax,
     eyeDealUsed: f.eyeDealUsed,
     eyeDealGlowTicks: f.eyeDealGlowTicks,
     deathNoteSlowTicks: f.deathNoteSlowTicks,
@@ -5619,6 +5650,9 @@ function jumpFighterWithMove(f, moveDir) {
 }
 
 function canStartTechnique(f) {
+  if (isLight(f)) {
+    return !(gameOver || paused || hasCtLock(f) || isSpecialLocked(f) || f.rctHealing || f.stun > 0 || f.ko || f.knockdown || f.blocking || isHoldingShield(f));
+  }
   return !(gameOver || paused || hasCtLock(f) || isSpecialLocked(f) || f.rctHealing || f.stun > 0 || f.techniqueCooldown > 0 || f.ko || f.knockdown || f.blocking || isHoldingShield(f));
 }
 
@@ -5826,16 +5860,22 @@ function startTechnique(f, slot, chargeRatio = 0, aimPoint = null, releasingChar
 
   if (f.technique === "deathnote") {
     if (move === "ryukStrike") {
+      if ((f.lightRyukCooldown || 0) > 0) return;
       if (startRyukStrike(f, aimPoint, cost)) {
-        f.techniqueCooldown = getTechniqueCooldownTicks(move, f);
-        f.techniqueCooldownMax = f.techniqueCooldown;
+        f.lightRyukCooldown = getTechniqueCooldownTicks(move, f);
+        f.lightRyukCooldownMax = f.lightRyukCooldown;
+        f.techniqueCooldown = 0;
+        f.techniqueCooldownMax = 0;
       }
       return;
     }
     if (move === "nameInvestigation") {
-      if (startNameInvestigation(f, cost)) {
-        f.techniqueCooldown = getTechniqueCooldownTicks(move, f);
-        f.techniqueCooldownMax = f.techniqueCooldown;
+      if ((f.lightInvestigationCooldown || 0) > 0) return;
+      if (startNameInvestigation(f, cost, aimPoint)) {
+        f.lightInvestigationCooldown = getTechniqueCooldownTicks(move, f);
+        f.lightInvestigationCooldownMax = f.lightInvestigationCooldown;
+        f.techniqueCooldown = 0;
+        f.techniqueCooldownMax = 0;
       }
       return;
     }
@@ -7780,7 +7820,13 @@ function applyHit(attacker, defender) {
     return;
   }
   const meleeDamageDealt = applyFighterDamage(defender, damage);
-  if (!blocked && meleeDamageDealt > 0) playRandomGruntSfx();
+  if (!blocked && meleeDamageDealt > 0) {
+    playRandomGruntSfx();
+    if (isLight(attacker)) {
+      // Attacks must hit to build Info. They do not build Name.
+      gainLightInfo(attacker, attackType === "heavy" ? 7 : 4);
+    }
+  }
   gainUltimate(attacker, meleeDamageDealt * (blocked ? ULT_BLOCKED_DAMAGE_GAIN_SCALE : ULT_DAMAGE_GAIN_SCALE));
   cancelRct(defender, false);
   defender.hurt = blocked ? 6 : 14;
@@ -8036,8 +8082,8 @@ function applyProjectileHit(projectile, defender) {
     defender.vy = Math.min(defender.vy, -7.1);
     defender.stun = Math.max(defender.stun, 24);
     const owner = projectile.owner === "player" ? player : enemy;
+    // Ryuk hit builds Info only. Name is Investigation-only.
     gainLightInfo(owner, 10);
-    gainLightIdentity(owner, 6);
   }
   hitStopTicks = Math.max(hitStopTicks, blocked ? 3 : (projectile.move === "purple" || projectile.move === "worldSlash") ? HITSTOP_HEAVY + 4 : projectile.move === "ryukStrike" ? HITSTOP_HEAVY + 1 : projectile.move === "cleave" || projectile.move === "fuga" ? HITSTOP_HEAVY : HITSTOP_LIGHT);
   shake = blocked ? 4 : (projectile.move === "purple" || projectile.move === "worldSlash") ? 15 : projectile.move === "ryukStrike" ? 14 : projectile.move === "fuga" ? 13 : 8;
@@ -9180,10 +9226,13 @@ function tryCpuLightActions(cpu, distance) {
     }
   }
 
-  if (!enemy.lightSummonType && enemy.ce >= getTechniqueCost(enemy, "nameInvestigation") && Math.random() < getCpuDecisionChance(0.06, 0.12, 0.22)) {
-    if (startNameInvestigation(enemy, getTechniqueCost(enemy, "nameInvestigation"))) {
-      enemy.techniqueCooldown = getTechniqueCooldownTicks("nameInvestigation", enemy);
-      enemy.techniqueCooldownMax = enemy.techniqueCooldown;
+  if (!enemy.lightSummonType && (enemy.lightInvestigationCooldown || 0) <= 0 && enemy.ce >= getTechniqueCost(enemy, "nameInvestigation") && Math.random() < getCpuDecisionChance(0.06, 0.12, 0.22)) {
+    const investigateAim = opponent ? { x: opponent.x + opponent.w / 2, y: opponent.y + opponent.h } : null;
+    if (startNameInvestigation(enemy, getTechniqueCost(enemy, "nameInvestigation"), investigateAim)) {
+      enemy.lightInvestigationCooldown = getTechniqueCooldownTicks("nameInvestigation", enemy);
+      enemy.lightInvestigationCooldownMax = enemy.lightInvestigationCooldown;
+      enemy.techniqueCooldown = 0;
+      enemy.techniqueCooldownMax = 0;
       enemy.aiGoal = "investigate";
       enemy.aiCooldown = cpu.techniqueCooldown;
       return true;
@@ -9469,6 +9518,8 @@ function updateFighter(f, opponent) {
   }
   if (f.knockdown && f.grounded && f.knockdownTimer <= 0) f.knockdown = false;
   if (f.techniqueCooldown > 0) f.techniqueCooldown -= 1;
+  if (f.lightRyukCooldown > 0) f.lightRyukCooldown -= 1;
+  if (f.lightInvestigationCooldown > 0) f.lightInvestigationCooldown -= 1;
   updateUltimateState(f);
   drainBlockingUltimate(f);
   if (f.teleportAiming && (!canPrepareTeleport(f) || f.ce < GOJO_TELEPORT_COST)) f.teleportAiming = false;
