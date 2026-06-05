@@ -2018,6 +2018,31 @@ const LIGHT_SUMMON_MISA_TICKS = 16 * 60;
 const LIGHT_SUMMON_SOICHIRO_TICKS = 18 * 60;
 const LIGHT_EYE_DEAL_FOCUS_TICKS = 5 * 60;
 
+// LIGHT_BROWN_EFFECTS_PATCH
+const LIGHT_BROWN = {
+  deep: "#2b1708",
+  dark: "#451a03",
+  mid: "#7c3f12",
+  main: "#a16207",
+  bright: "#d97706",
+  pale: "#fbbf24",
+  cream: "#fef3c7"
+};
+
+function lightBrownRgba(which = "main", alpha = 1) {
+  const colors = {
+    deep: "43, 23, 8",
+    dark: "69, 26, 3",
+    mid: "124, 63, 18",
+    main: "161, 98, 7",
+    bright: "217, 119, 6",
+    pale: "251, 191, 36",
+    cream: "254, 243, 199"
+  };
+  return `rgba(${colors[which] || colors.main}, ${alpha})`;
+}
+
+
 function isLight(f) {
   return Boolean(f && f.technique === "deathnote");
 }
@@ -2197,7 +2222,7 @@ function startEyeDeal(f) {
   f.ultimateMeter = MAX_ULTIMATE;
   f.potatoFocusTicks = Math.max(f.potatoFocusTicks || 0, LIGHT_EYE_DEAL_FOCUS_TICKS);
   f.eyeDealGlowTicks = 8 * 60;
-  spawnHitSpark(f.x + f.w / 2, f.y + 34, f.dir, "red");
+  spawnHitSpark(f.x + f.w / 2, f.y + 34, f.dir, "brown");
   showActionWarning("The Eye Deal");
   updateHud();
   return true;
@@ -2210,7 +2235,7 @@ function usePotatoChip(f) {
   f.potatoCooldown = LIGHT_POTATO_COOLDOWN_TICKS;
   f.potatoFocusTicks = LIGHT_POTATO_FOCUS_TICKS;
   gainLightInfo(f, 6);
-  spawnHitSpark(f.x + f.w / 2, f.y + 42, f.dir, "blue");
+  spawnHitSpark(f.x + f.w / 2, f.y + 42, f.dir, "brown");
   showActionWarning("I'll take a potato chip... and eat it!");
   updateHud();
   return true;
@@ -2281,8 +2306,8 @@ function startDeathNoteUltimate(f) {
   target.vy = Math.min(target.vy || 0, -5.5);
   target.grounded = false;
   gainUltimate(f, dealt * ULT_DAMAGE_GAIN_SCALE);
-  spawnHitSpark(target.x + target.w / 2, target.y + 34, target.dir, "red");
-  spawnHitSpark(target.x + target.w / 2, target.y + 68, -target.dir, "slash");
+  spawnHitSpark(target.x + target.w / 2, target.y + 34, target.dir, "brown");
+  spawnHitSpark(target.x + target.w / 2, target.y + 68, -target.dir, "brown");
   triggerUltimateScreenEffect("deathNote", 92);
   showActionWarning("DEATH NOTE");
   updateHud();
@@ -2299,13 +2324,21 @@ function damageLightInformationOnHeavyHit(defender, amount) {
 
 function getLightExtraHudItems(f) {
   if (!isLight(f)) return [];
+
+  // LIGHT_REAL_INFO_NAME_BARS_PATCH:
+  // Info and Name use the main resource bars now, not extra cooldown rows.
   const items = [
-    { name: "INFORMATION", current: f.informationMeter || 0, max: LIGHT_INFO_MAX, mode: "resource", style: "light-info-meter" },
-    { name: "NAME", current: f.identityProgress || 0, max: LIGHT_IDENTITY_MAX, mode: "resource", style: "light-name-meter" },
     { name: "POTATO", current: f.potatoCooldown || 0, max: LIGHT_POTATO_COOLDOWN_TICKS, mode: "cooldown" }
   ];
-  if ((f.potatoFocusTicks || 0) > 0) items.push({ name: "FOCUS", current: f.potatoFocusTicks, max: LIGHT_POTATO_FOCUS_TICKS, mode: "active" });
-  if (f.lightSummonType) items.push({ name: f.lightSummonType.toUpperCase(), current: f.lightSummonHealth || 0, max: f.lightSummonMaxHealth || 1, mode: "resource", style: "light-summon-meter" });
+
+  if ((f.potatoFocusTicks || 0) > 0) {
+    items.push({ name: "FOCUS", current: f.potatoFocusTicks, max: LIGHT_POTATO_FOCUS_TICKS, mode: "active" });
+  }
+
+  if (f.lightSummonType) {
+    items.push({ name: f.lightSummonType.toUpperCase(), current: f.lightSummonHealth || 0, max: f.lightSummonMaxHealth || 1, mode: "resource", style: "light-summon-meter" });
+  }
+
   return items;
 }
 
@@ -3134,8 +3167,129 @@ function applyPracticeSettingsTick() {
 
 
 // LIGHT_UI_PATCH
+
+function installLightBrownHudStyle() {
+  if (document.getElementById("lightBrownEffectsStyle")) return;
+
+  const style = document.createElement("style");
+  style.id = "lightBrownEffectsStyle";
+  style.textContent = `
+    /* LIGHT_BROWN_EFFECTS_PATCH: Light's cooldown/resource HUD is brown. */
+    .light-cooldown.ct-slot,
+    .ct-slot.light-cooldown {
+      border-color: rgba(161, 98, 7, 0.56) !important;
+      box-shadow: 0 0 12px rgba(69, 26, 3, 0.28), inset 0 0 10px rgba(69, 26, 3, 0.18) !important;
+      background: linear-gradient(180deg, rgba(43, 23, 8, 0.66), rgba(15, 10, 6, 0.78)) !important;
+    }
+
+    .light-cooldown .ct-label,
+    .light-cooldown .ct-status {
+      color: #fef3c7 !important;
+      text-shadow: 0 0 6px rgba(161, 98, 7, 0.75) !important;
+    }
+
+    .light-cooldown .ct-meter {
+      background: rgba(43, 23, 8, 0.72) !important;
+      border-color: rgba(217, 119, 6, 0.38) !important;
+    }
+
+    .light-cooldown .ct-fill {
+      background: linear-gradient(90deg, #451a03, #92400e, #d97706, #fbbf24) !important;
+      box-shadow: 0 0 12px rgba(217,119,6,0.45), inset 0 1px 0 rgba(254,243,199,0.28) !important;
+    }
+
+    .light-cooldown.cooling .ct-fill,
+    .light-cooldown.charging .ct-fill {
+      background: linear-gradient(90deg, #2b1708, #7c3f12, #a16207) !important;
+      opacity: 0.92 !important;
+    }
+
+    .light-cooldown.ready .ct-fill {
+      background: linear-gradient(90deg, #78350f, #d97706, #facc15) !important;
+    }
+
+    .light-cooldown.light-info-meter .ct-fill,
+    .light-cooldown.light-name-meter .ct-fill,
+    .light-cooldown.light-summon-meter .ct-fill {
+      background: linear-gradient(90deg, #451a03, #a16207, #fbbf24) !important;
+    }
+
+    .light-cooldown.low-ce .ct-fill,
+    .light-cooldown.blocked .ct-fill {
+      background: linear-gradient(90deg, #292524, #57534e, #a8a29e) !important;
+    }
+
+    /* LIGHT_REAL_INFO_NAME_BARS_PATCH: real Light resource bars. */
+    .fighter-panel.light-hud .ce-frame.light-info-frame,
+    .fighter-panel.light-hud .ultimate-frame.light-name-frame {
+      position: relative !important;
+      overflow: hidden !important;
+      border-radius: 999px !important;
+      border: 1px solid rgba(120, 113, 108, 0.55) !important;
+      background: linear-gradient(180deg, rgba(15, 15, 15, 0.92), rgba(38, 38, 38, 0.88)) !important;
+      box-shadow: inset 0 1px 5px rgba(0,0,0,0.7), 0 0 10px rgba(0,0,0,0.22) !important;
+    }
+
+    .fighter-panel.light-hud .ce-frame.light-info-frame::before,
+    .fighter-panel.light-hud .ultimate-frame.light-name-frame::before {
+      position: absolute !important;
+      left: 8px !important;
+      top: 50% !important;
+      transform: translateY(-50%) !important;
+      z-index: 4 !important;
+      font: 900 10px system-ui, sans-serif !important;
+      letter-spacing: 0.08em !important;
+      pointer-events: none !important;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.9) !important;
+    }
+
+    .fighter-panel.light-hud .ce-frame.light-info-frame::before {
+      content: "INFO" !important;
+      color: #e5e7eb !important;
+    }
+
+    .fighter-panel.light-hud .ultimate-frame.light-name-frame::before {
+      content: "NAME" !important;
+      color: #fee2e2 !important;
+    }
+
+    .fighter-panel.light-hud .ce-frame.light-info-frame::after,
+    .fighter-panel.light-hud .ultimate-frame.light-name-frame::after {
+      content: "" !important;
+      position: absolute !important;
+      inset: 0 !important;
+      z-index: 3 !important;
+      pointer-events: none !important;
+      background: linear-gradient(180deg, rgba(255,255,255,0.26), rgba(255,255,255,0.04) 42%, rgba(0,0,0,0.18)) !important;
+    }
+
+    .fighter-panel.light-hud .ce-fill.light-info-fill {
+      height: 100% !important;
+      border-radius: inherit !important;
+      background: linear-gradient(90deg, #1f2937 0%, #6b7280 55%, #d1d5db 100%) !important;
+      box-shadow: 0 0 13px rgba(156, 163, 175, 0.44), inset 0 1px 0 rgba(255,255,255,0.35) !important;
+    }
+
+    .fighter-panel.light-hud .ultimate-fill.light-name-fill {
+      height: 100% !important;
+      border-radius: inherit !important;
+      /* Death Note-style deep blood crimson red. */
+      background: linear-gradient(90deg, #2a0204 0%, #5f0007 34%, #8b000b 62%, #d1121b 100%) !important;
+      box-shadow: 0 0 16px rgba(139, 0, 11, 0.58), inset 0 1px 0 rgba(255,235,235,0.28) !important;
+    }
+
+  `;
+
+  document.head.appendChild(style);
+}
+
+window.addEventListener("DOMContentLoaded", installLightBrownHudStyle);
+window.setTimeout(installLightBrownHudStyle, 0);
+
+
 function installLightTechniqueOption() {
   installUniversalBrawlRename();
+  installLightBrownHudStyle();
 
   if (!techniqueScreen) return;
   const existing = techniqueScreen.querySelector('[data-technique="deathnote"]');
@@ -4655,14 +4809,29 @@ function updateLightHudVisibility() {
 
   const playerLight = isLight(player);
   const enemyLight = isLight(enemy);
-  setHudElementHidden(playerCeFrame, playerLight);
-  setHudElementHidden(playerUltFrame, playerLight);
+
+  // LIGHT_REAL_INFO_NAME_BARS_PATCH:
+  // Light uses the CE slot as INFO and the Ultimate slot as NAME.
+  setHudElementHidden(playerCeFrame, false);
+  setHudElementHidden(playerUltFrame, false);
+
   if (gameMode !== "practice") {
-    setHudElementHidden(enemyCeFrame, enemyLight);
-    setHudElementHidden(enemyUltFrame, enemyLight);
+    setHudElementHidden(enemyCeFrame, false);
+    setHudElementHidden(enemyUltFrame, false);
   }
+
   if (playerPanel) playerPanel.classList.toggle("light-hud", playerLight);
   if (enemyPanel) enemyPanel.classList.toggle("light-hud", enemyLight);
+
+  playerCeFrame?.classList.toggle("light-info-frame", playerLight);
+  playerUltFrame?.classList.toggle("light-name-frame", playerLight);
+  enemyCeFrame?.classList.toggle("light-info-frame", enemyLight && gameMode !== "practice");
+  enemyUltFrame?.classList.toggle("light-name-frame", enemyLight && gameMode !== "practice");
+
+  playerCeEl?.classList.toggle("light-info-fill", playerLight);
+  playerUltimateEl?.classList.toggle("light-name-fill", playerLight);
+  enemyCeEl?.classList.toggle("light-info-fill", enemyLight && gameMode !== "practice");
+  enemyUltimateEl?.classList.toggle("light-name-fill", enemyLight && gameMode !== "practice");
 }
 
 function updateHud() {
@@ -4671,10 +4840,15 @@ function updateHud() {
   enemyNameEl.classList.toggle("cpu-name", gameMode === "cpu");
   renderSegmentedHealth(playerHealthEl, player);
   renderSegmentedHealth(enemyHealthEl, enemy);
-  playerCeEl.style.width = `${Math.max(0, player.ce / player.maxCe * 100)}%`;
-  enemyCeEl.style.width = `${Math.max(0, enemy.ce / enemy.maxCe * 100)}%`;
-  if (playerUltimateEl) playerUltimateEl.style.width = `${Math.max(0, Math.min(100, player.ultimateMeter || 0))}%`;
-  if (enemyUltimateEl) enemyUltimateEl.style.width = `${Math.max(0, Math.min(100, enemy.ultimateMeter || 0))}%`;
+  const playerInfoRatio = isLight(player) ? Math.max(0, Math.min(1, (player.informationMeter || 0) / LIGHT_INFO_MAX)) : Math.max(0, player.ce / player.maxCe);
+  const enemyInfoRatio = isLight(enemy) ? Math.max(0, Math.min(1, (enemy.informationMeter || 0) / LIGHT_INFO_MAX)) : Math.max(0, enemy.ce / enemy.maxCe);
+  const playerNameRatio = isLight(player) ? Math.max(0, Math.min(1, (player.identityProgress || 0) / LIGHT_IDENTITY_MAX)) : Math.max(0, Math.min(1, (player.ultimateMeter || 0) / 100));
+  const enemyNameRatio = isLight(enemy) ? Math.max(0, Math.min(1, (enemy.identityProgress || 0) / LIGHT_IDENTITY_MAX)) : Math.max(0, Math.min(1, (enemy.ultimateMeter || 0) / 100));
+
+  playerCeEl.style.width = `${playerInfoRatio * 100}%`;
+  enemyCeEl.style.width = `${enemyInfoRatio * 100}%`;
+  if (playerUltimateEl) playerUltimateEl.style.width = `${playerNameRatio * 100}%`;
+  if (enemyUltimateEl) enemyUltimateEl.style.width = `${enemyNameRatio * 100}%`;
   updateTechniqueCooldownHud(player, ctHud.player);
   updateTechniqueCooldownHud(enemy, ctHud.enemy);
   roundInfoEl.textContent = pacifistBot ? "Practice" : `Round ${currentRound}`;
@@ -8067,19 +8241,20 @@ function spawnFugaExplosion(projectile, damageTarget = true) {
 }
 
 function spawnHitSpark(x, y, dir, kind) {
-  const color = kind === "ryukStrike" ? "#050505" : kind === "block" ? "#bae6fd" : kind === "purple" ? "#d8b4fe" : kind === "fuga" ? "#fb923c" : kind === "cleave" || kind === "slash" ? "#7f1d1d" : kind === "heavy" || kind === "red" ? "#fb7185" : kind === "blue" ? "#38bdf8" : "#fde68a";
-  const life = kind === "ryukStrike" ? 18 : kind === "purple" ? 24 : kind === "red" ? 20 : kind === "fuga" ? 18 : 14;
+  const color = kind === "brown" ? LIGHT_BROWN.bright : kind === "ryukStrike" ? LIGHT_BROWN.deep : kind === "block" ? "#bae6fd" : kind === "purple" ? "#d8b4fe" : kind === "fuga" ? "#fb923c" : kind === "cleave" || kind === "slash" ? "#7f1d1d" : kind === "heavy" || kind === "red" ? "#fb7185" : kind === "blue" ? "#38bdf8" : "#fde68a";
+  const life = kind === "brown" ? 18 : kind === "ryukStrike" ? 18 : kind === "purple" ? 24 : kind === "red" ? 20 : kind === "fuga" ? 18 : 14;
   hitSparks.push({ x, y, dir, kind, color, life, maxLife: life });
 }
 
 function spawnShieldBreakEffect(f) {
   const center = getFighterCenter(f);
   const shrine = f.technique === "shrine";
+  const light = isLight(f);
   shieldBreakEffects.push({
     x: center.x,
     y: center.y - 4,
-    color: shrine ? "#ef4444" : "#7dd3fc",
-    darkColor: shrine ? "#020617" : "#e0f2fe",
+    color: light ? LIGHT_BROWN.bright : shrine ? "#ef4444" : "#7dd3fc",
+    darkColor: light ? LIGHT_BROWN.dark : shrine ? "#020617" : "#e0f2fe",
     life: 24,
     maxLife: 24,
     spin: Math.random() * Math.PI * 2
@@ -10825,7 +11000,7 @@ function drawLightSummonEffect(f) {
   ctx.roundRect(sx - 30, footY + 6, 60, 7, 4);
   ctx.fill();
   ctx.stroke();
-  ctx.fillStyle = isMisa ? "rgba(244,114,182,0.95)" : "rgba(59,130,246,0.95)";
+  ctx.fillStyle = lightBrownRgba(isMisa ? "bright" : "main", 0.95);
   ctx.beginPath();
   ctx.roundRect(sx - 30, footY + 6, 60 * hpRatio, 7, 4);
   ctx.fill();
@@ -10838,19 +11013,31 @@ function drawLightAuraEffect(f) {
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
   if ((f.potatoFocusTicks || 0) > 0) {
-    ctx.strokeStyle = "rgba(250, 204, 21, 0.5)";
+    ctx.strokeStyle = lightBrownRgba("pale", 0.52);
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.arc(center.x, center.y, 54 + Math.sin(frame * 0.2) * 4, 0, Math.PI * 2);
     ctx.stroke();
+
+    ctx.strokeStyle = lightBrownRgba("dark", 0.26);
+    ctx.lineWidth = 7;
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, 64 + Math.sin(frame * 0.18) * 5, 0, Math.PI * 2);
+    ctx.stroke();
   }
   if ((f.eyeDealGlowTicks || 0) > 0 || f.eyeDealUsed) {
     const alpha = f.eyeDealUsed ? 0.78 : Math.min(0.78, (f.eyeDealGlowTicks || 0) / 90);
-    ctx.fillStyle = `rgba(248, 113, 113, ${alpha})`;
+    ctx.fillStyle = lightBrownRgba("pale", alpha);
     ctx.beginPath();
     ctx.ellipse(center.x - 7 * (f.dir || 1), center.y - 18, 4, 2, 0, 0, Math.PI * 2);
     ctx.ellipse(center.x + 7 * (f.dir || 1), center.y - 18, 4, 2, 0, 0, Math.PI * 2);
     ctx.fill();
+
+    ctx.strokeStyle = lightBrownRgba("bright", 0.25 + alpha * 0.25);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(center.x, center.y - 16, 22 + Math.sin(frame * 0.22) * 3, 0, Math.PI * 2);
+    ctx.stroke();
   }
   ctx.restore();
 }
@@ -12444,15 +12631,31 @@ function drawHitSparks() {
     const fugaSpark = spark.kind === "fuga";
     const ryukSpark = spark.kind === "ryukStrike";
     if (ryukSpark) {
-      ctx.fillStyle = `rgba(0,0,0,${0.32 * t})`;
+      ctx.fillStyle = lightBrownRgba("deep", 0.34 * t);
       ctx.beginPath();
       ctx.arc(0, 0, 34 * t + 10, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = `rgba(0,0,0,${0.9 * t})`;
+      ctx.strokeStyle = lightBrownRgba("dark", 0.92 * t);
       ctx.lineWidth = 5;
       ctx.beginPath();
       ctx.arc(0, 0, 24 * t + 8, 0, Math.PI * 2);
       ctx.stroke();
+    } else if (spark.kind === "brown") {
+      ctx.globalCompositeOperation = "lighter";
+      ctx.fillStyle = lightBrownRgba("dark", 0.36 * t);
+      ctx.beginPath();
+      ctx.arc(0, 0, 34 * t + 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = lightBrownRgba("bright", 0.86 * t);
+      ctx.lineWidth = 8;
+      ctx.beginPath();
+      ctx.moveTo(-spark.dir * 34 * t, 0);
+      ctx.lineTo(spark.dir * 40 * t, 0);
+      ctx.moveTo(0, -24 * t);
+      ctx.lineTo(0, 24 * t);
+      ctx.stroke();
+      ctx.strokeStyle = lightBrownRgba("cream", 0.9 * t);
+      ctx.lineWidth = 3;
     } else if (shrineSpark) {
       ctx.strokeStyle = `rgba(2, 6, 23, ${0.85 * t})`;
       ctx.lineWidth = spark.kind === "cleave" ? 8 : 5;
@@ -12518,16 +12721,16 @@ function drawHitSparks() {
       ctx.strokeStyle = `rgba(254, 240, 138, ${0.9 * t})`;
       ctx.lineWidth = 3;
     }
-    for (let i = 0; i < (ryukSpark ? 0 : shrineSpark || fugaSpark ? 10 : 7); i += 1) {
+    for (let i = 0; i < (ryukSpark ? 0 : spark.kind === "brown" || shrineSpark || fugaSpark ? 10 : 7); i += 1) {
       const angle = (Math.PI * 2 / 7) * i + spark.dir * 0.2;
       const inner = 4 + (1 - t) * 5;
-      const outer = (spark.kind === "fuga" ? 36 : spark.kind === "cleave" ? 32 : spark.kind === "heavy" || spark.kind === "slash" ? 23 : 16) * t + 5;
+      const outer = (spark.kind === "brown" ? 34 : spark.kind === "fuga" ? 36 : spark.kind === "cleave" ? 32 : spark.kind === "heavy" || spark.kind === "slash" ? 23 : 16) * t + 5;
       ctx.beginPath();
       ctx.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
       ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
       ctx.stroke();
     }
-    ctx.fillStyle = ryukSpark ? `rgba(0, 0, 0, ${0.86 * t})` : shrineSpark ? `rgba(127, 29, 29, ${0.8 * t})` : fugaSpark ? `rgba(254, 240, 138, ${0.9 * t})` : "rgba(255, 255, 255, 0.85)";
+    ctx.fillStyle = ryukSpark ? lightBrownRgba("deep", 0.86 * t) : spark.kind === "brown" ? lightBrownRgba("cream", 0.92 * t) : shrineSpark ? `rgba(127, 29, 29, ${0.8 * t})` : fugaSpark ? `rgba(254, 240, 138, ${0.9 * t})` : "rgba(255, 255, 255, 0.85)";
     ctx.beginPath();
     ctx.arc(0, 0, 3 + 4 * t, 0, Math.PI * 2);
     ctx.fill();
@@ -12964,8 +13167,8 @@ function drawProjectiles() {
       ctx.globalAlpha = vanishRatio;
       ctx.globalCompositeOperation = "source-over";
       const smokeHalo = ctx.createRadialGradient(0, 0, p.radius * 0.1, 0, 0, p.radius * 1.45);
-      smokeHalo.addColorStop(0, "rgba(255,255,255,0.16)");
-      smokeHalo.addColorStop(0.3, "rgba(24,24,27,0.32)");
+      smokeHalo.addColorStop(0, lightBrownRgba("cream", 0.18));
+      smokeHalo.addColorStop(0.3, lightBrownRgba("dark", 0.34));
       smokeHalo.addColorStop(1, "rgba(0,0,0,0)");
       ctx.fillStyle = smokeHalo;
       ctx.beginPath();
@@ -12992,7 +13195,7 @@ function drawProjectiles() {
       const arrowDrop = 1 - Math.pow(1 - impactRatio, 3);
       const startY = ryukY + p.radius * 0.46 + arrowDrop * p.radius * 0.58;
       const endY = -p.radius * 0.12 + arrowDrop * p.radius * 0.36;
-      ctx.strokeStyle = "rgba(0,0,0,0.96)";
+      ctx.strokeStyle = lightBrownRgba("deep", 0.96);
       ctx.lineWidth = Math.max(12, p.radius * 0.18);
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
@@ -13000,7 +13203,7 @@ function drawProjectiles() {
       ctx.moveTo(0, startY);
       ctx.lineTo(0, endY);
       ctx.stroke();
-      ctx.fillStyle = "rgba(0,0,0,0.98)";
+      ctx.fillStyle = lightBrownRgba("dark", 0.98);
       ctx.beginPath();
       ctx.roundRect(-p.radius * 0.22, endY - p.radius * 0.08, p.radius * 0.44, p.radius * 0.28, p.radius * 0.12);
       ctx.fill();
