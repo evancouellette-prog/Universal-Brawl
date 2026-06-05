@@ -2056,10 +2056,11 @@ function getLightSummonRect(f) {
   if (!isLight(f) || !f.lightSummonType) return null;
   const center = getFighterCenter(f);
   const side = f.dir || 1;
-  const width = f.lightSummonType === "misa" ? 38 : 46;
-  const height = f.lightSummonType === "misa" ? 70 : 78;
-  const x = center.x - side * 92 - width / 2;
-  const y = f.y + 12;
+  const isMisa = f.lightSummonType === "misa";
+  const width = isMisa ? 54 : 60;
+  const height = isMisa ? 118 : 124;
+  const x = center.x - side * 102 - width / 2;
+  const y = f.y + f.h - height;
   return { x, y, w: width, h: height };
 }
 
@@ -10491,218 +10492,290 @@ function drawDeathNoteCharacterModel(kind, x, footY, scale = 1, options = {}) {
   const hitFlash = Math.max(0, Math.min(1, options.hitFlash || 0));
   const punch = Math.max(0, Math.min(1, options.punch || 0));
   const dir = options.dir || 1;
-  const idle = Math.sin(frame * 0.08) * 0.8;
+  const bob = Math.sin(frame * 0.08) * 0.9;
   const isRyuk = kind === "ryuk";
   const isMisa = kind === "misa";
   const isSoichiro = kind === "soichiro";
 
   const palette = isRyuk
-    ? { skin: "#c8ced6", hair: "#050505", body: "#0a0a0a", trim: "#1f2937", pants: "#060606", shoe: "#020202", accent: "#9ca3af" }
+    ? { skin: "#c7ced6", hair: "#080808", body: "#111111", trim: "#374151", pants: "#090909", shoe: "#040404", accent: "#cbd5e1", eye: "#f8fafc" }
     : isMisa
-      ? { skin: "#f1c7a4", hair: "#f3d36b", body: "#17131c", trim: "#f8fafc", pants: "#211827", shoe: "#0f0a12", accent: "#dc2626" }
-      : { skin: "#d7b08d", hair: "#6b7280", body: "#3b2a1c", trim: "#f8f1e7", pants: "#1f2937", shoe: "#111827", accent: "#7f1d1d" };
+      ? { skin: "#f3c9a8", hair: "#f4d56e", body: "#151218", trim: "#f8fafc", pants: "#1f1724", shoe: "#0f0a12", accent: "#dc2626", eye: "#111827" }
+      : { skin: "#d7b08d", hair: "#6b7280", body: "#312419", trim: "#f8f1e7", pants: "#1f2937", shoe: "#111827", accent: "#991b1b", eye: "#111827" };
 
   ctx.save();
   ctx.translate(x, footY);
   ctx.scale(dir * scale, scale);
   ctx.globalAlpha *= alpha;
   if (hitFlash > 0) {
-    ctx.shadowColor = "rgba(248,113,113,0.9)";
-    ctx.shadowBlur = 12 * hitFlash;
+    ctx.shadowColor = "rgba(248,113,113,0.92)";
+    ctx.shadowBlur = 14 * hitFlash;
   }
 
-  const bodyLean = pose === "punch" ? -4 * punch : isRyuk ? -2 : 0;
-  const hipY = -46;
-  const headY = isRyuk ? -111 : -102;
-  const torsoTop = isRyuk ? -88 : -82;
-  const shoulderY = torsoTop + 6;
-  const torsoBottom = -42;
-  const leftHip = { x: -9, y: hipY };
-  const rightHip = { x: 9, y: hipY };
-  const leftFoot = { x: isRyuk ? -14 : -10, y: 0 };
-  const rightFoot = { x: isRyuk ? 15 : 11, y: 0 };
+  const torsoTop = isRyuk ? -95 : -87;
+  const torsoBottom = isRyuk ? -36 : -34;
+  const headY = isRyuk ? -118 : -108;
+  const shoulderY = isRyuk ? -84 : -77;
+  const hipY = isRyuk ? -36 : -34;
+  const leftFootX = isRyuk ? -18 : -13;
+  const rightFootX = isRyuk ? 18 : 13;
+  const bodySway = pose === "punch" ? -3 - punch * 3 : 0;
+  const upperBob = bob * (isRyuk ? 0.45 : 0.32);
 
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
-  ctx.strokeStyle = "#020202";
-  ctx.lineWidth = isRyuk ? 8 : 6;
+  // ground shadow and aura help the summons read more like full characters
+  ctx.save();
+  ctx.globalAlpha *= isRyuk ? 0.26 : 0.2;
+  ctx.fillStyle = isRyuk ? "rgba(0,0,0,0.72)" : "rgba(2,6,23,0.45)";
   ctx.beginPath();
-  ctx.moveTo(leftHip.x, leftHip.y);
-  ctx.lineTo(-12, -22);
-  ctx.lineTo(leftFoot.x, leftFoot.y);
-  ctx.moveTo(rightHip.x, rightHip.y);
-  ctx.lineTo(13, -21);
-  ctx.lineTo(rightFoot.x, rightFoot.y);
+  ctx.ellipse(0, 2, isRyuk ? 26 : 18, isRyuk ? 7 : 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // legs
+  ctx.strokeStyle = "#030303";
+  ctx.lineWidth = isRyuk ? 10 : 7;
+  ctx.beginPath();
+  ctx.moveTo(-8, hipY);
+  ctx.lineTo(-13, -14);
+  ctx.lineTo(leftFootX, 0);
+  ctx.moveTo(8, hipY);
+  ctx.lineTo(13, -14);
+  ctx.lineTo(rightFootX, 0);
   ctx.stroke();
 
   ctx.strokeStyle = palette.pants;
-  ctx.lineWidth = isRyuk ? 5 : 4;
+  ctx.lineWidth = isRyuk ? 7 : 5;
   ctx.beginPath();
-  ctx.moveTo(leftHip.x, leftHip.y);
-  ctx.lineTo(-12, -22);
-  ctx.lineTo(leftFoot.x, leftFoot.y);
-  ctx.moveTo(rightHip.x, rightHip.y);
-  ctx.lineTo(13, -21);
-  ctx.lineTo(rightFoot.x, rightFoot.y);
+  ctx.moveTo(-8, hipY);
+  ctx.lineTo(-13, -14);
+  ctx.lineTo(leftFootX, 0);
+  ctx.moveTo(8, hipY);
+  ctx.lineTo(13, -14);
+  ctx.lineTo(rightFootX, 0);
   ctx.stroke();
 
   ctx.strokeStyle = palette.shoe;
-  ctx.lineWidth = 4;
+  ctx.lineWidth = isRyuk ? 5 : 4;
   ctx.beginPath();
-  ctx.moveTo(leftFoot.x - 5, 1);
-  ctx.lineTo(leftFoot.x + 7, 1);
-  ctx.moveTo(rightFoot.x - 5, 1);
-  ctx.lineTo(rightFoot.x + 7, 1);
+  ctx.moveTo(leftFootX - 6, 1);
+  ctx.lineTo(leftFootX + 7, 1);
+  ctx.moveTo(rightFootX - 6, 1);
+  ctx.lineTo(rightFootX + 7, 1);
   ctx.stroke();
 
+  // Ryuk wings / extra silhouette
   if (isRyuk) {
-    ctx.fillStyle = "rgba(0,0,0,0.82)";
+    ctx.fillStyle = "rgba(0,0,0,0.86)";
     ctx.beginPath();
-    ctx.moveTo(-25, -84);
-    ctx.lineTo(-55, -64);
-    ctx.lineTo(-27, -56);
-    ctx.lineTo(-42, -38);
-    ctx.lineTo(-15, -45);
+    ctx.moveTo(-20, -88);
+    ctx.quadraticCurveTo(-62, -92, -76, -54);
+    ctx.quadraticCurveTo(-58, -62, -52, -34);
+    ctx.quadraticCurveTo(-42, -56, -18, -48);
     ctx.closePath();
     ctx.fill();
     ctx.beginPath();
-    ctx.moveTo(25, -84);
-    ctx.lineTo(53, -64);
-    ctx.lineTo(27, -56);
-    ctx.lineTo(42, -38);
-    ctx.lineTo(15, -45);
+    ctx.moveTo(20, -88);
+    ctx.quadraticCurveTo(62, -92, 76, -54);
+    ctx.quadraticCurveTo(58, -62, 52, -34);
+    ctx.quadraticCurveTo(42, -56, 18, -48);
     ctx.closePath();
     ctx.fill();
   }
 
   ctx.save();
-  ctx.translate(bodyLean, idle * 0.35);
-  ctx.fillStyle = palette.body;
-  ctx.beginPath();
-  ctx.moveTo(-15, torsoTop);
-  ctx.lineTo(16, torsoTop + 1);
-  ctx.lineTo(13, torsoBottom);
-  ctx.lineTo(0, torsoBottom + 6);
-  ctx.lineTo(-14, torsoBottom);
-  ctx.closePath();
-  ctx.fill();
+  ctx.translate(bodySway, upperBob);
 
-  if (isMisa) {
+  // torso / coat
+  ctx.fillStyle = palette.body;
+  if (isRyuk) {
+    ctx.beginPath();
+    ctx.moveTo(-20, torsoTop);
+    ctx.lineTo(20, torsoTop + 2);
+    ctx.lineTo(18, torsoBottom);
+    ctx.lineTo(8, torsoBottom + 14);
+    ctx.lineTo(0, torsoBottom + 6);
+    ctx.lineTo(-8, torsoBottom + 14);
+    ctx.lineTo(-18, torsoBottom);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.08)";
+    ctx.fillRect(-5, torsoTop + 20, 10, 34);
+  } else if (isMisa) {
+    ctx.beginPath();
+    ctx.moveTo(-16, torsoTop);
+    ctx.lineTo(16, torsoTop + 1);
+    ctx.lineTo(12, -55);
+    ctx.lineTo(19, torsoBottom + 2);
+    ctx.lineTo(0, torsoBottom + 12);
+    ctx.lineTo(-19, torsoBottom + 2);
+    ctx.lineTo(-12, -55);
+    ctx.closePath();
+    ctx.fill();
     ctx.fillStyle = palette.trim;
     ctx.beginPath();
-    ctx.moveTo(-9, -78);
+    ctx.moveTo(-10, -80);
     ctx.lineTo(0, -66);
-    ctx.lineTo(9, -78);
-    ctx.lineTo(5, -55);
-    ctx.lineTo(-5, -55);
+    ctx.lineTo(10, -80);
+    ctx.lineTo(7, -56);
+    ctx.lineTo(-7, -56);
     ctx.closePath();
     ctx.fill();
     ctx.fillStyle = palette.accent;
     ctx.beginPath();
-    ctx.moveTo(0, -67);
-    ctx.lineTo(5, -58);
+    ctx.moveTo(0, -69);
+    ctx.lineTo(6, -60);
     ctx.lineTo(0, -51);
-    ctx.lineTo(-5, -58);
+    ctx.lineTo(-6, -60);
     ctx.closePath();
     ctx.fill();
-  } else if (isSoichiro) {
+    ctx.strokeStyle = "rgba(255,255,255,0.18)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-12, -48); ctx.lineTo(12, -48);
+    ctx.moveTo(-14, -37); ctx.lineTo(14, -37);
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(-16, torsoTop);
+    ctx.lineTo(16, torsoTop);
+    ctx.lineTo(14, torsoBottom);
+    ctx.lineTo(0, torsoBottom + 8);
+    ctx.lineTo(-14, torsoBottom);
+    ctx.closePath();
+    ctx.fill();
     ctx.fillStyle = palette.trim;
     ctx.beginPath();
     ctx.moveTo(-7, -79);
-    ctx.lineTo(0, -64);
+    ctx.lineTo(0, -65);
     ctx.lineTo(7, -79);
-    ctx.lineTo(5, -50);
-    ctx.lineTo(-5, -50);
+    ctx.lineTo(5, -51);
+    ctx.lineTo(-5, -51);
     ctx.closePath();
     ctx.fill();
     ctx.fillStyle = palette.accent;
-    ctx.fillRect(-2, -69, 4, 24);
-  } else {
-    ctx.fillStyle = palette.trim;
+    ctx.fillRect(-2.2, -72, 4.4, 23);
+    ctx.strokeStyle = "rgba(255,255,255,0.15)";
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(-10, -86);
-    ctx.lineTo(0, -70);
-    ctx.lineTo(10, -86);
-    ctx.lineTo(6, -47);
-    ctx.lineTo(-6, -47);
-    ctx.closePath();
-    ctx.fill();
+    ctx.moveTo(-12, -57); ctx.lineTo(12, -57);
+    ctx.stroke();
   }
 
+  // arms
   const leftHand = pose === "punch" && punch > 0.05
-    ? { x: 36 + punch * 18, y: -63 + punch * 5 }
-    : { x: -23, y: -50 + idle };
+    ? { x: 34 + punch * 22, y: -62 + punch * 8 }
+    : { x: isRyuk ? -28 : -22, y: -49 + bob * 0.7 };
   const rightHand = pose === "punch"
-    ? { x: 52 + punch * 28, y: -56 + punch * 7 }
-    : { x: 23, y: -49 - idle };
+    ? { x: 54 + punch * 30, y: -56 + punch * 8 }
+    : { x: isRyuk ? 28 : 22, y: -49 - bob * 0.7 };
 
-  ctx.strokeStyle = isRyuk ? palette.body : palette.body;
-  ctx.lineWidth = isRyuk ? 7 : 5;
+  ctx.strokeStyle = palette.body;
+  ctx.lineWidth = isRyuk ? 8 : 5.5;
   ctx.beginPath();
-  ctx.moveTo(-15, shoulderY);
-  ctx.lineTo(-22, -66);
+  ctx.moveTo(-16, shoulderY);
+  ctx.lineTo(-20, -67);
   ctx.lineTo(leftHand.x, leftHand.y);
-  ctx.moveTo(15, shoulderY);
-  ctx.lineTo(26 + punch * 12, -65 + punch * 2);
+  ctx.moveTo(16, shoulderY);
+  ctx.lineTo(20 + punch * 8, -67 + punch * 2);
   ctx.lineTo(rightHand.x, rightHand.y);
   ctx.stroke();
 
-  ctx.fillStyle = isRyuk ? palette.skin : palette.skin;
-  ctx.beginPath();
-  ctx.ellipse(leftHand.x, leftHand.y, isRyuk ? 5 : 4, isRyuk ? 4 : 3.5, 0, 0, Math.PI * 2);
-  ctx.ellipse(rightHand.x, rightHand.y, isRyuk ? 8 : 4.5, isRyuk ? 6 : 3.5, 0, 0, Math.PI * 2);
-  ctx.fill();
-
   ctx.fillStyle = palette.skin;
   ctx.beginPath();
-  ctx.ellipse(0, headY, isRyuk ? 13 : 12, isRyuk ? 16 : 14, 0, 0, Math.PI * 2);
+  ctx.ellipse(leftHand.x, leftHand.y, isRyuk ? 6 : 4.5, isRyuk ? 5.5 : 4, 0, 0, Math.PI * 2);
+  ctx.ellipse(rightHand.x, rightHand.y, isRyuk ? 9 : 4.5, isRyuk ? 7.5 : 4, 0, 0, Math.PI * 2);
   ctx.fill();
 
+  // head
+  ctx.fillStyle = palette.skin;
+  ctx.beginPath();
+  ctx.ellipse(0, headY, isRyuk ? 15 : 12.5, isRyuk ? 18 : 14.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // hair / head details
   if (isRyuk) {
     ctx.fillStyle = palette.hair;
     ctx.beginPath();
-    ctx.moveTo(-18, headY - 5);
-    ctx.lineTo(-26, headY - 29);
-    ctx.lineTo(-12, headY - 17);
-    ctx.lineTo(-8, headY - 35);
+    ctx.moveTo(-20, headY - 2);
+    ctx.lineTo(-28, headY - 30);
+    ctx.lineTo(-14, headY - 18);
+    ctx.lineTo(-8, headY - 38);
     ctx.lineTo(0, headY - 18);
-    ctx.lineTo(8, headY - 36);
-    ctx.lineTo(12, headY - 17);
-    ctx.lineTo(27, headY - 29);
-    ctx.lineTo(18, headY - 5);
+    ctx.lineTo(8, headY - 38);
+    ctx.lineTo(14, headY - 18);
+    ctx.lineTo(28, headY - 30);
+    ctx.lineTo(20, headY - 2);
     ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = "#111111";
+    ctx.fillStyle = "rgba(17,17,17,0.96)";
     ctx.beginPath();
-    ctx.ellipse(0, headY + 25, 18, 5, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, headY + 27, 19, 5, 0, 0, Math.PI * 2);
     ctx.fill();
+    ctx.fillStyle = palette.eye;
+    ctx.beginPath();
+    ctx.ellipse(-6, headY - 2, 2.6, 3.2, 0, 0, Math.PI * 2);
+    ctx.ellipse(6, headY - 2, 2.6, 3.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.8)";
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(-6, headY + 9);
+    ctx.quadraticCurveTo(0, headY + 14, 6, headY + 9);
+    ctx.stroke();
   } else if (isMisa) {
     ctx.fillStyle = palette.hair;
     ctx.beginPath();
-    ctx.arc(0, headY - 4, 14, Math.PI, Math.PI * 2);
-    ctx.lineTo(12, headY + 9);
-    ctx.lineTo(-12, headY + 9);
+    ctx.arc(0, headY - 3, 14, Math.PI, Math.PI * 2);
+    ctx.lineTo(12, headY + 10);
+    ctx.lineTo(-12, headY + 10);
     ctx.closePath();
     ctx.fill();
     ctx.beginPath();
-    ctx.ellipse(-19, headY + 3, 8, 18, -0.18, 0, Math.PI * 2);
-    ctx.ellipse(19, headY + 3, 8, 18, 0.18, 0, Math.PI * 2);
+    ctx.ellipse(-20, headY + 4, 8, 22, -0.18, 0, Math.PI * 2);
+    ctx.ellipse(20, headY + 4, 8, 22, 0.18, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = "#0f0a12";
-    ctx.fillRect(-22, headY - 2, 6, 3);
-    ctx.fillRect(16, headY - 2, 6, 3);
+    ctx.fillRect(-23, headY - 1, 6, 3);
+    ctx.fillRect(17, headY - 1, 6, 3);
+    ctx.fillStyle = palette.eye;
+    ctx.beginPath();
+    ctx.arc(-4, headY + 1, 1.9, 0, Math.PI * 2);
+    ctx.arc(4, headY + 1, 1.9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(220,38,38,0.7)";
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(-4, headY + 9); ctx.lineTo(0, headY + 11); ctx.lineTo(4, headY + 9);
+    ctx.stroke();
   } else {
     ctx.fillStyle = palette.hair;
     ctx.beginPath();
     ctx.moveTo(-12, headY - 4);
-    ctx.quadraticCurveTo(-7, headY - 18, 4, headY - 17);
-    ctx.quadraticCurveTo(12, headY - 14, 13, headY - 2);
+    ctx.quadraticCurveTo(-7, headY - 19, 4, headY - 18);
+    ctx.quadraticCurveTo(13, headY - 15, 13, headY - 2);
     ctx.lineTo(8, headY - 7);
     ctx.lineTo(2, headY - 2);
     ctx.lineTo(-5, headY - 8);
     ctx.lineTo(-12, headY - 2);
     ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(17,24,39,0.75)";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.ellipse(-4, headY + 1, 3.3, 4.3, 0, 0, Math.PI * 2);
+    ctx.ellipse(4, headY + 1, 3.3, 4.3, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-1, headY + 1);
+    ctx.lineTo(1, headY + 1);
+    ctx.stroke();
+    ctx.fillStyle = palette.eye;
+    ctx.beginPath();
+    ctx.arc(-4, headY + 1, 1.2, 0, Math.PI * 2);
+    ctx.arc(4, headY + 1, 1.2, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -10716,31 +10789,46 @@ function drawLightSummonEffect(f) {
   const rect = getLightSummonRect(f);
   if (!rect) return;
   const sx = rect.x + rect.w / 2;
+  const footY = rect.y + rect.h;
   const hitFlash = Math.max(0, Math.min(1, (f.lightSummonHitFlash || 0) / 10));
+  const hpRatio = Math.max(0, Math.min(1, (f.lightSummonHealth || 0) / Math.max(1, f.lightSummonMaxHealth || 1)));
+  const isMisa = f.lightSummonType === "misa";
+  const modelScale = isMisa ? 0.97 : 1.01;
   ctx.save();
-  ctx.globalAlpha = 0.92;
-  ctx.fillStyle = "rgba(0,0,0,0.28)";
+  ctx.globalAlpha = 0.96;
+
+  const aura = ctx.createRadialGradient(sx, rect.y + rect.h * 0.5, 8, sx, rect.y + rect.h * 0.5, rect.h * 0.75);
+  aura.addColorStop(0, isMisa ? `rgba(244, 114, 182, ${0.15 + hitFlash * 0.18})` : `rgba(147, 197, 253, ${0.14 + hitFlash * 0.18})`);
+  aura.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = aura;
   ctx.beginPath();
-  ctx.ellipse(sx, rect.y + rect.h + 3, rect.w * 0.62, 5, 0, 0, Math.PI * 2);
+  ctx.arc(sx, rect.y + rect.h * 0.45, rect.h * 0.7, 0, Math.PI * 2);
   ctx.fill();
 
   drawDeathNoteCharacterModel(
     f.lightSummonType,
     sx,
-    rect.y + rect.h,
-    f.lightSummonType === "misa" ? 0.58 : 0.62,
-    { alpha: 0.9 + hitFlash * 0.1, hitFlash }
+    footY,
+    modelScale,
+    { alpha: 0.92 + hitFlash * 0.08, hitFlash }
   );
 
-  ctx.fillStyle = "rgba(255,255,255,0.9)";
-  ctx.font = "700 10px system-ui, sans-serif";
+  ctx.fillStyle = "rgba(255,255,255,0.96)";
+  ctx.font = "700 11px system-ui, sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText(f.lightSummonType === "misa" ? "MISA" : "SOICHIRO", sx, rect.y - 8);
-  const hpRatio = Math.max(0, Math.min(1, (f.lightSummonHealth || 0) / Math.max(1, f.lightSummonMaxHealth || 1)));
-  ctx.fillStyle = "rgba(15,23,42,0.9)";
-  ctx.fillRect(sx - 24, rect.y + rect.h + 6, 48, 5);
-  ctx.fillStyle = "rgba(34,197,94,0.9)";
-  ctx.fillRect(sx - 24, rect.y + rect.h + 6, 48 * hpRatio, 5);
+  ctx.fillText(isMisa ? "MISA" : "SOICHIRO", sx, rect.y - 10);
+
+  ctx.fillStyle = "rgba(15,23,42,0.92)";
+  ctx.strokeStyle = "rgba(255,255,255,0.22)";
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.roundRect(sx - 30, footY + 6, 60, 7, 4);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = isMisa ? "rgba(244,114,182,0.95)" : "rgba(59,130,246,0.95)";
+  ctx.beginPath();
+  ctx.roundRect(sx - 30, footY + 6, 60 * hpRatio, 7, 4);
+  ctx.fill();
   ctx.restore();
 }
 
@@ -12857,7 +12945,7 @@ function drawProjectiles() {
         ctx.setLineDash([]);
 
         ctx.globalCompositeOperation = "source-over";
-        drawDeathNoteCharacterModel("ryuk", 0, -p.radius * (0.42 - charge * 0.16), Math.max(0.58, p.radius / 96), {
+        drawDeathNoteCharacterModel("ryuk", 0, -p.radius * (0.48 - charge * 0.17), Math.max(0.82, p.radius / 76), {
           alpha: 0.18 + charge * 0.62
         });
 
@@ -12875,6 +12963,14 @@ function drawProjectiles() {
 
       ctx.globalAlpha = vanishRatio;
       ctx.globalCompositeOperation = "source-over";
+      const smokeHalo = ctx.createRadialGradient(0, 0, p.radius * 0.1, 0, 0, p.radius * 1.45);
+      smokeHalo.addColorStop(0, "rgba(255,255,255,0.16)");
+      smokeHalo.addColorStop(0.3, "rgba(24,24,27,0.32)");
+      smokeHalo.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = smokeHalo;
+      ctx.beginPath();
+      ctx.arc(0, 0, p.radius * 1.35, 0, Math.PI * 2);
+      ctx.fill();
       ctx.fillStyle = "rgba(0,0,0,0.24)";
       ctx.beginPath();
       ctx.arc(0, 0, p.radius, 0, Math.PI * 2);
@@ -12885,8 +12981,8 @@ function drawProjectiles() {
       ctx.arc(0, 0, p.radius * pulse, 0, Math.PI * 2);
       ctx.stroke();
 
-      const ryukY = -p.radius * (1.48 - impactRatio * 0.18);
-      drawDeathNoteCharacterModel("ryuk", 0, ryukY + p.radius * 0.92, Math.max(0.62, p.radius / 90), {
+      const ryukY = -p.radius * (1.72 - impactRatio * 0.22);
+      drawDeathNoteCharacterModel("ryuk", 0, ryukY + p.radius * 1.04, Math.max(0.96, p.radius / 68), {
         alpha: 1,
         pose: "punch",
         punch: impactRatio
