@@ -100,10 +100,11 @@ const waitingCode = document.getElementById("waitingCode");
 const waitingCopy = document.getElementById("waitingCopy");
 const cancelOnlineButton = document.getElementById("cancelOnlineButton");
 const techniqueScreen = document.getElementById("techniqueScreen");
-const techniqueButtons = Array.from(document.querySelectorAll(".technique-button"));
+let techniqueButtons = Array.from(document.querySelectorAll(".technique-button"));
 const techniquePreviewCanvases = {
   limitless: document.getElementById("limitlessPreview"),
-  shrine: document.getElementById("shrinePreview")
+  shrine: document.getElementById("shrinePreview"),
+  deathnote: document.getElementById("deathnotePreview")
 };
 const pauseScreen = document.getElementById("pauseScreen");
 const resumeButton = document.getElementById("resumeButton");
@@ -130,6 +131,20 @@ const keybindResetButton = document.getElementById("keybindResetButton");
 const PLAYER_NAME_STORAGE_KEY = "jujutsuBrawlPlayerName";
 const BUTTON_SFX_VOLUME_STORAGE_KEY = "jujutsuBrawlButtonSfxVolume";
 const GAME_SFX_VOLUME_STORAGE_KEY = "jujutsuBrawlGameSfxVolume";
+
+// UNIVERSAL_BRAWL_RENAME_PATCH
+function installUniversalBrawlRename() {
+  document.title = "Universal Brawl";
+  document.querySelectorAll("h1, h2, .game-title, .logo, .brand").forEach((el) => {
+    if (!el || !el.textContent) return;
+    el.textContent = el.textContent
+      .replace(/Jujutsu\s+Brawl/gi, "Universal Brawl")
+      .replace(/Jujutsu/gi, "Universal");
+  });
+}
+window.addEventListener("DOMContentLoaded", installUniversalBrawlRename);
+window.setTimeout(installUniversalBrawlRename, 0);
+
 
 // INPUT_LABELS_PATCH
 function ensureInputLabel(input, labelId, labelText, placeholderText) {
@@ -1708,6 +1723,15 @@ const TECHNIQUE_STATS = {
     knockbackTakenMultiplier: 0.9,
     ceRegenRate: CE_REGEN_RATE,
     ceLowRegenBonus: CE_LOW_REGEN_BONUS
+  },
+  deathnote: {
+    maxHealth: 455,
+    healthBars: 5,
+    maxCe: 115,
+    damageTakenMultiplier: 1.08,
+    knockbackTakenMultiplier: 1.08,
+    ceRegenRate: CE_REGEN_RATE + 0.02,
+    ceLowRegenBonus: CE_LOW_REGEN_BONUS + 0.03
   }
 };
 const keys = new Set();
@@ -1946,8 +1970,230 @@ function updateMouseAimFromEvent(event) {
   return mouseAimWorld;
 }
 
+
+// LIGHT_YAGAMI_PATCH
+const LIGHT_INFO_MAX = 100;
+const LIGHT_IDENTITY_MAX = 100;
+const LIGHT_POTATO_COOLDOWN_TICKS = 5 * 60;
+const LIGHT_POTATO_FOCUS_TICKS = 10 * 60;
+
+function isLight(f) {
+  return Boolean(f && f.technique === "deathnote");
+}
+
+function getLightFocusedCooldown(f, baseTicks) {
+  return (f && (f.potatoFocusTicks || 0) > 0) ? Math.max(12, Math.ceil(baseTicks * 0.58)) : baseTicks;
+}
+
+function gainLightInfo(f, amount) {
+  if (!isLight(f)) return;
+  const boosted = (f.potatoFocusTicks || 0) > 0 ? amount * 1.35 : amount;
+  f.informationMeter = Math.max(0, Math.min(LIGHT_INFO_MAX, (f.informationMeter || 0) + boosted));
+}
+
+function gainLightIdentity(f, amount) {
+  if (!isLight(f)) return;
+  const infoBonus = 1 + Math.max(0, Math.min(100, f.informationMeter || 0)) / 220;
+  const focusBonus = (f.potatoFocusTicks || 0) > 0 ? 1.3 : 1;
+  f.identityProgress = Math.max(0, Math.min(LIGHT_IDENTITY_MAX, (f.identityProgress || 0) + amount * infoBonus * focusBonus));
+  if (f.identityProgress >= LIGHT_IDENTITY_MAX) f.ultimateMeter = Math.max(f.ultimateMeter || 0, MAX_ULTIMATE);
+}
+
+function lightIdentityComplete(f) {
+  return isLight(f) && (f.identityProgress || 0) >= LIGHT_IDENTITY_MAX;
+}
+
+function startRyukStrike(f, aimPoint = null, cost = 0) {
+  if (!isLight(f)) return false;
+  const aim = sanitizeAimPoint(aimPoint) || mouseAimWorld;
+  if (cost > 0) f.ce = Math.max(0, f.ce - cost);
+  const radius = 66 + Math.floor((f.informationMeter || 0) / 100 * 18);
+  projectiles.push({
+    owner: f === player ? "player" : "enemy",
+    move: "ryukStrike",
+    x: Math.max(40, Math.min(STAGE_W - 40, aim.x)),
+    y: Math.max(70, Math.min(GROUND - 60, aim.y)),
+    vx: 0,
+    vy: 0,
+    baseVx: 0,
+    baseVy: 0,
+    radius,
+    damage: Math.ceil(34 * getOutgoingDamageMultiplier(f)),
+    knockback: 34,
+    dir: f.dir,
+    aimX: 0,
+    aimY: 1,
+    angle: Math.PI / 2,
+    maxTravel: 0,
+    traveled: 0,
+    life: 24,
+    hit: false
+  });
+  gainLightInfo(f, 8);
+  gainLightIdentity(f, 5);
+  spawnHitSpark(aim.x, aim.y, f.dir, "slash");
+  updateHud();
+  return true;
+}
+
+function startNameInvestigation(f, cost = 0) {
+  if (!isLight(f)) return false;
+  if (cost > 0) f.ce = Math.max(0, f.ce - cost);
+
+  if (f.lightSummonStage <= 1 && f.lightSummonType !== "misa") {
+    f.lightSummonType = "misa";
+    f.lightSummonHealth = 42;
+    f.lightSummonMaxHealth = 42;
+    f.lightSummonTicks = 9 * 60;
+    f.lightSummonStage = 1;
+    showActionWarning("Misa is watching");
+  } else if (f.lightSummonStage <= 2 && f.lightSummonType !== "soichiro") {
+    f.lightSummonType = "soichiro";
+    f.lightSummonHealth = 76;
+    f.lightSummonMaxHealth = 76;
+    f.lightSummonTicks = 10 * 60;
+    f.lightSummonStage = 2;
+    showActionWarning("Soichiro investigates");
+  } else {
+    return startEyeDeal(f);
+  }
+
+  gainLightInfo(f, 10);
+  updateHud();
+  return true;
+}
+
+function startEyeDeal(f) {
+  if (!isLight(f) || f.eyeDealUsed || f.health <= 10) return false;
+  f.eyeDealUsed = true;
+  f.lightSummonStage = 3;
+  f.lightSummonType = null;
+  f.lightSummonTicks = 0;
+  f.health = Math.max(1, Math.ceil(f.health * 0.5));
+  f.identityProgress = LIGHT_IDENTITY_MAX;
+  f.informationMeter = LIGHT_INFO_MAX;
+  f.ultimateMeter = MAX_ULTIMATE;
+  f.potatoFocusTicks = Math.max(f.potatoFocusTicks || 0, 4 * 60);
+  spawnHitSpark(f.x + f.w / 2, f.y + 34, f.dir, "red");
+  showActionWarning("The Eye Deal");
+  updateHud();
+  return true;
+}
+
+function usePotatoChip(f) {
+  if (!isLight(f) || f.ko || (f.potatoCooldown || 0) > 0 || gameState !== "playing" || paused || gameOver) return false;
+  f.health = Math.min(f.maxHealth, f.health + 24);
+  f.delayedHealth = Math.max(f.delayedHealth || 0, f.health);
+  f.potatoCooldown = LIGHT_POTATO_COOLDOWN_TICKS;
+  f.potatoFocusTicks = LIGHT_POTATO_FOCUS_TICKS;
+  gainLightInfo(f, 6);
+  spawnHitSpark(f.x + f.w / 2, f.y + 42, f.dir, "blue");
+  showActionWarning("I'll take a potato chip... and eat it!");
+  updateHud();
+  return true;
+}
+
+function updateLightSystems(f, opponent) {
+  if (!isLight(f)) return;
+
+  if (f.potatoCooldown > 0) f.potatoCooldown -= 1;
+  if (f.potatoFocusTicks > 0) f.potatoFocusTicks -= 1;
+  if (f.deathNoteSlowTicks > 0) f.deathNoteSlowTicks -= 1;
+
+  if (!f.ko && opponent && !opponent.ko) {
+    const distance = Math.abs((f.x + f.w / 2) - (opponent.x + opponent.w / 2));
+    if (distance < 320 && f.hurt <= 0) gainLightInfo(f, 0.035);
+    if (distance < 260 && f.hurt <= 0) gainLightIdentity(f, 0.018);
+  }
+
+  if (f.lightSummonType && f.lightSummonTicks > 0) {
+    f.lightSummonTicks -= 1;
+    const rate = f.lightSummonType === "misa" ? 0.18 : 0.105;
+    gainLightIdentity(f, rate);
+    gainLightInfo(f, rate * 0.75);
+
+    // If Light takes pressure, the summon can be disrupted.
+    if ((f.hurt || 0) > 0 && Math.random() < 0.018) {
+      f.lightSummonHealth -= f.lightSummonType === "misa" ? 8 : 5;
+    }
+
+    if (f.lightSummonHealth <= 0) {
+      if (f.lightSummonType === "misa") f.lightSummonStage = 2;
+      else if (f.lightSummonType === "soichiro") f.lightSummonStage = 3;
+      f.lightSummonType = null;
+      f.lightSummonTicks = 0;
+    }
+  } else if (f.lightSummonTicks <= 0) {
+    f.lightSummonType = null;
+  }
+}
+
+function startDeathNoteUltimate(f) {
+  if (!isLight(f)) return false;
+  if ((f.ultimateMeter || 0) < MAX_ULTIMATE) {
+    showActionWarning("Not Enough Charge");
+    return false;
+  }
+  if (!lightIdentityComplete(f)) {
+    showActionWarning("Identity Not Complete");
+    return false;
+  }
+  if (!canStartUltimate(f)) return false;
+
+  const target = getOpponent(f);
+  if (!target || target.ko) return false;
+
+  f.ultimateMeter = 0;
+  f.ultimateAiming = false;
+  f.ultimateMove = "deathNote";
+  f.ultimateStartup = 50;
+  f.ultimateRecovery = 42;
+  f.vx *= 0.25;
+  f.blocking = false;
+
+  const eyeBonus = f.eyeDealUsed ? 1.18 : 1;
+  const damage = Math.ceil((target.maxHealth * 0.42 + 86) * eyeBonus);
+  const dealt = applyFighterDamage(target, damage);
+  target.stun = Math.max(target.stun || 0, f.eyeDealUsed ? 84 : 62);
+  target.hurt = Math.max(target.hurt || 0, 30);
+  target.deathNoteSlowTicks = 6 * 60;
+  target.vx *= 0.22;
+  target.vy = Math.min(target.vy || 0, -5.5);
+  target.grounded = false;
+  gainUltimate(f, dealt * ULT_DAMAGE_GAIN_SCALE);
+  spawnHitSpark(target.x + target.w / 2, target.y + 34, target.dir, "red");
+  spawnHitSpark(target.x + target.w / 2, target.y + 68, -target.dir, "slash");
+  triggerUltimateScreenEffect("deathNote", 92);
+  showActionWarning("DEATH NOTE");
+  updateHud();
+
+  if (!pacifistBot && target.health <= 0) startKnockout(f, target);
+  return true;
+}
+
+function damageLightInformationOnHeavyHit(defender, amount) {
+  if (!isLight(defender) || amount < 24) return;
+  defender.informationMeter = Math.max(0, (defender.informationMeter || 0) - Math.ceil(amount * 0.22));
+  defender.identityProgress = Math.max(0, (defender.identityProgress || 0) - Math.ceil(amount * 0.08));
+}
+
+function getLightExtraHudItems(f) {
+  if (!isLight(f)) return [];
+  const items = [
+    { name: "INFO", current: f.informationMeter || 0, max: LIGHT_INFO_MAX },
+    { name: "IDENTITY", current: f.identityProgress || 0, max: LIGHT_IDENTITY_MAX },
+    { name: "POTATO", current: f.potatoCooldown || 0, max: LIGHT_POTATO_COOLDOWN_TICKS }
+  ];
+  if ((f.potatoFocusTicks || 0) > 0) items.push({ name: "FOCUS", current: f.potatoFocusTicks, max: LIGHT_POTATO_FOCUS_TICKS });
+  if (f.lightSummonType) items.push({ name: f.lightSummonType.toUpperCase(), current: f.lightSummonTicks || 0, max: f.lightSummonType === "misa" ? 9 * 60 : 10 * 60 });
+  return items;
+}
+
+
 function getTechniqueCharacterName(technique) {
-  return technique === "shrine" ? "Sukuna" : "Gojo";
+  if (technique === "shrine") return "Sukuna";
+  if (technique === "deathnote") return "Light";
+  return "Gojo";
 }
 
 function shouldShowChargePreview(f) {
@@ -2124,23 +2370,30 @@ const techniqueMoves = {
   red: { cost: 28, damage: 12, speed: 12, radius: 20, knockback: 23, life: 70 },
   slash: { cost: 18, damage: 13, speed: 13, radius: 20, knockback: 12, life: 66 },
   cleave: { cost: 32, damage: 24, speed: 0, radius: 42, knockback: 22, life: 14 },
-  fuga: { cost: 70, damage: 76, speed: 9.2, radius: 20, knockback: 38, life: 100, explosionRadius: 174, cooldown: FUGA_COOLDOWN_TICKS }
+  fuga: { cost: 70, damage: 76, speed: 9.2, radius: 20, knockback: 38, life: 100, explosionRadius: 174, cooldown: FUGA_COOLDOWN_TICKS },
+  ryukStrike: { cost: 30, damage: 34, speed: 0, radius: 66, knockback: 34, life: 24 },
+  nameInvestigation: { cost: 26, damage: 0, speed: 0, radius: 1, knockback: 0, life: 1 }
 };
 
 function getTechniqueMoveKey(f, slot) {
   if (f.technique === "limitless") return slot === 2 ? "red" : "blue";
   if (f.technique === "shrine") return slot === 2 ? "cleave" : "slash";
+  if (f.technique === "deathnote") return slot === 2 ? "nameInvestigation" : "ryukStrike";
   return "blue";
 }
 
 function getTechniqueDisplayName(move) {
   if (move === "slash") return "DISMANTLE";
   if (move === "fuga") return "FUGA";
+  if (move === "ryukStrike") return "RYUK";
+  if (move === "nameInvestigation") return "INVESTIGATE";
   return move.toUpperCase();
 }
 
 function getTechniqueCooldownTicks(move, f = null) {
   if (move === "fuga") return techniqueMoves.fuga.cooldown;
+  if (move === "ryukStrike") return getLightFocusedCooldown(f, 8 * 60);
+  if (move === "nameInvestigation") return getLightFocusedCooldown(f, 13 * 60);
   let base = move === "red" || move === "cleave" ? TECHNIQUE_HEAVY_COOLDOWN : TECHNIQUE_FAST_COOLDOWN;
   if (move === "cleave" && hasBindingVow(f, "cleave")) base = Math.max(10, Math.ceil(base * 0.55));
   return base;
@@ -2180,11 +2433,14 @@ function getAffordableChargeRatio(f, move, chargeRatio) {
 }
 
 function pickRandomTechnique() {
-  return Math.random() < 0.5 ? "limitless" : "shrine";
+  const roll = Math.random();
+  if (roll < 0.42) return "limitless";
+  if (roll < 0.84) return "shrine";
+  return "deathnote";
 }
 
 function isValidTechnique(technique) {
-  return technique === "limitless" || technique === "shrine";
+  return technique === "limitless" || technique === "shrine" || technique === "deathnote";
 }
 
 function rollCpuOpponentTechnique(reason = "") {
@@ -2414,7 +2670,19 @@ function makeFighter(config) {
     isPracticeDummy: false,
     practiceIdleTicks: PRACTICE_BOT_RETURN_TICKS,
     practiceHomeX: config.x,
-    walkCycle: 0
+    walkCycle: 0,
+
+    informationMeter: 0,
+    identityProgress: 0,
+    lightSummonStage: 1,
+    lightSummonType: null,
+    lightSummonHealth: 0,
+    lightSummonMaxHealth: 0,
+    lightSummonTicks: 0,
+    potatoCooldown: 0,
+    potatoFocusTicks: 0,
+    eyeDealUsed: false,
+    deathNoteSlowTicks: 0
   };
 }
 
@@ -2422,7 +2690,7 @@ function applyTechniqueStats(f, preserveMeters = false) {
   const stats = TECHNIQUE_STATS[f.technique] || TECHNIQUE_STATS.limitless;
   const healthRatio = f.maxHealth > 0 ? f.health / f.maxHealth : 1;
   const ceRatio = f.maxCe > 0 ? f.ce / f.maxCe : 1;
-  f.speed = BASE_MOVE_SPEED * (f.technique === "limitless" ? LIMITLESS_MOVE_MULTIPLIER : 1);
+  f.speed = BASE_MOVE_SPEED * (f.technique === "limitless" ? LIMITLESS_MOVE_MULTIPLIER : f.technique === "deathnote" ? 0.94 : 1);
   f.maxHealth = stats.maxHealth;
   f.healthBars = stats.healthBars || 3;
   f.maxCe = stats.maxCe;
@@ -2443,6 +2711,15 @@ function applyTechniqueStats(f, preserveMeters = false) {
   if (f.technique !== "shrine") {
     f.fugaAiming = false;
     f.fugaChargeTicks = 0;
+  }
+  if (f.technique !== "deathnote") {
+    f.lightSummonType = null;
+    f.lightSummonTicks = 0;
+    f.identityProgress = 0;
+    f.informationMeter = 0;
+    f.potatoFocusTicks = 0;
+    f.potatoCooldown = 0;
+    f.eyeDealUsed = false;
   }
 }
 
@@ -2473,11 +2750,23 @@ function getTechniqueHudMoves(f) {
   if (!f) return [];
   if (isPracticeDummy(f)) return [];
   if (f.technique === "shrine") return ["slash", "cleave", "fuga"];
+  if (f.technique === "deathnote") return ["ryukStrike", "nameInvestigation"];
   return ["blue", "red", "teleport"];
 }
 
 function getTechniqueHudState(f, move) {
   const blocked = f.blocking || isHoldingShield(f);
+  if (f.technique === "deathnote" && (move === "ryukStrike" || move === "nameInvestigation")) {
+    const cost = getTechniqueCost(f, move);
+    return {
+      cost,
+      cooling: f.techniqueCooldown > 0,
+      cooldown: f.techniqueCooldown,
+      maxCooldown: f.techniqueCooldownMax || getTechniqueCooldownTicks(move, f),
+      lowCe: f.ce < cost,
+      blocked
+    };
+  }
   if (move === "teleport") {
     const cost = GOJO_TELEPORT_COST;
     return {
@@ -2675,6 +2964,7 @@ function applyFighterDamage(defender, damage) {
     return amount;
   }
   defender.health = Math.max(0, defender.health - amount);
+  damageLightInformationOnHeavyHit(defender, amount);
   return amount;
 }
 
@@ -2698,6 +2988,58 @@ function applyPracticeSettingsTick() {
   pinStationaryPracticeDummy(enemy);
 }
 
+
+// LIGHT_UI_PATCH
+function installLightTechniqueOption() {
+  installUniversalBrawlRename();
+
+  if (!techniqueScreen) return;
+  const existing = techniqueScreen.querySelector('[data-technique="deathnote"]');
+  if (!existing) {
+    const sample = techniqueScreen.querySelector(".technique-button");
+    const button = sample ? sample.cloneNode(true) : document.createElement("button");
+    button.type = "button";
+    button.className = sample ? sample.className : "technique-button";
+    button.dataset.technique = "deathnote";
+    button.innerHTML = `
+      <canvas id="deathnotePreview" width="320" height="180" aria-hidden="true"></canvas>
+      <strong>Light Yagami</strong>
+      <span>Tactical summon/control fighter</span>
+      <small>Ryuk pressure · investigation · Death Note</small>
+    `;
+    const holder = sample?.parentNode || techniqueScreen;
+    holder.appendChild(button);
+  }
+
+  const canvas = document.getElementById("deathnotePreview");
+  if (canvas) techniquePreviewCanvases.deathnote = canvas;
+
+  techniqueButtons = Array.from(document.querySelectorAll(".technique-button"));
+  techniqueButtons.forEach((button) => {
+    if (button.dataset.lightBound === "1") return;
+    button.dataset.lightBound = "1";
+    button.addEventListener("click", () => finishTechniqueSelect(button.dataset.technique));
+  });
+
+  if (!document.getElementById("lightTechniqueStyle")) {
+    const style = document.createElement("style");
+    style.id = "lightTechniqueStyle";
+    style.textContent = `
+      [data-technique="deathnote"] {
+        border-color: rgba(239,68,68,0.45) !important;
+        box-shadow: 0 0 22px rgba(127,29,29,0.18) !important;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  renderTechniquePreviews();
+}
+
+window.addEventListener("DOMContentLoaded", installLightTechniqueOption);
+window.setTimeout(installLightTechniqueOption, 0);
+
+
 function updateControlsVisibility() {
   updateControlsPanel();
   if (!rivalControls) return;
@@ -2715,12 +3057,18 @@ function getTechniqueControlHtml(technique) {
   if (technique === "shrine") {
     return '<span><kbd>Left Click</kbd> Dismantle</span><span><kbd>Right Click</kbd> Cleave</span><span><kbd>Hold S</kbd> Fuga</span><span><kbd>Hold C</kbd> Aim Ultimate</span><span><kbd>R</kbd> hold RCT</span>';
   }
+  if (technique === "deathnote") {
+    return '<span><kbd>Left Click</kbd> Shinigami Strike</span><span><kbd>Right Click</kbd> Name Investigation</span><span><kbd>S</kbd> Potato Chip</span><span><kbd>C</kbd> Death Note</span><span><kbd>R</kbd> hold RCT</span>';
+  }
   return '<span><kbd>Left Click</kbd> Blue</span><span><kbd>Right Click</kbd> Red</span><span><kbd>Hold S</kbd> Teleport</span><span><kbd>Hold T</kbd> Blue Punch</span><span><kbd>F</kbd> Infinity</span><span><kbd>Hold C</kbd> Aim Ultimate</span><span><kbd>R</kbd> hold RCT</span>';
 }
 
 function getExtraBattleControlHtml(technique) {
   if (technique === "shrine") {
     return '<span><kbd>X</kbd> Domain Expansion</span><span><kbd>Z</kbd> Simple Domain</span><span><kbd>Toward</kbd><kbd>Tab</kbd> Throw Combo</span><span><kbd>T</kbd> Binding Vow</span><span><kbd>U</kbd> Dismantle Vow</span><span><kbd>I</kbd> Cleave Vow</span><span><kbd>O</kbd> Fuga Vow</span><span><kbd>P</kbd> Domain Vow</span>';
+  }
+  if (technique === "deathnote") {
+    return '<span><kbd>Identity 100%</kbd> unlocks Death Note</span><span><kbd>Eye Deal</kbd> after Misa and Soichiro are gone</span>';
   }
   return '<span><kbd>X</kbd> Domain Expansion</span><span><kbd>Z</kbd> Simple Domain</span>';
 }
@@ -3088,7 +3436,8 @@ function applyJoinerFighterStateOnHost(remoteFighter) {
     "bluePunchHoldTicks", "bluePunchActiveTicks", "bluePunchCooldown", "bluePunchChases", "bluePunchFlash",
     "teleportAiming", "teleportCooldown", "fugaAiming", "fugaChargeTicks", "fugaCooldown", "fugaCooldownMax", "ultimateAiming", "ultimateAimPoint",
     "ce", "maxCe", "ultimateMeter", "domainStartup", "domainAttemptType", "simpleDomainTicks", "simpleDomainFlash", "simpleDomainCooldown",
-    "bindingVowType", "bindingVowTicks", "bindingVowCooldown", "bindingVowChoiceTicks", "bindingVowQuote", "bindingVowQuoteTicks", "bindingVowFlash", "sukunaThrowComboCooldown", "ctLockTimer"
+    "bindingVowType", "bindingVowTicks", "bindingVowCooldown", "bindingVowChoiceTicks", "bindingVowQuote", "bindingVowQuoteTicks", "bindingVowFlash", "sukunaThrowComboCooldown",
+    "informationMeter", "identityProgress", "lightSummonStage", "lightSummonType", "lightSummonHealth", "lightSummonMaxHealth", "lightSummonTicks", "potatoCooldown", "potatoFocusTicks", "eyeDealUsed", "deathNoteSlowTicks", "ctLockTimer"
   ];
 
   fields.forEach((field) => {
@@ -3191,6 +3540,7 @@ if (data.type === "role") {
         startDomainExpansion(enemy);
       }
       if (data.action === "simpleDomain") startSimpleDomain(enemy);
+      if (data.action === "potato-chip") usePotatoChip(enemy);
       if (data.action === "bindingVowOpen") openBindingVowChoice(enemy);
       if (data.action === "bindingVowSelect") activateBindingVow(enemy, data.vowType);
       if (data.action === "ultimate") startUltimate(enemy);
@@ -3328,7 +3678,10 @@ function getOnlineAction(key, code, repeat) {
   if ((key === "z" || code === "keyz") && !repeat) return "simpleDomain";
   if ((key === "t" || code === "keyt") && !repeat && enemy?.technique === "shrine") return "bindingVowOpen";
   if (isEventForAction("ultimate", key, code) && !repeat) return "ultimate-start";
-  if (isEventForAction("specialAim", key, code) && !repeat) return enemy?.technique === "shrine" ? "fuga-start" : "teleport-start";
+  if (isEventForAction("specialAim", key, code) && !repeat) {
+    if (enemy?.technique === "deathnote") return "potato-chip";
+    return enemy?.technique === "shrine" ? "fuga-start" : "teleport-start";
+  }
   return null;
 }
 
@@ -3580,6 +3933,17 @@ function getFighterNetworkState(f) {
     bindingVowQuote: f.bindingVowQuote,
     bindingVowQuoteTicks: f.bindingVowQuoteTicks,
     bindingVowFlash: f.bindingVowFlash,
+    informationMeter: f.informationMeter,
+    identityProgress: f.identityProgress,
+    lightSummonStage: f.lightSummonStage,
+    lightSummonType: f.lightSummonType,
+    lightSummonHealth: f.lightSummonHealth,
+    lightSummonMaxHealth: f.lightSummonMaxHealth,
+    lightSummonTicks: f.lightSummonTicks,
+    potatoCooldown: f.potatoCooldown,
+    potatoFocusTicks: f.potatoFocusTicks,
+    eyeDealUsed: f.eyeDealUsed,
+    deathNoteSlowTicks: f.deathNoteSlowTicks,
     ctLockTimer: f.ctLockTimer,
     walkCycle: f.walkCycle,
     onPlatform: f.onPlatform
@@ -4015,6 +4379,10 @@ function getExtraCooldownItems(f) {
 
   if ((f.ctLockTimer || 0) > 0) {
     items.push({ name: "CT LOCK", current: f.ctLockTimer || 0, max: DOMAIN_CT_LOCK_TICKS || 900 });
+  }
+
+  if (isLight(f)) {
+    items.push(...getLightExtraHudItems(f));
   }
 
   if ((f.simpleDomainTicks || 0) > 0) {
@@ -4937,6 +5305,23 @@ function startTechnique(f, slot, chargeRatio = 0, aimPoint = null, releasingChar
   const aimVector = getTechniqueAimVector(f, move, aimPoint);
   if (Math.abs(aimVector.x) > 0.08) f.dir = aimVector.dir;
 
+  if (f.technique === "deathnote") {
+    if (move === "ryukStrike") {
+      if (startRyukStrike(f, aimPoint, cost)) {
+        f.techniqueCooldown = getTechniqueCooldownTicks(move, f);
+        f.techniqueCooldownMax = f.techniqueCooldown;
+      }
+      return;
+    }
+    if (move === "nameInvestigation") {
+      if (startNameInvestigation(f, cost)) {
+        f.techniqueCooldown = getTechniqueCooldownTicks(move, f);
+        f.techniqueCooldownMax = f.techniqueCooldown;
+      }
+      return;
+    }
+  }
+
   f.ce -= cost;
   f.techniqueCooldown = getTechniqueCooldownTicks(move, f);
   if (isDomainOwner(f, "malevolentShrine")) f.techniqueCooldown = Math.max(8, Math.ceil(f.techniqueCooldown * 0.55));
@@ -5395,11 +5780,13 @@ function spawnUltimateChargeEffect(f, kind) {
 }
 
 function startUltimate(f, aimPoint = null) {
+  if (isLight(f)) return startDeathNoteUltimate(f);
   return beginUltimateAim(f, aimPoint);
 }
 
 
 function beginUltimateAim(f, aimPoint = null) {
+  if (isLight(f)) return startDeathNoteUltimate(f);
   if (!canStartUltimate(f)) {
     const warning = getUltimateFailureMessage(f);
     if (warning) showActionWarning(warning);
@@ -5791,6 +6178,7 @@ function hasSimpleDomain(f) {
 }
 
 function canStartSimpleDomain(f) {
+  if (isLight(f)) return false;
   return Boolean(
     f &&
     gameState === "playing" &&
@@ -5897,6 +6285,7 @@ function getDomainAttemptForFighter(f) {
 }
 
 function canStartDomain(f) {
+  if (isLight(f)) return false;
   if (!f || gameState !== "playing" || gameOver || paused || f.ko || f.knockdown || f.stun > 0) return false;
   if (isSpecialLocked(f) || f.attacking || f.dodging > 0 || f.rctHealing || hasCtLock(f)) return false;
   if (activeDomain || domainClash) return false;
@@ -8218,6 +8607,39 @@ function tryCpuDomainExpansion(cpu, distance) {
 }
 
 
+
+function tryCpuLightActions(cpu, distance) {
+  if (gameMode !== "cpu" || pacifistBot || !enemy || enemy.technique !== "deathnote" || enemy.ko) return false;
+
+  if ((enemy.potatoCooldown || 0) <= 0 && enemy.health < enemy.maxHealth * 0.62 && Math.random() < getCpuDecisionChance(0.08, 0.16, 0.28)) {
+    if (usePotatoChip(enemy)) {
+      enemy.aiGoal = "potato";
+      enemy.aiCooldown = Math.max(20, cpu.thinkCooldown + 8);
+      return true;
+    }
+  }
+
+  if ((enemy.identityProgress || 0) >= LIGHT_IDENTITY_MAX && (enemy.ultimateMeter || 0) >= MAX_ULTIMATE) {
+    if (Math.random() < getCpuDecisionChance(0.16, 0.34, 0.56) && startDeathNoteUltimate(enemy)) {
+      enemy.aiGoal = "deathnote";
+      enemy.aiCooldown = cpu.attackCooldown + 60;
+      return true;
+    }
+  }
+
+  if (!enemy.lightSummonType && enemy.ce >= getTechniqueCost(enemy, "nameInvestigation") && Math.random() < getCpuDecisionChance(0.06, 0.12, 0.22)) {
+    if (startNameInvestigation(enemy, getTechniqueCost(enemy, "nameInvestigation"))) {
+      enemy.techniqueCooldown = getTechniqueCooldownTicks("nameInvestigation", enemy);
+      enemy.techniqueCooldownMax = enemy.techniqueCooldown;
+      enemy.aiGoal = "investigate";
+      enemy.aiCooldown = cpu.techniqueCooldown;
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function updateEnemyAi() {
   updateCpuStuckRecovery();
 
@@ -8252,6 +8674,7 @@ function updateEnemyAi() {
 
   // CPU_SIMPLE_DOMAIN_BINDING_VOW_PATCH
   // CPU can now use Simple Domain defensively and Sukuna can use Binding Vows.
+  if (enemy.aiCooldown <= 0 && tryCpuLightActions(cpu, distance)) return;
   if (enemy.aiCooldown <= 0 && tryCpuSimpleDomain(cpu, distance)) return;
   if (enemy.aiCooldown <= 0 && tryCpuBindingVow(cpu, distance)) return;
   if (enemy.aiCooldown <= 0 && tryCpuDomainExpansion(cpu, distance)) return;
@@ -8385,8 +8808,10 @@ function updateFighter(f, opponent) {
   updateSimpleDomain(f);
   updateBindingVow(f);
   updateSukunaThrowComboCooldown(f);
+  updateLightSystems(f, opponent);
 
   if (!f.ko) f.dir = f.x + f.w / 2 < opponent.x + opponent.w / 2 ? 1 : -1;
+  if ((f.deathNoteSlowTicks || 0) > 0) f.vx *= 0.82;
   updateBluePunchTimers(f);
   if (f.gojoPushPullCooldown > 0) f.gojoPushPullCooldown -= 1;
 
@@ -9192,6 +9617,19 @@ function drawViewportBackdrop() {
 }
 
 function getTechniqueSkin(f, flash) {
+  if (!flash && f?.technique === "deathnote") {
+    return {
+      body: "#111827",
+      skin: "#f3c7a6",
+      accent: "#b91c1c",
+      pants: "#0f172a",
+      shoe: "#020617",
+      hair: "#4b2e19",
+      eye: "#7f1d1d",
+      mark: "#ef4444"
+    };
+  }
+
   if (flash) {
     return {
       body: "#ffffff",
@@ -9826,6 +10264,57 @@ function drawSukunaGrabThrowHud(f) {
 
 
 
+
+function drawLightSummonEffect(f) {
+  if (!isLight(f) || !f.lightSummonType) return;
+  const center = getFighterCenter(f);
+  const side = f.dir || 1;
+  const sx = center.x - side * 86;
+  const sy = f.y + 44;
+  ctx.save();
+  ctx.globalAlpha = 0.72;
+  ctx.fillStyle = f.lightSummonType === "misa" ? "rgba(236,72,153,0.68)" : "rgba(96,165,250,0.66)";
+  ctx.strokeStyle = "rgba(255,255,255,0.55)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(sx - 17, sy - 30, 34, 62, 8);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.font = "700 10px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(f.lightSummonType === "misa" ? "MISA" : "SOICHIRO", sx, sy - 39);
+  const hpRatio = Math.max(0, Math.min(1, (f.lightSummonHealth || 0) / Math.max(1, f.lightSummonMaxHealth || 1)));
+  ctx.fillStyle = "rgba(15,23,42,0.9)";
+  ctx.fillRect(sx - 22, sy + 38, 44, 5);
+  ctx.fillStyle = "rgba(34,197,94,0.9)";
+  ctx.fillRect(sx - 22, sy + 38, 44 * hpRatio, 5);
+  ctx.restore();
+}
+
+function drawLightAuraEffect(f) {
+  if (!isLight(f)) return;
+  const center = getFighterCenter(f);
+  const info = Math.max(0, Math.min(1, (f.informationMeter || 0) / LIGHT_INFO_MAX));
+  const identity = Math.max(0, Math.min(1, (f.identityProgress || 0) / LIGHT_IDENTITY_MAX));
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.strokeStyle = `rgba(239, 68, 68, ${0.10 + identity * 0.32})`;
+  ctx.lineWidth = 2 + identity * 3;
+  ctx.beginPath();
+  ctx.ellipse(center.x, center.y + 20, 48 + info * 18, 18 + info * 8, frame * 0.01, 0, Math.PI * 2);
+  ctx.stroke();
+  if ((f.potatoFocusTicks || 0) > 0) {
+    ctx.strokeStyle = "rgba(250, 204, 21, 0.5)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, 54 + Math.sin(frame * 0.2) * 4, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+
 function drawBindingVowEffect(f) {
   if (!hasBindingVow(f) && (f.bindingVowChoiceTicks || 0) <= 0) return;
   const center = getFighterCenter(f);
@@ -10058,6 +10547,8 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   const shoeColor = skin.shoe;
   const idle = !running && !jumpPose && !f.attacking && !f.blocking && !f.ko ? Math.sin(frame * 0.08) : 0;
   drawSukunaKingPassiveEffect(f);
+  drawLightAuraEffect(f);
+  drawLightSummonEffect(f);
   drawBindingVowEffect(f);
   drawSimpleDomainEffect(f);
   drawGojoBluePunchEffect(f);
@@ -10756,8 +11247,8 @@ function drawTechniquePreview(canvasEl, technique) {
     w: technique === "shrine" ? 52 : 50,
     h: 128,
     dir: 1,
-    color: technique === "shrine" ? "#dc2626" : "#2563eb",
-    accent: technique === "shrine" ? "#991b1b" : "#1d4ed8"
+    color: technique === "shrine" ? "#dc2626" : technique === "deathnote" ? "#111827" : "#2563eb",
+    accent: technique === "shrine" ? "#991b1b" : technique === "deathnote" ? "#b91c1c" : "#1d4ed8"
   });
   previewFighter.technique = technique;
   previewFighter.y = GROUND - previewFighter.h;
@@ -10766,7 +11257,7 @@ function drawTechniquePreview(canvasEl, technique) {
   ctx = previewCtx;
   ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
   const backdrop = ctx.createLinearGradient(0, 0, 0, canvasEl.height);
-  backdrop.addColorStop(0, technique === "shrine" ? "#2b1420" : "#142033");
+  backdrop.addColorStop(0, technique === "shrine" ? "#2b1420" : technique === "deathnote" ? "#180b12" : "#142033");
   backdrop.addColorStop(1, "#050814");
   ctx.fillStyle = backdrop;
   ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
@@ -10788,6 +11279,7 @@ function drawTechniquePreview(canvasEl, technique) {
 function renderTechniquePreviews() {
   drawTechniquePreview(techniquePreviewCanvases.limitless, "limitless");
   drawTechniquePreview(techniquePreviewCanvases.shrine, "shrine");
+  drawTechniquePreview(techniquePreviewCanvases.deathnote, "deathnote");
 }
 
 
@@ -11661,6 +12153,41 @@ function drawProjectiles() {
 
       ctx.globalCompositeOperation = "source-over";
       ctx.globalAlpha = 1;
+    } else if (p.move === "ryukStrike") {
+      const pulse = 1 + Math.sin(frame * 0.32) * 0.08;
+      ctx.globalCompositeOperation = "lighter";
+      const smoke = ctx.createRadialGradient(0, 0, p.radius * 0.15, 0, 0, p.radius * 1.45);
+      smoke.addColorStop(0, "rgba(255,255,255,0.9)");
+      smoke.addColorStop(0.25, "rgba(31,41,55,0.88)");
+      smoke.addColorStop(0.65, "rgba(2,6,23,0.55)");
+      smoke.addColorStop(1, "rgba(2,6,23,0)");
+      ctx.fillStyle = smoke;
+      ctx.beginPath();
+      ctx.arc(0, 0, p.radius * 1.28 * pulse, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.globalCompositeOperation = "source-over";
+      ctx.fillStyle = "rgba(7, 10, 20, 0.95)";
+      ctx.beginPath();
+      ctx.ellipse(0, -p.radius * 0.12, p.radius * 0.72, p.radius * 0.46, -0.22, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = "rgba(255,255,255,0.85)";
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(-p.radius * 0.42, -p.radius * 0.18);
+      ctx.lineTo(p.radius * 0.35, p.radius * 0.28);
+      ctx.moveTo(-p.radius * 0.25, p.radius * 0.24);
+      ctx.lineTo(p.radius * 0.45, -p.radius * 0.28);
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(239,68,68,0.9)";
+      for (let i = 0; i < 5; i += 1) {
+        const a = frame * 0.05 + i * 1.2;
+        ctx.beginPath();
+        ctx.arc(Math.cos(a) * p.radius * 0.65, Math.sin(a) * p.radius * 0.35 + p.radius * 0.2, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
     } else if (p.move === "red") {
       if (hasProjectileAngle) ctx.rotate(projectileAngle);
       else ctx.scale(p.dir, 1);
@@ -12354,6 +12881,7 @@ window.addEventListener("keydown", (event) => {
     if (action === "infinity") toggleInfinity(enemy);
     if (action === "domain") startDomainExpansion(enemy);
     if (action === "simpleDomain") startSimpleDomain(enemy);
+    if (action === "potato-chip") usePotatoChip(enemy);
     if (action === "bindingVowOpen") openBindingVowChoice(enemy);
     if (action === "ultimate") startUltimate(enemy);
     if (action === "ultimate-start") beginUltimateAim(enemy, enemy.techniqueAim || mouseAimWorld);
@@ -12386,6 +12914,9 @@ window.addEventListener("keydown", (event) => {
       if (prepareFuga(fighter, mouseAimWorld) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("fuga-start", mouseAimWorld);
     } else if (fighter?.technique === "limitless") {
       if (prepareTeleport(fighter, mouseAimWorld) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("teleport-start", mouseAimWorld);
+    } else if (fighter?.technique === "deathnote") {
+      usePotatoChip(fighter);
+      if (gameMode === "online" && onlineRole === "p2") sendOnlineInput("potato-chip");
     }
   }
   if (isEventForAction("ultimate", key, code) && !event.repeat) beginUltimateAim(player, mouseAimWorld);
