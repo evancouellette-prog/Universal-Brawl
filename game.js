@@ -3349,7 +3349,8 @@ function installLightBrownHudStyle() {
     .fighter-panel.light-hud .ce-frame.light-info-frame,
     .fighter-panel.light-hud .ultimate-frame.light-name-frame {
       border-radius: 0 !important;
-      height: 12px !important;
+      height: 16px !important;
+      min-height: 16px !important;
       border-width: 2px !important;
       box-shadow: inset 0 1px 3px rgba(0,0,0,0.65), 0 0 0 1px rgba(255,255,255,0.06) !important;
       background: #101319 !important;
@@ -4899,6 +4900,15 @@ function ensureResourceBarLabel(frame, text, kind = "generic") {
   return label;
 }
 
+function removeResourceBarLabel(frame) {
+  if (!frame) return;
+  const label = frame.previousElementSibling;
+  if (label && label.classList && label.classList.contains("resource-bar-label")) {
+    label.remove();
+  }
+  frame.classList.remove("labeled-resource-frame");
+}
+
 function updateResourceBarLabels() {
   const playerCeFrame = playerCeEl ? playerCeEl.closest(".ce-frame") : null;
   const enemyCeFrame = enemyCeEl ? enemyCeEl.closest(".ce-frame") : null;
@@ -4908,10 +4918,16 @@ function updateResourceBarLabels() {
   ensureResourceBarLabel(playerCeFrame, isLight(player) ? "Information" : "Cursed Energy", "ce");
   ensureResourceBarLabel(playerUltFrame, isLight(player) ? "Name" : "Ultimate", "ultimate");
 
-  if (gameMode !== "practice") {
-    ensureResourceBarLabel(enemyCeFrame, isLight(enemy) ? "Information" : "Cursed Energy", "ce");
-    ensureResourceBarLabel(enemyUltFrame, isLight(enemy) ? "Name" : "Ultimate", "ultimate");
+  // DUMMY_HUD_NO_WORDS_PATCH:
+  // Practice dummy should have HP only. No CE/Ult bars and no labels/words.
+  if (gameMode === "practice") {
+    removeResourceBarLabel(enemyCeFrame);
+    removeResourceBarLabel(enemyUltFrame);
+    return;
   }
+
+  ensureResourceBarLabel(enemyCeFrame, isLight(enemy) ? "Information" : "Cursed Energy", "ce");
+  ensureResourceBarLabel(enemyUltFrame, isLight(enemy) ? "Name" : "Ultimate", "ultimate");
 }
 
 function updatePracticeDummyHudVisibility() {
@@ -4927,6 +4943,11 @@ function updatePracticeDummyHudVisibility() {
   setHudElementHidden(enemyCtGrid, hideDummyMeters);
   setHudElementHidden(enemyExtraCooldownsEl, hideDummyMeters);
   setHudElementHidden(enemyStarsEl, hideDummyMeters);
+
+  if (hideDummyMeters) {
+    removeResourceBarLabel(enemyCeFrame);
+    removeResourceBarLabel(enemyUltFrame);
+  }
 
   if (enemyPanel) enemyPanel.classList.toggle("practice-hp-only", hideDummyMeters);
 }
@@ -4950,6 +4971,11 @@ function updateLightHudVisibility() {
   if (gameMode !== "practice") {
     setHudElementHidden(enemyCeFrame, false);
     setHudElementHidden(enemyUltFrame, false);
+  } else {
+    setHudElementHidden(enemyCeFrame, true);
+    setHudElementHidden(enemyUltFrame, true);
+    removeResourceBarLabel(enemyCeFrame);
+    removeResourceBarLabel(enemyUltFrame);
   }
 
   if (playerPanel) playerPanel.classList.toggle("light-hud", playerLight);
