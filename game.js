@@ -678,7 +678,7 @@ function updateControlsPanelKeybindLabels() {
       <span>${makeControlKbd(controlKeyLabel("block"))} block</span>
       <span>${makeControlKbd(controlKeyLabel("dodge"))} dodge</span>
     </p>
-    <p><strong>Technique</strong>
+    <p><strong>Abilities</strong>
       <span><kbd>Left Click</kbd> Blue</span>
       <span><kbd>Right Click</kbd> Red / Dismantle</span>
       <span>${makeControlKbd(controlKeyLabel("specialAim"))} Teleport / Fuga aim</span>
@@ -2077,16 +2077,38 @@ function getLightInfoRatio(f) {
   return Math.max(0, Math.min(1, ((f && f.informationMeter) || 0) / LIGHT_INFO_MAX));
 }
 
-function getLightSummonRect(f) {
-  if (!isLight(f) || !f.lightSummonType) return null;
+function setLightSummonAnchor(f) {
+  if (!isLight(f)) return;
   const center = getFighterCenter(f);
   const side = f.dir || 1;
+  f.lightSummonAnchorDir = side;
+  f.lightSummonAnchorX = center.x - side * 102;
+  f.lightSummonAnchorY = f.y + f.h;
+}
+
+function clearLightSummonAnchor(f) {
+  if (!f) return;
+  f.lightSummonAnchorX = null;
+  f.lightSummonAnchorY = null;
+  f.lightSummonAnchorDir = 0;
+}
+
+function getLightSummonRect(f) {
+  if (!isLight(f) || !f.lightSummonType) return null;
   const isMisa = f.lightSummonType === "misa";
-  const width = isMisa ? 54 : 60;
+  const width = isMisa ? 56 : 62;
   const height = isMisa ? 118 : 124;
-  const x = center.x - side * 102 - width / 2;
-  const y = f.y + f.h - height;
-  return { x, y, w: width, h: height };
+
+  if (!Number.isFinite(f.lightSummonAnchorX) || !Number.isFinite(f.lightSummonAnchorY)) {
+    setLightSummonAnchor(f);
+  }
+
+  const centerX = Number.isFinite(f.lightSummonAnchorX) ? f.lightSummonAnchorX : getFighterCenter(f).x;
+  const footY = Number.isFinite(f.lightSummonAnchorY) ? f.lightSummonAnchorY : (f.y + f.h);
+  const dir = f.lightSummonAnchorDir || f.dir || 1;
+  const x = centerX - width / 2;
+  const y = footY - height;
+  return { x, y, w: width, h: height, footY, dir, centerX };
 }
 
 function damageLightSummon(f, amount, sourceDir = 1, kind = "slash") {
@@ -2100,6 +2122,8 @@ function damageLightSummon(f, amount, sourceDir = 1, kind = "slash") {
     f.lightSummonType = null;
     f.lightSummonTicks = 0;
     f.lightSummonHealth = 0;
+    f.lightSummonMaxHealth = 0;
+    clearLightSummonAnchor(f);
     if (defeated === "misa") {
       f.lightSummonStage = Math.max(f.lightSummonStage || 1, 2);
       showActionWarning("Misa has been removed");
@@ -2187,6 +2211,8 @@ function startNameInvestigation(f, cost = 0) {
   if (!isLight(f)) return false;
   if (cost > 0) f.ce = Math.max(0, f.ce - cost);
 
+  setLightSummonAnchor(f);
+
   if (f.lightSummonStage <= 1 && f.lightSummonType !== "misa") {
     f.lightSummonType = "misa";
     f.lightSummonHealth = 50;
@@ -2216,6 +2242,9 @@ function startEyeDeal(f) {
   f.lightSummonStage = 3;
   f.lightSummonType = null;
   f.lightSummonTicks = 0;
+  f.lightSummonHealth = 0;
+  f.lightSummonMaxHealth = 0;
+  clearLightSummonAnchor(f);
   f.health = Math.max(1, Math.ceil(f.health * 0.5));
   f.identityProgress = LIGHT_IDENTITY_MAX;
   f.informationMeter = LIGHT_INFO_MAX;
@@ -2257,6 +2286,7 @@ function updateLightSystems(f, opponent) {
   }
 
   if (f.lightSummonType && f.lightSummonTicks > 0) {
+    if (!Number.isFinite(f.lightSummonAnchorX) || !Number.isFinite(f.lightSummonAnchorY)) setLightSummonAnchor(f);
     f.lightSummonTicks -= 1;
     const nearby = opponent ? Math.abs((f.x + f.w / 2) - (opponent.x + opponent.w / 2)) < 360 : false;
     const rate = (f.lightSummonType === "misa" ? 0.2 : 0.11) * (nearby ? 1.15 : 0.82);
@@ -2273,6 +2303,9 @@ function updateLightSystems(f, opponent) {
     }
   } else if (f.lightSummonTicks <= 0) {
     f.lightSummonType = null;
+    f.lightSummonHealth = 0;
+    f.lightSummonMaxHealth = 0;
+    clearLightSummonAnchor(f);
   }
 }
 
@@ -2851,6 +2884,9 @@ function makeFighter(config) {
     lightSummonMaxHealth: 0,
     lightSummonTicks: 0,
     lightSummonHitFlash: 0,
+    lightSummonAnchorX: null,
+    lightSummonAnchorY: null,
+    lightSummonAnchorDir: 0,
     potatoCooldown: 0,
     potatoFocusTicks: 0,
     eyeDealUsed: false,
@@ -2889,6 +2925,7 @@ function applyTechniqueStats(f, preserveMeters = false) {
   if (f.technique !== "deathnote") {
     f.lightSummonType = null;
     f.lightSummonTicks = 0;
+    clearLightSummonAnchor(f);
     f.identityProgress = 0;
     f.informationMeter = 0;
     f.potatoFocusTicks = 0;
@@ -3272,10 +3309,74 @@ function installLightBrownHudStyle() {
 
     .fighter-panel.light-hud .ultimate-fill.light-name-fill {
       height: 100% !important;
-      border-radius: inherit !important;
+      border-radius: 0 !important;
       /* Death Note-style deep blood crimson red. */
       background: linear-gradient(90deg, #2a0204 0%, #5f0007 34%, #8b000b 62%, #d1121b 100%) !important;
       box-shadow: 0 0 16px rgba(139, 0, 11, 0.58), inset 0 1px 0 rgba(255,235,235,0.28) !important;
+    }
+
+    /* RESOURCE_BAR_LABELS_PATCH */
+    .resource-bar-label {
+      display: block !important;
+      margin: 2px 0 4px !important;
+      font: 700 10px/1 system-ui, sans-serif !important;
+      letter-spacing: 0.08em !important;
+      text-transform: uppercase !important;
+      color: rgba(236, 242, 255, 0.88) !important;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.75) !important;
+      opacity: 0.96 !important;
+      user-select: none !important;
+      pointer-events: none !important;
+    }
+
+    .fighter-panel.right .resource-bar-label {
+      text-align: right !important;
+    }
+
+    .ce-resource-label {
+      color: rgba(195, 232, 255, 0.92) !important;
+    }
+
+    .ultimate-resource-label {
+      color: rgba(244, 226, 255, 0.92) !important;
+    }
+
+    .labeled-resource-frame {
+      margin-top: 0 !important;
+    }
+
+    /* Make Light's Information + Name bars square like the reference image. */
+    .fighter-panel.light-hud .ce-frame.light-info-frame,
+    .fighter-panel.light-hud .ultimate-frame.light-name-frame {
+      border-radius: 0 !important;
+      height: 12px !important;
+      border-width: 2px !important;
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.65), 0 0 0 1px rgba(255,255,255,0.06) !important;
+      background: #101319 !important;
+    }
+
+    .fighter-panel.light-hud .ce-frame.light-info-frame::before,
+    .fighter-panel.light-hud .ultimate-frame.light-name-frame::before,
+    .fighter-panel.light-hud .ce-frame.light-info-frame::after,
+    .fighter-panel.light-hud .ultimate-frame.light-name-frame::after {
+      display: none !important;
+      content: none !important;
+    }
+
+    .fighter-panel.light-hud .ce-fill.light-info-fill,
+    .fighter-panel.light-hud .ultimate-fill.light-name-fill {
+      border-radius: 0 !important;
+      height: 100% !important;
+    }
+
+    .fighter-panel.light-hud .ce-fill.light-info-fill {
+      background: linear-gradient(90deg, #63c7ff 0%, #9ab3ff 55%, #c595ff 100%) !important;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.3) !important;
+    }
+
+    .fighter-panel.light-hud .ultimate-fill.light-name-fill {
+      background: linear-gradient(90deg, #171717 0%, #52080d 28%, #a00b12 64%, #d9181f 100%) !important;
+      box-shadow: inset 0 1px 0 rgba(255,235,235,0.22) !important;
     }
 
   `;
@@ -3383,7 +3484,7 @@ function updateControlsPanel() {
     <p><strong>Move</strong><span><kbd>A</kbd><kbd>D</kbd> walk</span><span><kbd>Space</kbd> jump / double jump</span></p>
     <p><strong>Attack</strong><span><kbd>W</kbd> light punch</span><span><kbd>E</kbd> heavy punch</span><span><kbd>Toward</kbd><kbd>Tab</kbd> throw</span></p>
     <p><strong>Defend</strong><span><kbd>Q</kbd> block</span><span><kbd>Shift</kbd> dodge</span></p>
-    <p><strong>Technique</strong>${getTechniqueControlHtml(technique)}</p>
+    <p><strong>Abilities</strong>${getTechniqueControlHtml(technique)}</p>
     <p><strong>Domains / Vows</strong>${getExtraBattleControlHtml(technique)}</p>
   `;
 }
@@ -3740,7 +3841,7 @@ function applyJoinerFighterStateOnHost(remoteFighter) {
     "teleportAiming", "teleportCooldown", "fugaAiming", "fugaChargeTicks", "fugaCooldown", "fugaCooldownMax", "ultimateAiming", "ultimateAimPoint",
     "ce", "maxCe", "ultimateMeter", "domainStartup", "domainAttemptType", "simpleDomainTicks", "simpleDomainFlash", "simpleDomainCooldown",
     "bindingVowType", "bindingVowTicks", "bindingVowCooldown", "bindingVowChoiceTicks", "bindingVowQuote", "bindingVowQuoteTicks", "bindingVowFlash", "sukunaThrowComboCooldown",
-    "informationMeter", "identityProgress", "lightSummonStage", "lightSummonType", "lightSummonHealth", "lightSummonMaxHealth", "lightSummonTicks", "lightSummonHitFlash", "potatoCooldown", "potatoFocusTicks", "eyeDealUsed", "eyeDealGlowTicks", "deathNoteSlowTicks", "deathNoteFearTicks", "ctLockTimer"
+    "informationMeter", "identityProgress", "lightSummonStage", "lightSummonType", "lightSummonHealth", "lightSummonMaxHealth", "lightSummonTicks", "lightSummonHitFlash", "lightSummonAnchorX", "lightSummonAnchorY", "lightSummonAnchorDir", "potatoCooldown", "potatoFocusTicks", "eyeDealUsed", "eyeDealGlowTicks", "deathNoteSlowTicks", "deathNoteFearTicks", "ctLockTimer"
   ];
 
   fields.forEach((field) => {
@@ -4244,6 +4345,9 @@ function getFighterNetworkState(f) {
     lightSummonMaxHealth: f.lightSummonMaxHealth,
     lightSummonTicks: f.lightSummonTicks,
     lightSummonHitFlash: f.lightSummonHitFlash,
+    lightSummonAnchorX: f.lightSummonAnchorX,
+    lightSummonAnchorY: f.lightSummonAnchorY,
+    lightSummonAnchorDir: f.lightSummonAnchorDir,
     potatoCooldown: f.potatoCooldown,
     potatoFocusTicks: f.potatoFocusTicks,
     eyeDealUsed: f.eyeDealUsed,
@@ -4782,6 +4886,34 @@ function setHudElementHidden(el, hidden) {
   if (el) el.classList.toggle("hidden", Boolean(hidden));
 }
 
+function ensureResourceBarLabel(frame, text, kind = "generic") {
+  if (!frame || !frame.parentElement) return null;
+  let label = frame.previousElementSibling;
+  if (!label || !label.classList || !label.classList.contains("resource-bar-label")) {
+    label = document.createElement("div");
+    label.className = `resource-bar-label ${kind}-resource-label`;
+    frame.parentElement.insertBefore(label, frame);
+  }
+  label.textContent = text;
+  frame.classList.add("labeled-resource-frame");
+  return label;
+}
+
+function updateResourceBarLabels() {
+  const playerCeFrame = playerCeEl ? playerCeEl.closest(".ce-frame") : null;
+  const enemyCeFrame = enemyCeEl ? enemyCeEl.closest(".ce-frame") : null;
+  const playerUltFrame = playerUltimateEl ? playerUltimateEl.closest(".ultimate-frame") : null;
+  const enemyUltFrame = enemyUltimateEl ? enemyUltimateEl.closest(".ultimate-frame") : null;
+
+  ensureResourceBarLabel(playerCeFrame, isLight(player) ? "Information" : "Cursed Energy", "ce");
+  ensureResourceBarLabel(playerUltFrame, isLight(player) ? "Name" : "Ultimate", "ultimate");
+
+  if (gameMode !== "practice") {
+    ensureResourceBarLabel(enemyCeFrame, isLight(enemy) ? "Information" : "Cursed Energy", "ce");
+    ensureResourceBarLabel(enemyUltFrame, isLight(enemy) ? "Name" : "Ultimate", "ultimate");
+  }
+}
+
 function updatePracticeDummyHudVisibility() {
   const hideDummyMeters = gameMode === "practice";
 
@@ -4832,10 +4964,13 @@ function updateLightHudVisibility() {
   playerUltimateEl?.classList.toggle("light-name-fill", playerLight);
   enemyCeEl?.classList.toggle("light-info-fill", enemyLight && gameMode !== "practice");
   enemyUltimateEl?.classList.toggle("light-name-fill", enemyLight && gameMode !== "practice");
+
+  updateResourceBarLabels();
 }
 
 function updateHud() {
   updatePlayerNameLabels();
+  updateResourceBarLabels();
   enemyNameEl.classList.toggle("player-two-name", gameMode !== "cpu");
   enemyNameEl.classList.toggle("cpu-name", gameMode === "cpu");
   renderSegmentedHealth(playerHealthEl, player);
@@ -10667,82 +10802,71 @@ function drawDeathNoteCharacterModel(kind, x, footY, scale = 1, options = {}) {
   const hitFlash = Math.max(0, Math.min(1, options.hitFlash || 0));
   const punch = Math.max(0, Math.min(1, options.punch || 0));
   const dir = options.dir || 1;
-  const bob = Math.sin(frame * 0.08) * 0.9;
+  const idle = Math.sin(frame * 0.08) * 0.9;
   const isRyuk = kind === "ryuk";
   const isMisa = kind === "misa";
-  const isSoichiro = kind === "soichiro";
-
-  const palette = isRyuk
-    ? { skin: "#c7ced6", hair: "#080808", body: "#111111", trim: "#374151", pants: "#090909", shoe: "#040404", accent: "#cbd5e1", eye: "#f8fafc" }
-    : isMisa
-      ? { skin: "#f3c9a8", hair: "#f4d56e", body: "#151218", trim: "#f8fafc", pants: "#1f1724", shoe: "#0f0a12", accent: "#dc2626", eye: "#111827" }
-      : { skin: "#d7b08d", hair: "#6b7280", body: "#312419", trim: "#f8f1e7", pants: "#1f2937", shoe: "#111827", accent: "#991b1b", eye: "#111827" };
 
   ctx.save();
   ctx.translate(x, footY);
   ctx.scale(dir * scale, scale);
   ctx.globalAlpha *= alpha;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
   if (hitFlash > 0) {
     ctx.shadowColor = "rgba(248,113,113,0.92)";
     ctx.shadowBlur = 14 * hitFlash;
   }
 
-  const torsoTop = isRyuk ? -95 : -87;
-  const torsoBottom = isRyuk ? -36 : -34;
-  const headY = isRyuk ? -118 : -108;
-  const shoulderY = isRyuk ? -84 : -77;
-  const hipY = isRyuk ? -36 : -34;
-  const leftFootX = isRyuk ? -18 : -13;
-  const rightFootX = isRyuk ? 18 : 13;
-  const bodySway = pose === "punch" ? -3 - punch * 3 : 0;
-  const upperBob = bob * (isRyuk ? 0.45 : 0.32);
-
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-
-  // ground shadow and aura help the summons read more like full characters
-  ctx.save();
-  ctx.globalAlpha *= isRyuk ? 0.26 : 0.2;
-  ctx.fillStyle = isRyuk ? "rgba(0,0,0,0.72)" : "rgba(2,6,23,0.45)";
-  ctx.beginPath();
-  ctx.ellipse(0, 2, isRyuk ? 26 : 18, isRyuk ? 7 : 5, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-
-  // legs
-  ctx.strokeStyle = "#030303";
-  ctx.lineWidth = isRyuk ? 10 : 7;
-  ctx.beginPath();
-  ctx.moveTo(-8, hipY);
-  ctx.lineTo(-13, -14);
-  ctx.lineTo(leftFootX, 0);
-  ctx.moveTo(8, hipY);
-  ctx.lineTo(13, -14);
-  ctx.lineTo(rightFootX, 0);
-  ctx.stroke();
-
-  ctx.strokeStyle = palette.pants;
-  ctx.lineWidth = isRyuk ? 7 : 5;
-  ctx.beginPath();
-  ctx.moveTo(-8, hipY);
-  ctx.lineTo(-13, -14);
-  ctx.lineTo(leftFootX, 0);
-  ctx.moveTo(8, hipY);
-  ctx.lineTo(13, -14);
-  ctx.lineTo(rightFootX, 0);
-  ctx.stroke();
-
-  ctx.strokeStyle = palette.shoe;
-  ctx.lineWidth = isRyuk ? 5 : 4;
-  ctx.beginPath();
-  ctx.moveTo(leftFootX - 6, 1);
-  ctx.lineTo(leftFootX + 7, 1);
-  ctx.moveTo(rightFootX - 6, 1);
-  ctx.lineTo(rightFootX + 7, 1);
-  ctx.stroke();
-
-  // Ryuk wings / extra silhouette
   if (isRyuk) {
+    const bob = Math.sin(frame * 0.08) * 0.9;
+    const bodySway = pose === "punch" ? -3 - punch * 3 : 0;
+    const upperBob = bob * 0.45;
+    const torsoTop = -95;
+    const torsoBottom = -36;
+    const headY = -118;
+    const shoulderY = -84;
+    const hipY = -36;
+    const leftFootX = -18;
+    const rightFootX = 18;
+
+    ctx.save();
+    ctx.globalAlpha *= 0.26;
+    ctx.fillStyle = "rgba(0,0,0,0.72)";
+    ctx.beginPath();
+    ctx.ellipse(0, 2, 26, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.strokeStyle = "#030303";
+    ctx.lineWidth = 10;
+    ctx.beginPath();
+    ctx.moveTo(-8, hipY);
+    ctx.lineTo(-13, -14);
+    ctx.lineTo(leftFootX, 0);
+    ctx.moveTo(8, hipY);
+    ctx.lineTo(13, -14);
+    ctx.lineTo(rightFootX, 0);
+    ctx.stroke();
+
+    ctx.strokeStyle = "#090909";
+    ctx.lineWidth = 7;
+    ctx.beginPath();
+    ctx.moveTo(-8, hipY);
+    ctx.lineTo(-13, -14);
+    ctx.lineTo(leftFootX, 0);
+    ctx.moveTo(8, hipY);
+    ctx.lineTo(13, -14);
+    ctx.lineTo(rightFootX, 0);
+    ctx.stroke();
+
+    ctx.strokeStyle = "#040404";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(leftFootX - 6, 1); ctx.lineTo(leftFootX + 7, 1);
+    ctx.moveTo(rightFootX - 6, 1); ctx.lineTo(rightFootX + 7, 1);
+    ctx.stroke();
+
     ctx.fillStyle = "rgba(0,0,0,0.86)";
     ctx.beginPath();
     ctx.moveTo(-20, -88);
@@ -10758,14 +10882,10 @@ function drawDeathNoteCharacterModel(kind, x, footY, scale = 1, options = {}) {
     ctx.quadraticCurveTo(42, -56, 18, -48);
     ctx.closePath();
     ctx.fill();
-  }
 
-  ctx.save();
-  ctx.translate(bodySway, upperBob);
-
-  // torso / coat
-  ctx.fillStyle = palette.body;
-  if (isRyuk) {
+    ctx.save();
+    ctx.translate(bodySway, upperBob);
+    ctx.fillStyle = "#111111";
     ctx.beginPath();
     ctx.moveTo(-20, torsoTop);
     ctx.lineTo(20, torsoTop + 2);
@@ -10778,118 +10898,36 @@ function drawDeathNoteCharacterModel(kind, x, footY, scale = 1, options = {}) {
     ctx.fill();
     ctx.fillStyle = "rgba(255,255,255,0.08)";
     ctx.fillRect(-5, torsoTop + 20, 10, 34);
-  } else if (isMisa) {
+
+    const leftHand = pose === "punch" && punch > 0.05 ? { x: 34 + punch * 22, y: -62 + punch * 8 } : { x: -28, y: -49 + bob * 0.7 };
+    const rightHand = pose === "punch" ? { x: 54 + punch * 30, y: -56 + punch * 8 } : { x: 28, y: -49 - bob * 0.7 };
+    ctx.strokeStyle = "#111111";
+    ctx.lineWidth = 8;
     ctx.beginPath();
-    ctx.moveTo(-16, torsoTop);
-    ctx.lineTo(16, torsoTop + 1);
-    ctx.lineTo(12, -55);
-    ctx.lineTo(19, torsoBottom + 2);
-    ctx.lineTo(0, torsoBottom + 12);
-    ctx.lineTo(-19, torsoBottom + 2);
-    ctx.lineTo(-12, -55);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = palette.trim;
-    ctx.beginPath();
-    ctx.moveTo(-10, -80);
-    ctx.lineTo(0, -66);
-    ctx.lineTo(10, -80);
-    ctx.lineTo(7, -56);
-    ctx.lineTo(-7, -56);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = palette.accent;
-    ctx.beginPath();
-    ctx.moveTo(0, -69);
-    ctx.lineTo(6, -60);
-    ctx.lineTo(0, -51);
-    ctx.lineTo(-6, -60);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = "rgba(255,255,255,0.18)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(-12, -48); ctx.lineTo(12, -48);
-    ctx.moveTo(-14, -37); ctx.lineTo(14, -37);
+    ctx.moveTo(-16, shoulderY); ctx.lineTo(-20, -67); ctx.lineTo(leftHand.x, leftHand.y);
+    ctx.moveTo(16, shoulderY); ctx.lineTo(20 + punch * 8, -67 + punch * 2); ctx.lineTo(rightHand.x, rightHand.y);
     ctx.stroke();
-  } else {
+    ctx.fillStyle = "#c7ced6";
     ctx.beginPath();
-    ctx.moveTo(-16, torsoTop);
-    ctx.lineTo(16, torsoTop);
-    ctx.lineTo(14, torsoBottom);
-    ctx.lineTo(0, torsoBottom + 8);
-    ctx.lineTo(-14, torsoBottom);
-    ctx.closePath();
+    ctx.ellipse(leftHand.x, leftHand.y, 6, 5.5, 0, 0, Math.PI * 2);
+    ctx.ellipse(rightHand.x, rightHand.y, 9, 7.5, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = palette.trim;
+
+    ctx.fillStyle = "#c7ced6";
     ctx.beginPath();
-    ctx.moveTo(-7, -79);
-    ctx.lineTo(0, -65);
-    ctx.lineTo(7, -79);
-    ctx.lineTo(5, -51);
-    ctx.lineTo(-5, -51);
-    ctx.closePath();
+    ctx.ellipse(0, headY, 15, 18, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = palette.accent;
-    ctx.fillRect(-2.2, -72, 4.4, 23);
-    ctx.strokeStyle = "rgba(255,255,255,0.15)";
-    ctx.lineWidth = 2;
+    ctx.fillStyle = "#080808";
     ctx.beginPath();
-    ctx.moveTo(-12, -57); ctx.lineTo(12, -57);
-    ctx.stroke();
-  }
-
-  // arms
-  const leftHand = pose === "punch" && punch > 0.05
-    ? { x: 34 + punch * 22, y: -62 + punch * 8 }
-    : { x: isRyuk ? -28 : -22, y: -49 + bob * 0.7 };
-  const rightHand = pose === "punch"
-    ? { x: 54 + punch * 30, y: -56 + punch * 8 }
-    : { x: isRyuk ? 28 : 22, y: -49 - bob * 0.7 };
-
-  ctx.strokeStyle = palette.body;
-  ctx.lineWidth = isRyuk ? 8 : 5.5;
-  ctx.beginPath();
-  ctx.moveTo(-16, shoulderY);
-  ctx.lineTo(-20, -67);
-  ctx.lineTo(leftHand.x, leftHand.y);
-  ctx.moveTo(16, shoulderY);
-  ctx.lineTo(20 + punch * 8, -67 + punch * 2);
-  ctx.lineTo(rightHand.x, rightHand.y);
-  ctx.stroke();
-
-  ctx.fillStyle = palette.skin;
-  ctx.beginPath();
-  ctx.ellipse(leftHand.x, leftHand.y, isRyuk ? 6 : 4.5, isRyuk ? 5.5 : 4, 0, 0, Math.PI * 2);
-  ctx.ellipse(rightHand.x, rightHand.y, isRyuk ? 9 : 4.5, isRyuk ? 7.5 : 4, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // head
-  ctx.fillStyle = palette.skin;
-  ctx.beginPath();
-  ctx.ellipse(0, headY, isRyuk ? 15 : 12.5, isRyuk ? 18 : 14.5, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // hair / head details
-  if (isRyuk) {
-    ctx.fillStyle = palette.hair;
-    ctx.beginPath();
-    ctx.moveTo(-20, headY - 2);
-    ctx.lineTo(-28, headY - 30);
-    ctx.lineTo(-14, headY - 18);
-    ctx.lineTo(-8, headY - 38);
-    ctx.lineTo(0, headY - 18);
-    ctx.lineTo(8, headY - 38);
-    ctx.lineTo(14, headY - 18);
-    ctx.lineTo(28, headY - 30);
-    ctx.lineTo(20, headY - 2);
+    ctx.moveTo(-20, headY - 2); ctx.lineTo(-28, headY - 30); ctx.lineTo(-14, headY - 18); ctx.lineTo(-8, headY - 38);
+    ctx.lineTo(0, headY - 18); ctx.lineTo(8, headY - 38); ctx.lineTo(14, headY - 18); ctx.lineTo(28, headY - 30); ctx.lineTo(20, headY - 2);
     ctx.closePath();
     ctx.fill();
     ctx.fillStyle = "rgba(17,17,17,0.96)";
     ctx.beginPath();
     ctx.ellipse(0, headY + 27, 19, 5, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = palette.eye;
+    ctx.fillStyle = "#f8fafc";
     ctx.beginPath();
     ctx.ellipse(-6, headY - 2, 2.6, 3.2, 0, 0, Math.PI * 2);
     ctx.ellipse(6, headY - 2, 2.6, 3.2, 0, 0, Math.PI * 2);
@@ -10900,61 +10938,267 @@ function drawDeathNoteCharacterModel(kind, x, footY, scale = 1, options = {}) {
     ctx.moveTo(-6, headY + 9);
     ctx.quadraticCurveTo(0, headY + 14, 6, headY + 9);
     ctx.stroke();
-  } else if (isMisa) {
-    ctx.fillStyle = palette.hair;
+    ctx.restore();
+
+    ctx.shadowBlur = 0;
+    ctx.restore();
+    return;
+  }
+
+  // Human summons use a fighter/dummy-like base with more visible character parts.
+  const palette = isMisa
+    ? {
+        skin: "#f4cfb0", hair: "#dbc06c", hairDark: "#a88b48", coat: "#141217", trim: "#f8fafc", accent: "#8b1e22", skirt: "#1b1620", legwear: "#09090b", shoe: "#0a0a0b", eye: "#111827", mouth: "#7f1d1d"
+      }
+    : {
+        skin: "#d9b394", hair: "#5f6775", hairDark: "#424853", coat: "#2c313a", trim: "#eef2f7", accent: "#8b1e22", pants: "#1f2937", shoe: "#111827", eye: "#111827"
+      };
+
+  const bodyShift = pose === "punch" ? Math.min(10, 2 + punch * 12) : 0;
+  const headBob = Math.sin(frame * 0.09) * 0.8;
+  const armSwing = Math.sin(frame * 0.12) * 1.4;
+  const leftArmTarget = pose === "punch" ? { x: 20 + bodyShift * 1.3, y: -46 + punch * 2 } : { x: -16, y: -38 + armSwing * 0.35 };
+  const rightArmTarget = pose === "punch" ? { x: 42 + bodyShift * 1.5, y: -48 + punch * 3 } : { x: 16, y: -38 - armSwing * 0.35 };
+
+  ctx.save();
+  ctx.globalAlpha *= 0.22;
+  ctx.fillStyle = isMisa ? "rgba(20,18,23,0.48)" : "rgba(2,6,23,0.45)";
+  ctx.beginPath();
+  ctx.ellipse(0, 2, 18, 5.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // legs / stockings / pants
+  ctx.strokeStyle = isMisa ? palette.legwear : palette.pants;
+  ctx.lineWidth = isMisa ? 6 : 7;
+  ctx.beginPath();
+  ctx.moveTo(-8, -31); ctx.lineTo(-10, -11); ctx.lineTo(-12, 0);
+  ctx.moveTo(8, -31); ctx.lineTo(10, -11); ctx.lineTo(12, 0);
+  ctx.stroke();
+
+  // shoes
+  ctx.strokeStyle = palette.shoe;
+  ctx.lineWidth = 4.5;
+  ctx.beginPath();
+  ctx.moveTo(-18, 0); ctx.lineTo(-8, 0);
+  ctx.moveTo(8, 0); ctx.lineTo(18, 0);
+  ctx.stroke();
+
+  // torso and clothing
+  if (isMisa) {
+    ctx.fillStyle = palette.coat;
     ctx.beginPath();
-    ctx.arc(0, headY - 3, 14, Math.PI, Math.PI * 2);
-    ctx.lineTo(12, headY + 10);
-    ctx.lineTo(-12, headY + 10);
+    ctx.moveTo(-15, -80);
+    ctx.quadraticCurveTo(0, -88, 15, -80);
+    ctx.lineTo(13, -51);
+    ctx.lineTo(18, -33);
+    ctx.lineTo(0, -25);
+    ctx.lineTo(-18, -33);
+    ctx.lineTo(-13, -51);
     ctx.closePath();
     ctx.fill();
+
+    ctx.fillStyle = palette.trim;
     ctx.beginPath();
-    ctx.ellipse(-20, headY + 4, 8, 22, -0.18, 0, Math.PI * 2);
-    ctx.ellipse(20, headY + 4, 8, 22, 0.18, 0, Math.PI * 2);
+    ctx.moveTo(-9, -76);
+    ctx.lineTo(0, -63);
+    ctx.lineTo(9, -76);
+    ctx.lineTo(6, -54);
+    ctx.lineTo(-6, -54);
+    ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = "#0f0a12";
-    ctx.fillRect(-23, headY - 1, 6, 3);
-    ctx.fillRect(17, headY - 1, 6, 3);
+
+    ctx.fillStyle = palette.accent;
+    ctx.beginPath();
+    ctx.moveTo(0, -67);
+    ctx.lineTo(6, -58);
+    ctx.lineTo(0, -49);
+    ctx.lineTo(-6, -58);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = palette.skirt;
+    ctx.beginPath();
+    ctx.moveTo(-16, -32);
+    ctx.lineTo(16, -32);
+    ctx.lineTo(20, -19);
+    ctx.lineTo(12, -15);
+    ctx.lineTo(4, -21);
+    ctx.lineTo(0, -15);
+    ctx.lineTo(-4, -21);
+    ctx.lineTo(-12, -15);
+    ctx.lineTo(-20, -19);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(255,255,255,0.18)";
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(-11, -47); ctx.lineTo(11, -47);
+    ctx.moveTo(-13, -37); ctx.lineTo(13, -37);
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = palette.coat;
+    ctx.beginPath();
+    ctx.moveTo(-16, -81);
+    ctx.lineTo(16, -81);
+    ctx.lineTo(15, -32);
+    ctx.lineTo(0, -24);
+    ctx.lineTo(-15, -32);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = palette.trim;
+    ctx.beginPath();
+    ctx.moveTo(-7, -77);
+    ctx.lineTo(0, -64);
+    ctx.lineTo(7, -77);
+    ctx.lineTo(5, -48);
+    ctx.lineTo(-5, -48);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = palette.accent;
+    ctx.fillRect(-2.3, -71, 4.6, 23);
+
+    ctx.strokeStyle = "rgba(255,255,255,0.12)";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(-12, -56); ctx.lineTo(12, -56);
+    ctx.stroke();
+
+    ctx.fillStyle = "rgba(255,255,255,0.18)";
+    ctx.fillRect(8, -61, 4.5, 9);
+  }
+
+  // arms / sleeves
+  ctx.strokeStyle = palette.coat;
+  ctx.lineWidth = isMisa ? 5.5 : 6;
+  ctx.beginPath();
+  ctx.moveTo(-13, -72); ctx.lineTo(-18, -57); ctx.lineTo(leftArmTarget.x, leftArmTarget.y);
+  ctx.moveTo(13, -72); ctx.lineTo(18 + bodyShift * 0.25, -57); ctx.lineTo(rightArmTarget.x, rightArmTarget.y);
+  ctx.stroke();
+
+  if (isMisa) {
+    ctx.strokeStyle = "rgba(255,255,255,0.8)";
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(-20, -57); ctx.lineTo(-15.5, -55);
+    ctx.moveTo(20, -57); ctx.lineTo(15.5, -55);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = palette.skin;
+  ctx.beginPath();
+  ctx.arc(leftArmTarget.x, leftArmTarget.y, 4.1, 0, Math.PI * 2);
+  ctx.arc(rightArmTarget.x, rightArmTarget.y, pose === "punch" ? 4.8 : 4.1, 0, Math.PI * 2);
+  ctx.fill();
+
+  // head
+  ctx.fillStyle = palette.skin;
+  ctx.beginPath();
+  ctx.ellipse(0, -98 + headBob, 13.4, 14.8, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (isMisa) {
+    // hair base + bangs
+    ctx.fillStyle = palette.hair;
+    ctx.beginPath();
+    ctx.moveTo(-14, -101 + headBob);
+    ctx.quadraticCurveTo(-10, -118 + headBob, 0, -116 + headBob);
+    ctx.quadraticCurveTo(11, -118 + headBob, 15, -101 + headBob);
+    ctx.lineTo(13, -88 + headBob);
+    ctx.lineTo(-13, -88 + headBob);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = palette.hairDark;
+    ctx.beginPath();
+    ctx.moveTo(-14, -101 + headBob);
+    ctx.lineTo(-7, -107 + headBob);
+    ctx.lineTo(-3, -100 + headBob);
+    ctx.lineTo(0, -108 + headBob);
+    ctx.lineTo(3, -100 + headBob);
+    ctx.lineTo(7, -107 + headBob);
+    ctx.lineTo(14, -101 + headBob);
+    ctx.lineTo(14, -95 + headBob);
+    ctx.lineTo(-14, -95 + headBob);
+    ctx.closePath();
+    ctx.fill();
+
+    // twin tails / long side hair
+    ctx.fillStyle = palette.hair;
+    ctx.beginPath();
+    ctx.ellipse(-18, -88 + headBob, 8, 24, -0.18, 0, Math.PI * 2);
+    ctx.ellipse(18, -88 + headBob, 8, 24, 0.18, 0, Math.PI * 2);
+    ctx.fill();
+
+    // black bows
+    ctx.fillStyle = palette.coat;
+    ctx.beginPath();
+    ctx.moveTo(-13, -100 + headBob); ctx.lineTo(-21, -104 + headBob); ctx.lineTo(-17, -96 + headBob); ctx.closePath();
+    ctx.moveTo(-13, -100 + headBob); ctx.lineTo(-19, -91 + headBob); ctx.lineTo(-13, -94 + headBob); ctx.closePath();
+    ctx.moveTo(13, -100 + headBob); ctx.lineTo(21, -104 + headBob); ctx.lineTo(17, -96 + headBob); ctx.closePath();
+    ctx.moveTo(13, -100 + headBob); ctx.lineTo(19, -91 + headBob); ctx.lineTo(13, -94 + headBob); ctx.closePath();
+    ctx.fill();
+
+    // face
     ctx.fillStyle = palette.eye;
     ctx.beginPath();
-    ctx.arc(-4, headY + 1, 1.9, 0, Math.PI * 2);
-    ctx.arc(4, headY + 1, 1.9, 0, Math.PI * 2);
+    ctx.arc(-4.4, -98 + headBob, 1.7, 0, Math.PI * 2);
+    ctx.arc(4.4, -98 + headBob, 1.7, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = "rgba(220,38,38,0.7)";
-    ctx.lineWidth = 1.8;
+    ctx.strokeStyle = "rgba(17,24,39,0.75)";
+    ctx.lineWidth = 1.3;
     ctx.beginPath();
-    ctx.moveTo(-4, headY + 9); ctx.lineTo(0, headY + 11); ctx.lineTo(4, headY + 9);
+    ctx.moveTo(-8, -101 + headBob); ctx.quadraticCurveTo(-4.5, -103 + headBob, -1.5, -101 + headBob);
+    ctx.moveTo(1.5, -101 + headBob); ctx.quadraticCurveTo(4.5, -103 + headBob, 8, -101 + headBob);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(139,30,34,0.8)";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(-3.8, -90 + headBob); ctx.lineTo(0, -88 + headBob); ctx.lineTo(3.8, -90 + headBob);
+    ctx.stroke();
+
+    // little necklace/cross accent
+    ctx.strokeStyle = "rgba(236, 72, 153, 0.35)";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(0, -51); ctx.lineTo(0, -45);
+    ctx.moveTo(-2, -47.5); ctx.lineTo(2, -47.5);
     ctx.stroke();
   } else {
     ctx.fillStyle = palette.hair;
     ctx.beginPath();
-    ctx.moveTo(-12, headY - 4);
-    ctx.quadraticCurveTo(-7, headY - 19, 4, headY - 18);
-    ctx.quadraticCurveTo(13, headY - 15, 13, headY - 2);
-    ctx.lineTo(8, headY - 7);
-    ctx.lineTo(2, headY - 2);
-    ctx.lineTo(-5, headY - 8);
-    ctx.lineTo(-12, headY - 2);
+    ctx.moveTo(-13, -101 + headBob);
+    ctx.quadraticCurveTo(-10, -116 + headBob, 3, -115 + headBob);
+    ctx.quadraticCurveTo(13, -112 + headBob, 14, -100 + headBob);
+    ctx.lineTo(10, -92 + headBob);
+    ctx.lineTo(2, -96 + headBob);
+    ctx.lineTo(-5, -90 + headBob);
+    ctx.lineTo(-13, -94 + headBob);
     ctx.closePath();
     ctx.fill();
+
     ctx.strokeStyle = "rgba(17,24,39,0.75)";
-    ctx.lineWidth = 1.6;
+    ctx.lineWidth = 1.4;
     ctx.beginPath();
-    ctx.ellipse(-4, headY + 1, 3.3, 4.3, 0, 0, Math.PI * 2);
-    ctx.ellipse(4, headY + 1, 3.3, 4.3, 0, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(-1, headY + 1);
-    ctx.lineTo(1, headY + 1);
+    ctx.ellipse(-4, -98 + headBob, 3.3, 4.2, 0, 0, Math.PI * 2);
+    ctx.ellipse(4, -98 + headBob, 3.3, 4.2, 0, 0, Math.PI * 2);
+    ctx.moveTo(-1, -98 + headBob); ctx.lineTo(1, -98 + headBob);
     ctx.stroke();
     ctx.fillStyle = palette.eye;
     ctx.beginPath();
-    ctx.arc(-4, headY + 1, 1.2, 0, Math.PI * 2);
-    ctx.arc(4, headY + 1, 1.2, 0, Math.PI * 2);
+    ctx.arc(-4, -98 + headBob, 1.1, 0, Math.PI * 2);
+    ctx.arc(4, -98 + headBob, 1.1, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = "rgba(75,85,99,0.6)";
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.moveTo(-8, -90 + headBob); ctx.quadraticCurveTo(0, -86 + headBob, 8, -90 + headBob);
+    ctx.stroke();
   }
 
-  ctx.restore();
   ctx.shadowBlur = 0;
   ctx.restore();
 }
@@ -11254,12 +11498,14 @@ function drawRyukPunchAssist(f, attack, active) {
     ? 1 - Math.max(0, Math.min(1, (f.attackFrame - attack.windup - attack.active) / Math.max(1, attack.recovery)))
     : 1;
   const alpha = Math.max(0, Math.min(1, Math.min(1, windupRatio * 1.25) * fadeOut));
-  const strikeX = f.w + (heavy ? 42 : 32);
-  const strikeY = heavy ? 55 : 50;
-  const summonY = heavy ? 8 : 16;
+  const strikeX = f.w + (heavy ? 44 : 34);
+  const strikeY = heavy ? 56 : 50;
+  const summonY = heavy ? 4 : 12;
   const drop = active ? activeRatio : Math.min(0.72, windupRatio) * 0.45;
-  const ryukX = strikeX - (heavy ? 28 : 22);
-  const ryukY = summonY + drop * (heavy ? 26 : 18);
+  // RYUK_PUNCH_SIZE_PATCH:
+  // Keep Ryuk large during his punch assist so he matches his bigger summon look.
+  const ryukX = strikeX - (heavy ? 36 : 30);
+  const ryukY = summonY + drop * (heavy ? 28 : 20);
 
   ctx.save();
   ctx.globalAlpha = alpha;
@@ -11273,23 +11519,13 @@ function drawRyukPunchAssist(f, attack, active) {
     ctx.fill();
   }
 
-  drawDeathNoteCharacterModel("ryuk", ryukX, ryukY + (heavy ? 76 : 70), heavy ? 0.72 : 0.64, {
+  drawDeathNoteCharacterModel("ryuk", ryukX, ryukY + (heavy ? 84 : 80), heavy ? 1.08 : 0.98, {
     alpha: 1,
     pose: "punch",
     punch: active ? 1 : windupRatio * 0.7
   });
 
-  if (active) {
-    ctx.fillStyle = "rgba(0,0,0,0.28)";
-    ctx.beginPath();
-    ctx.ellipse(strikeX + 17, strikeY + (heavy ? 8 : 1), heavy ? 31 : 24, heavy ? 20 : 16, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "rgba(0,0,0,0.86)";
-    ctx.lineWidth = heavy ? 5 : 4;
-    ctx.beginPath();
-    ctx.ellipse(strikeX + 17, strikeY + (heavy ? 8 : 1), heavy ? 34 : 27, heavy ? 22 : 18, 0, 0, Math.PI * 2);
-    ctx.stroke();
-  }
+  // Hitbox visual is drawn by drawHitboxHint() using the same style as everyone else.
 
   if (progress > 0.72) {
     const vanish = (progress - 0.72) / 0.28;
@@ -11940,6 +12176,19 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       }
     } else {
     if (isLight(f)) {
+      // LIGHT_NO_ARM_PUNCH_PATCH:
+      // Light keeps his arms neutral; Ryuk does the actual punch.
+      const lightIdleArm = running ? armSwing * 1.4 : idle * 0.75;
+      drawArmRig(
+        { x: 42, y: 52 },
+        { x: 48 + lightIdleArm * 0.18, y: 68 },
+        { x: 43 + lightIdleArm * 0.35, y: 82 }
+      );
+      drawArmRig(
+        { x: 11, y: 52 },
+        { x: 5 - lightIdleArm * 0.18, y: 68 },
+        { x: 10 - lightIdleArm * 0.35, y: 82 }
+      );
       drawRyukPunchAssist(f, attack, active);
     } else {
     const heavy = f.attacking === "heavy";
@@ -13460,7 +13709,21 @@ function drawProjectiles() {
 function drawHitboxHint(f) {
   const attack = getAttackSpec(f);
   if (f.attackFrame < attack.windup || f.attackFrame > attack.windup + attack.active) return;
-  const box = getHitbox(f);
+  let box = getHitbox(f);
+
+  // LIGHT_BIG_SAME_HITBOX_VISUAL_PATCH:
+  // Same hitbox visual as normal, only slightly bigger for Light because Ryuk is doing the hit.
+  if (isLight(f) && (f.attacking === "light" || f.attacking === "heavy")) {
+    const growX = f.attacking === "heavy" ? 16 : 12;
+    const growY = f.attacking === "heavy" ? 10 : 8;
+    box = {
+      x: box.x - growX * 0.25,
+      y: box.y - growY * 0.5,
+      w: box.w + growX,
+      h: box.h + growY
+    };
+  }
+
   ctx.strokeStyle = "rgba(255, 246, 183, 0.5)";
   ctx.lineWidth = 2;
   ctx.strokeRect(box.x, box.y, box.w, box.h);
