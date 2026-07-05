@@ -2272,11 +2272,15 @@ function startEyeDeal(f) {
 }
 
 function usePotatoChip(f) {
-  if (!isLight(f) || f.ko || (f.potatoCooldown || 0) > 0 || gameState !== "playing" || paused || gameOver) return false;
+  // LIGHT_BALANCE_PATCH: can't eat through a combo - only usable while
+  // actually safe, and it opens a brief real window where Light can't
+  // block/attack/dodge, matching "no protection while being activated."
+  if (!isLight(f) || f.ko || f.knockdown || f.stun > 0 || f.dodging > 0 || (f.potatoCooldown || 0) > 0 || gameState !== "playing" || paused || gameOver) return false;
   f.health = Math.min(f.maxHealth, f.health + 24);
   f.delayedHealth = Math.max(f.delayedHealth || 0, f.health);
   f.potatoCooldown = LIGHT_POTATO_COOLDOWN_TICKS;
   f.potatoFocusTicks = LIGHT_POTATO_FOCUS_TICKS;
+  f.potatoVulnerableTicks = 14;
   // Potato gives healing/focus, not free Info or Name.
   spawnHitSpark(f.x + f.w / 2, f.y + 42, f.dir, "brown");
   updateHud();
@@ -2288,6 +2292,7 @@ function updateLightSystems(f, opponent) {
 
   if (f.potatoCooldown > 0) f.potatoCooldown -= 1;
   if (f.potatoFocusTicks > 0) f.potatoFocusTicks -= 1;
+  if (f.potatoVulnerableTicks > 0) f.potatoVulnerableTicks -= 1;
   if (f.deathNoteSlowTicks > 0) f.deathNoteSlowTicks -= 1;
   if (f.eyeDealGlowTicks > 0) f.eyeDealGlowTicks -= 1;
   if (f.lightSummonHitFlash > 0) f.lightSummonHitFlash -= 1;
@@ -2904,6 +2909,7 @@ function makeFighter(config) {
     lightSummonAnchorDir: 0,
     potatoCooldown: 0,
     potatoFocusTicks: 0,
+    potatoVulnerableTicks: 0,
     lightRyukCooldown: 0,
     lightRyukCooldownMax: 0,
     lightInvestigationCooldown: 0,
@@ -2949,6 +2955,7 @@ function applyTechniqueStats(f, preserveMeters = false) {
     f.informationMeter = 0;
     f.potatoFocusTicks = 0;
     f.potatoCooldown = 0;
+    f.potatoVulnerableTicks = 0;
     f.lightRyukCooldown = 0;
     f.lightRyukCooldownMax = 0;
     f.lightInvestigationCooldown = 0;
@@ -3869,7 +3876,7 @@ function applyJoinerFighterStateOnHost(remoteFighter) {
     "teleportAiming", "teleportCooldown", "fugaAiming", "fugaChargeTicks", "fugaCooldown", "fugaCooldownMax", "ultimateAiming", "ultimateAimPoint",
     "ce", "maxCe", "ultimateMeter", "domainStartup", "domainAttemptType", "simpleDomainTicks", "simpleDomainFlash", "simpleDomainCooldown",
     "bindingVowType", "bindingVowTicks", "bindingVowCooldown", "bindingVowChoiceTicks", "bindingVowQuote", "bindingVowQuoteTicks", "bindingVowFlash", "sukunaThrowComboCooldown",
-    "informationMeter", "identityProgress", "lightSummonStage", "lightSummonType", "lightSummonHealth", "lightSummonMaxHealth", "lightSummonTicks", "lightSummonHitFlash", "lightSummonAnchorX", "lightSummonAnchorY", "lightSummonAnchorDir", "potatoCooldown", "potatoFocusTicks", "lightRyukCooldown", "lightRyukCooldownMax", "lightInvestigationCooldown", "lightInvestigationCooldownMax", "eyeDealUsed", "eyeDealGlowTicks", "deathNoteSlowTicks", "deathNoteFearTicks", "ctLockTimer"
+    "informationMeter", "identityProgress", "lightSummonStage", "lightSummonType", "lightSummonHealth", "lightSummonMaxHealth", "lightSummonTicks", "lightSummonHitFlash", "lightSummonAnchorX", "lightSummonAnchorY", "lightSummonAnchorDir", "potatoCooldown", "potatoFocusTicks", "potatoVulnerableTicks", "lightRyukCooldown", "lightRyukCooldownMax", "lightInvestigationCooldown", "lightInvestigationCooldownMax", "eyeDealUsed", "eyeDealGlowTicks", "deathNoteSlowTicks", "deathNoteFearTicks", "ctLockTimer"
   ];
 
   fields.forEach((field) => {
@@ -4378,6 +4385,7 @@ function getFighterNetworkState(f) {
     lightSummonAnchorDir: f.lightSummonAnchorDir,
     potatoCooldown: f.potatoCooldown,
     potatoFocusTicks: f.potatoFocusTicks,
+    potatoVulnerableTicks: f.potatoVulnerableTicks,
     lightRyukCooldown: f.lightRyukCooldown,
     lightRyukCooldownMax: f.lightRyukCooldownMax,
     lightInvestigationCooldown: f.lightInvestigationCooldown,
@@ -5424,7 +5432,7 @@ function isHeldBySpecial(f) {
 function isSpecialLocked(f) {
   const owner = getFighterOwner(f);
   const clashing = Boolean(owner && domainClash?.attempts?.[owner]);
-  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || (f?.domainStartup || 0) > 0 || clashing;
+  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || (f?.domainStartup || 0) > 0 || clashing || (f?.potatoVulnerableTicks || 0) > 0;
 }
 
 // DOMAIN_MOVEMENT_FIX
@@ -11206,24 +11214,29 @@ function drawDeathNoteCharacterModel(kind, x, footY, scale = 1, options = {}) {
     // twin tails / long side hair
     ctx.fillStyle = palette.hair;
     ctx.beginPath();
-    ctx.ellipse(-18, -88 + headBob, 8, 24, -0.18, 0, Math.PI * 2);
-    ctx.ellipse(18, -88 + headBob, 8, 24, 0.18, 0, Math.PI * 2);
+    ctx.ellipse(-16, -92 + headBob, 5.6, 17, -0.16, 0, Math.PI * 2);
+    ctx.ellipse(16, -92 + headBob, 5.6, 17, 0.16, 0, Math.PI * 2);
     ctx.fill();
 
     // black bows
     ctx.fillStyle = palette.coat;
     ctx.beginPath();
-    ctx.moveTo(-13, -100 + headBob); ctx.lineTo(-21, -104 + headBob); ctx.lineTo(-17, -96 + headBob); ctx.closePath();
-    ctx.moveTo(-13, -100 + headBob); ctx.lineTo(-19, -91 + headBob); ctx.lineTo(-13, -94 + headBob); ctx.closePath();
-    ctx.moveTo(13, -100 + headBob); ctx.lineTo(21, -104 + headBob); ctx.lineTo(17, -96 + headBob); ctx.closePath();
-    ctx.moveTo(13, -100 + headBob); ctx.lineTo(19, -91 + headBob); ctx.lineTo(13, -94 + headBob); ctx.closePath();
+    ctx.moveTo(-12, -101 + headBob); ctx.lineTo(-18, -104 + headBob); ctx.lineTo(-15, -98 + headBob); ctx.closePath();
+    ctx.moveTo(-12, -101 + headBob); ctx.lineTo(-16, -95 + headBob); ctx.lineTo(-11, -97 + headBob); ctx.closePath();
+    ctx.moveTo(12, -101 + headBob); ctx.lineTo(18, -104 + headBob); ctx.lineTo(15, -98 + headBob); ctx.closePath();
+    ctx.moveTo(12, -101 + headBob); ctx.lineTo(16, -95 + headBob); ctx.lineTo(11, -97 + headBob); ctx.closePath();
     ctx.fill();
 
     // face
+    ctx.fillStyle = "#fdf6ec";
+    ctx.beginPath();
+    ctx.ellipse(-4.4, -98 + headBob, 2.3, 1.9, 0, 0, Math.PI * 2);
+    ctx.ellipse(4.4, -98 + headBob, 2.3, 1.9, 0, 0, Math.PI * 2);
+    ctx.fill();
     ctx.fillStyle = palette.eye;
     ctx.beginPath();
-    ctx.arc(-4.4, -98 + headBob, 1.7, 0, Math.PI * 2);
-    ctx.arc(4.4, -98 + headBob, 1.7, 0, Math.PI * 2);
+    ctx.arc(-4.4, -98 + headBob, 1.3, 0, Math.PI * 2);
+    ctx.arc(4.4, -98 + headBob, 1.3, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = "rgba(17,24,39,0.75)";
     ctx.lineWidth = 1.3;
@@ -11428,6 +11441,22 @@ function drawSimpleDomainEffect(f) {
 
 function clamp01(value) {
   return Math.max(0, Math.min(1, Number(value) || 0));
+}
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function lerpPoint(a, b, t) {
+  return { x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) };
+}
+
+function easeOutQuad(t) {
+  return 1 - (1 - t) * (1 - t);
+}
+
+function easeInQuad(t) {
+  return t * t;
 }
 
 function getFighterShadowSurface(f) {
@@ -11936,20 +11965,6 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   ctx.fill();
 
   if (isPracticeDummy(f)) {
-    ctx.strokeStyle = "#111827";
-    ctx.lineWidth = 2.8;
-    ctx.beginPath();
-    ctx.moveTo(17, 18);
-    ctx.lineTo(23, 25);
-    ctx.moveTo(23, 18);
-    ctx.lineTo(17, 25);
-    ctx.moveTo(30, 18);
-    ctx.lineTo(36, 25);
-    ctx.moveTo(36, 18);
-    ctx.lineTo(30, 25);
-    ctx.moveTo(18, 33);
-    ctx.quadraticCurveTo(26, 38, 35, 33);
-    ctx.stroke();
     ctx.fillStyle = "rgba(17, 24, 39, 0.16)";
     ctx.fillRect(13, 12, 26, 3);
   } else if (f.technique === "limitless") {
@@ -11999,51 +12014,40 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.strokeStyle = "#831843";
     ctx.lineWidth = 2;
     ctx.stroke();
+    // SUKUNA_TATTOO_PATCH: authentic symmetric cursed-technique tattoo
+    // linework across the face - no eyes/mouth/nose, just markings.
     ctx.strokeStyle = "#020617";
     ctx.lineWidth = 2.2;
     ctx.beginPath();
-    ctx.moveTo(17, 22);
-    ctx.lineTo(24, 24);
-    ctx.moveTo(28, 24);
-    ctx.lineTo(35, 22);
-    ctx.moveTo(18, 31);
+    // brow-ridge chevrons
+    ctx.moveTo(15, 21);
+    ctx.lineTo(23, 24.5);
+    ctx.moveTo(37, 21);
+    ctx.lineTo(29, 24.5);
+    // under-ridge ticks
+    ctx.moveTo(17, 32);
     ctx.lineTo(24, 29);
-    ctx.moveTo(29, 29);
-    ctx.lineTo(35, 31);
-    ctx.moveTo(26, 28);
-    ctx.lineTo(26, 36);
-    ctx.moveTo(21, 17);
-    ctx.lineTo(24, 21);
-    ctx.moveTo(31, 17);
-    ctx.lineTo(28, 21);
+    ctx.moveTo(35, 32);
+    ctx.lineTo(28, 29);
+    // forehead accent ticks
+    ctx.moveTo(20, 15);
+    ctx.lineTo(23, 20);
+    ctx.moveTo(32, 15);
+    ctx.lineTo(29, 20);
+    // signature centerline running the length of the face
+    ctx.moveTo(26, 12);
+    ctx.lineTo(26, 40);
     ctx.stroke();
-    ctx.fillStyle = "#9d174d";
+
+    ctx.strokeStyle = "rgba(157, 23, 77, 0.85)";
+    ctx.lineWidth = 1.6;
     ctx.beginPath();
-    ctx.moveTo(13, 17);
-    ctx.quadraticCurveTo(18, 15, 22, 20);
-    ctx.lineTo(20, 33);
-    ctx.quadraticCurveTo(16, 31, 14, 25);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = "#020617";
-    ctx.lineWidth = 1.4;
+    // symmetric cheek marks
+    ctx.moveTo(13, 25);
+    ctx.quadraticCurveTo(17, 31, 15, 38);
+    ctx.moveTo(39, 25);
+    ctx.quadraticCurveTo(35, 31, 37, 38);
     ctx.stroke();
-    ctx.fillStyle = "#dc2626";
-    ctx.beginPath();
-    ctx.moveTo(18, 22);
-    ctx.lineTo(25, 21);
-    ctx.lineTo(22, 25);
-    ctx.closePath();
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(28, 21);
-    ctx.lineTo(35, 22);
-    ctx.lineTo(31, 25);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = "#020617";
-    ctx.fillRect(21, 22, 2, 2);
-    ctx.fillRect(31, 22, 2, 2);
   } else if (f.technique === "deathnote") {
     const hairSway = idle;
 
@@ -12080,16 +12084,13 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.lineTo(31, 25);
     ctx.stroke();
 
-  } else {
-    ctx.fillStyle = skin.eye;
-    ctx.fillRect(31, 22, 4, 4);
   }
   ctx.restore();
 
   ctx.save();
   ctx.translate(lean, 0);
   const drawArmRig = (shoulder, elbow, hand, color = f.technique === "shrine" ? skinColor : bodyColor, handColor = skinColor) => {
-    const useOutline = f.technique !== "shrine" && f.technique !== "deathnote";
+    const useOutline = f.technique !== "shrine";
     const isShrineArm = f.technique === "shrine";
     const strokeArm = (strokeColor, width) => {
       ctx.strokeStyle = strokeColor;
@@ -12254,12 +12255,14 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     } else {
     if (isLight(f)) {
       // LIGHT_NO_ARM_PUNCH_PATCH:
-      // Light keeps his arms neutral; Ryuk does the actual punch.
+      // Light doesn't throw the punch himself - Ryuk does - but he should
+      // still read as directing the strike instead of standing there idle.
       const lightIdleArm = running ? armSwing * 1.4 : idle * 0.75;
+      const lightPunchCue = active ? 1 : windup ? 0.45 : 0.12;
       drawArmRig(
-        { x: 42, y: 52 },
-        { x: 48 + lightIdleArm * 0.18, y: 68 },
-        { x: 43 + lightIdleArm * 0.35, y: 82 }
+        { x: 42, y: 52 - lightPunchCue * 4 },
+        { x: 51 + lightIdleArm * 0.18 + lightPunchCue * 9, y: 61 - lightPunchCue * 11 },
+        { x: 49 + lightIdleArm * 0.35 + lightPunchCue * 15, y: 56 - lightPunchCue * 19 }
       );
       drawArmRig(
         { x: 11, y: 52 },
@@ -12269,30 +12272,71 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       drawRyukPunchAssist(f, attack, active);
     } else {
     const heavy = f.attacking === "heavy";
-    const shoulder = { x: 41, y: heavy ? 50 : 57 };
-    const elbow = heavy
-      ? windup
-        ? { x: 47, y: 34 }
-        : active ? { x: 57, y: 44 } : { x: 51, y: 60 }
-      : windup
-        ? { x: 50, y: 52 }
-        : active ? { x: 58, y: 56 } : { x: 52, y: 62 };
-    const fist = heavy
-      ? windup
-        ? { x: 37, y: 27 }
-        : active ? { x: 76, y: 47 } : { x: 60, y: 66 }
-      : windup
-        ? { x: 45, y: 44 }
-        : active ? { x: 66, y: 56 } : { x: 58, y: 64 };
-    drawArmRig(shoulder, elbow, fist);
-    drawArmRig(
-      { x: 12, y: heavy ? (windup ? 64 : 66) : 52 },
-      heavy ? { x: 24, y: windup ? 72 : 73 } : { x: 20, y: windup ? 62 : 64 },
-      heavy ? { x: 34, y: windup ? 65 : 67 } : { x: 29, y: windup ? 59 : 61 }
+    // PUNCH_SMOOTHING_PATCH: interpolate through windup/active/recovery
+    // instead of snapping between 3 fixed poses each phase - the instant
+    // jumps (especially the 13-tick heavy windup hold) read as clunky.
+    const windupT = windup ? easeInQuad(clamp01(f.attackFrame / Math.max(1, attack.windup))) : 1;
+    const activeT = active
+      ? easeOutQuad(clamp01((f.attackFrame - attack.windup) / Math.max(1, attack.active)))
+      : (windup ? 0 : 1);
+    const recoveryT = (!windup && !active)
+      ? easeOutQuad(clamp01((f.attackFrame - attack.windup - attack.active) / Math.max(1, attack.recovery)))
+      : 0;
+    // Each limb blends across 4 keyframes: rest (pre-punch) -> windup ->
+    // active (extended) -> recovery (settling), matching the original
+    // per-phase target poses but easing between them instead of snapping.
+    const blendPose = (restP, windupP, activeP, recoveryP) => {
+      if (windup) return lerpPoint(restP, windupP, windupT);
+      if (active) return lerpPoint(windupP, activeP, activeT);
+      return lerpPoint(activeP, recoveryP, recoveryT);
+    };
+    const blendValue = (restV, windupV, activeV, recoveryV) => {
+      if (windup) return lerp(restV, windupV, windupT);
+      if (active) return lerp(windupV, activeV, activeT);
+      return lerp(activeV, recoveryV, recoveryT);
+    };
+
+    const shoulder = blendPose(
+      { x: 42, y: 52 },
+      { x: 41, y: heavy ? 50 : 57 },
+      { x: 41, y: heavy ? 50 : 57 },
+      { x: 41, y: heavy ? 50 : 57 }
     );
+    const elbow = blendPose(
+      { x: 48, y: 68 },
+      heavy ? { x: 47, y: 34 } : { x: 50, y: 52 },
+      heavy ? { x: 57, y: 44 } : { x: 58, y: 56 },
+      heavy ? { x: 51, y: 60 } : { x: 52, y: 62 }
+    );
+    const fist = blendPose(
+      { x: 43, y: 82 },
+      heavy ? { x: 37, y: 27 } : { x: 45, y: 44 },
+      heavy ? { x: 76, y: 47 } : { x: 66, y: 56 },
+      heavy ? { x: 60, y: 66 } : { x: 58, y: 64 }
+    );
+    drawArmRig(shoulder, elbow, fist);
+    const guardShoulder = blendPose(
+      { x: 11, y: 52 },
+      { x: 12, y: heavy ? 64 : 52 },
+      { x: 12, y: heavy ? 66 : 52 },
+      { x: 12, y: heavy ? 66 : 52 }
+    );
+    const guardElbow = blendPose(
+      { x: 5, y: 68 },
+      heavy ? { x: 24, y: 72 } : { x: 20, y: 62 },
+      heavy ? { x: 24, y: 73 } : { x: 20, y: 64 },
+      heavy ? { x: 24, y: 73 } : { x: 20, y: 64 }
+    );
+    const guardFist = blendPose(
+      { x: 10, y: 82 },
+      heavy ? { x: 34, y: 65 } : { x: 29, y: 59 },
+      heavy ? { x: 34, y: 67 } : { x: 29, y: 61 },
+      heavy ? { x: 34, y: 67 } : { x: 29, y: 61 }
+    );
+    drawArmRig(guardShoulder, guardElbow, guardFist);
     if (f.technique === "shrine") {
-      const extraLift = heavy ? (windup ? -2 : active ? 1 : 0) : (windup ? -1 : active ? 1 : 0);
-      const extraReach = active ? 4 : windup ? -2 : 1;
+      const extraLift = blendValue(0, heavy ? -2 : -1, 1, 0);
+      const extraReach = blendValue(0, -2, 4, 1);
       drawArmRig(
         { x: 44, y: 64 + extraLift },
         { x: 54 + extraReach * 0.2, y: 74 + extraLift },
@@ -12349,6 +12393,22 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
         drawArmRig({ x: 12, y: 48 }, { x: -6, y: 50 }, { x: -15, y: 64 - armWave });
       }
     }
+  } else if (f.stun > 0 && !f.blocking) {
+    // HIT_REACTION_PATCH: a brief recoil pose while in hitstun instead of
+    // playing the flat idle sway, so getting hit actually reads as a hit.
+    const recoil = Math.min(1, f.stun / 14);
+    drawArmRig(
+      { x: 42, y: 50 },
+      { x: 53 + recoil * 7, y: 44 - recoil * 9 },
+      { x: 59 + recoil * 9, y: 33 - recoil * 12 },
+      f.technique === "shrine" ? skinColor : bodyColor
+    );
+    drawArmRig(
+      { x: 11, y: 53 },
+      { x: 1 - recoil * 5, y: 61 + recoil * 7 },
+      { x: -6 - recoil * 7, y: 72 + recoil * 11 },
+      f.technique === "shrine" ? skinColor : bodyColor
+    );
   } else if (!f.blocking) {
     if (f.technique === "shrine") {
       const upperBreath = running ? runCenterLift * 0.08 : idle * 2;
@@ -12366,16 +12426,18 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
         skinColor
       );
     } else {
-      const runArmSwing = running ? armSwing * 5 : idle * 1.2;
+      const runArmSwing = running ? armSwing * 8 : idle * 1.2;
+      const runArmLift = running ? Math.max(0, armSwing) * 7 : 0;
+      const runArmDrop = running ? Math.max(0, -armSwing) * 5 : 0;
       drawArmRig(
         { x: 42, y: 52 },
-        { x: 48 + runArmSwing * 0.45, y: 68 },
-        { x: 43 + runArmSwing, y: 82 }
+        { x: 49 + runArmSwing * 0.5, y: 68 - runArmLift * 0.5 },
+        { x: 46 + runArmSwing * 1.3, y: 81 - runArmLift }
       );
       drawArmRig(
         { x: 11, y: 52 },
-        { x: 5 - runArmSwing * 0.45, y: 68 },
-        { x: 10 - runArmSwing, y: 82 }
+        { x: 4 - runArmSwing * 0.5, y: 68 - runArmDrop * 0.5 },
+        { x: 7 - runArmSwing * 1.3, y: 81 - runArmDrop }
       );
     }
   }
