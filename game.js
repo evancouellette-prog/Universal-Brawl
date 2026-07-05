@@ -11666,7 +11666,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   const moveDirection = running ? Math.sign(f.vx) * f.dir : 1;
   const shrineStride = shrineWalk ? -Math.cos(shrineWalkCycle) : 0;
   const runCycle = running ? Math.sin(runPhase) : 0;
-  const armSwing = running ? (shrineWalk ? shrineStride : Math.sin(frame * runSpeed * 0.24)) * moveDirection : 0;
+const armSwing = running ? (shrineWalk ? shrineStride : [-1, -0.55, 0, 0.55, 1, 0.55, 0, -0.55][runFrame]) * moveDirection : 0;
   const runPoseFrames = shrineWalk ? [-1, -0.85, -0.25, 0.4, 1, 0.85, 0.25, -0.4] : [-1, -0.55, 0, 0.55, 1, 0.55, 0, -0.55];
   const runLiftFrames = shrineWalk ? [0, 1.5, 4.5, 2.4, 0, 1.5, 4.5, 2.4] : [0, 2, 4, 2, 0, 2, 4, 2];
   const runPose = running ? shrineWalk ? shrineStride : runPoseFrames[runFrame] : 0;
@@ -12431,13 +12431,13 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       const runArmDrop = running ? Math.max(0, -armSwing) * 5 : 0;
       drawArmRig(
         { x: 42, y: 52 },
-        { x: 49 + runArmSwing * 0.5, y: 68 - runArmLift * 0.5 },
-        { x: 46 + runArmSwing * 1.3, y: 81 - runArmLift }
+        { x: 49 - runArmSwing * 0.5, y: 68 - runArmDrop * 0.5 },
+        { x: 46 - runArmSwing * 1.3, y: 81 - runArmDrop }
       );
       drawArmRig(
         { x: 11, y: 52 },
-        { x: 4 - runArmSwing * 0.5, y: 68 - runArmDrop * 0.5 },
-        { x: 7 - runArmSwing * 1.3, y: 81 - runArmDrop }
+        { x: 4 + runArmSwing * 0.5, y: 68 - runArmLift * 0.5 },
+        { x: 7 + runArmSwing * 1.3, y: 81 - runArmLift }
       );
     }
   }
