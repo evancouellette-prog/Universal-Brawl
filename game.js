@@ -11949,20 +11949,6 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   ctx.fill();
 
   if (isPracticeDummy(f)) {
-    ctx.strokeStyle = "#111827";
-    ctx.lineWidth = 2.8;
-    ctx.beginPath();
-    ctx.moveTo(17, 18);
-    ctx.lineTo(23, 25);
-    ctx.moveTo(23, 18);
-    ctx.lineTo(17, 25);
-    ctx.moveTo(30, 18);
-    ctx.lineTo(36, 25);
-    ctx.moveTo(36, 18);
-    ctx.lineTo(30, 25);
-    ctx.moveTo(18, 33);
-    ctx.quadraticCurveTo(26, 38, 35, 33);
-    ctx.stroke();
     ctx.fillStyle = "rgba(17, 24, 39, 0.16)";
     ctx.fillRect(13, 12, 26, 3);
   } else if (f.technique === "limitless") {
@@ -12012,51 +11998,40 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.strokeStyle = "#831843";
     ctx.lineWidth = 2;
     ctx.stroke();
+    // SUKUNA_TATTOO_PATCH: authentic symmetric cursed-technique tattoo
+    // linework across the face - no eyes/mouth/nose, just markings.
     ctx.strokeStyle = "#020617";
     ctx.lineWidth = 2.2;
     ctx.beginPath();
-    ctx.moveTo(17, 22);
-    ctx.lineTo(24, 24);
-    ctx.moveTo(28, 24);
-    ctx.lineTo(35, 22);
-    ctx.moveTo(18, 31);
+    // brow-ridge chevrons
+    ctx.moveTo(15, 21);
+    ctx.lineTo(23, 24.5);
+    ctx.moveTo(37, 21);
+    ctx.lineTo(29, 24.5);
+    // under-ridge ticks
+    ctx.moveTo(17, 32);
     ctx.lineTo(24, 29);
-    ctx.moveTo(29, 29);
-    ctx.lineTo(35, 31);
-    ctx.moveTo(26, 28);
-    ctx.lineTo(26, 36);
-    ctx.moveTo(21, 17);
-    ctx.lineTo(24, 21);
-    ctx.moveTo(31, 17);
-    ctx.lineTo(28, 21);
+    ctx.moveTo(35, 32);
+    ctx.lineTo(28, 29);
+    // forehead accent ticks
+    ctx.moveTo(20, 15);
+    ctx.lineTo(23, 20);
+    ctx.moveTo(32, 15);
+    ctx.lineTo(29, 20);
+    // signature centerline running the length of the face
+    ctx.moveTo(26, 12);
+    ctx.lineTo(26, 40);
     ctx.stroke();
-    ctx.fillStyle = "#9d174d";
+
+    ctx.strokeStyle = "rgba(157, 23, 77, 0.85)";
+    ctx.lineWidth = 1.6;
     ctx.beginPath();
-    ctx.moveTo(13, 17);
-    ctx.quadraticCurveTo(18, 15, 22, 20);
-    ctx.lineTo(20, 33);
-    ctx.quadraticCurveTo(16, 31, 14, 25);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = "#020617";
-    ctx.lineWidth = 1.4;
+    // symmetric cheek marks
+    ctx.moveTo(13, 25);
+    ctx.quadraticCurveTo(17, 31, 15, 38);
+    ctx.moveTo(39, 25);
+    ctx.quadraticCurveTo(35, 31, 37, 38);
     ctx.stroke();
-    ctx.fillStyle = "#dc2626";
-    ctx.beginPath();
-    ctx.moveTo(18, 22);
-    ctx.lineTo(25, 21);
-    ctx.lineTo(22, 25);
-    ctx.closePath();
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(28, 21);
-    ctx.lineTo(35, 22);
-    ctx.lineTo(31, 25);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = "#020617";
-    ctx.fillRect(21, 22, 2, 2);
-    ctx.fillRect(31, 22, 2, 2);
   } else if (f.technique === "deathnote") {
     const hairSway = idle;
 
@@ -12093,49 +12068,6 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.lineTo(31, 25);
     ctx.stroke();
 
-    // LIGHT_FACE_PATCH: Light was rendering as a blank head. Give him a
-    // calm, sharp-eyed expression consistent with the other fighters.
-    ctx.strokeStyle = skin.hair;
-    ctx.lineWidth = 1.7;
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(16.5, 24.2);
-    ctx.lineTo(22.5, 23.2);
-    ctx.moveTo(29.5, 23.2);
-    ctx.lineTo(35.5, 24.2);
-    ctx.stroke();
-
-    ctx.fillStyle = "#fdf6ec";
-    ctx.beginPath();
-    ctx.ellipse(20, 28, 3.1, 2.3, -0.08, 0, Math.PI * 2);
-    ctx.ellipse(32, 28, 3.1, 2.3, 0.08, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = skin.eye;
-    ctx.beginPath();
-    ctx.ellipse(20.6, 28.1, 1.7, 2, 0, 0, Math.PI * 2);
-    ctx.ellipse(31.4, 28.1, 1.7, 2, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.strokeStyle = "rgba(59, 36, 20, 0.55)";
-    ctx.lineWidth = 1.3;
-    ctx.beginPath();
-    ctx.moveTo(17, 26.4);
-    ctx.quadraticCurveTo(20, 25, 23.2, 26.6);
-    ctx.moveTo(28.8, 26.6);
-    ctx.quadraticCurveTo(32, 25, 35, 26.4);
-    ctx.stroke();
-
-    ctx.strokeStyle = "rgba(59, 36, 20, 0.65)";
-    ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    ctx.moveTo(22, 35.5);
-    ctx.quadraticCurveTo(26, 37.2, 30, 35.5);
-    ctx.stroke();
-
-  } else {
-    ctx.fillStyle = skin.eye;
-    ctx.fillRect(31, 22, 4, 4);
   }
   ctx.restore();
 
