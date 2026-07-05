@@ -12239,12 +12239,14 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     } else {
     if (isLight(f)) {
       // LIGHT_NO_ARM_PUNCH_PATCH:
-      // Light keeps his arms neutral; Ryuk does the actual punch.
+      // Light doesn't throw the punch himself - Ryuk does - but he should
+      // still read as directing the strike instead of standing there idle.
       const lightIdleArm = running ? armSwing * 1.4 : idle * 0.75;
+      const lightPunchCue = active ? 1 : windup ? 0.45 : 0.12;
       drawArmRig(
-        { x: 42, y: 52 },
-        { x: 48 + lightIdleArm * 0.18, y: 68 },
-        { x: 43 + lightIdleArm * 0.35, y: 82 }
+        { x: 42, y: 52 - lightPunchCue * 4 },
+        { x: 51 + lightIdleArm * 0.18 + lightPunchCue * 9, y: 61 - lightPunchCue * 11 },
+        { x: 49 + lightIdleArm * 0.35 + lightPunchCue * 15, y: 56 - lightPunchCue * 19 }
       );
       drawArmRig(
         { x: 11, y: 52 },
@@ -12334,6 +12336,22 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
         drawArmRig({ x: 12, y: 48 }, { x: -6, y: 50 }, { x: -15, y: 64 - armWave });
       }
     }
+  } else if (f.stun > 0 && !f.blocking) {
+    // HIT_REACTION_PATCH: a brief recoil pose while in hitstun instead of
+    // playing the flat idle sway, so getting hit actually reads as a hit.
+    const recoil = Math.min(1, f.stun / 14);
+    drawArmRig(
+      { x: 42, y: 50 },
+      { x: 53 + recoil * 7, y: 44 - recoil * 9 },
+      { x: 59 + recoil * 9, y: 33 - recoil * 12 },
+      f.technique === "shrine" ? skinColor : bodyColor
+    );
+    drawArmRig(
+      { x: 11, y: 53 },
+      { x: 1 - recoil * 5, y: 61 + recoil * 7 },
+      { x: -6 - recoil * 7, y: 72 + recoil * 11 },
+      f.technique === "shrine" ? skinColor : bodyColor
+    );
   } else if (!f.blocking) {
     if (f.technique === "shrine") {
       const upperBreath = running ? runCenterLift * 0.08 : idle * 2;
@@ -12351,16 +12369,18 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
         skinColor
       );
     } else {
-      const runArmSwing = running ? armSwing * 5 : idle * 1.2;
+      const runArmSwing = running ? armSwing * 8 : idle * 1.2;
+      const runArmLift = running ? Math.max(0, armSwing) * 7 : 0;
+      const runArmDrop = running ? Math.max(0, -armSwing) * 5 : 0;
       drawArmRig(
         { x: 42, y: 52 },
-        { x: 48 + runArmSwing * 0.45, y: 68 },
-        { x: 43 + runArmSwing, y: 82 }
+        { x: 49 + runArmSwing * 0.5, y: 68 - runArmLift * 0.5 },
+        { x: 46 + runArmSwing * 1.3, y: 81 - runArmLift }
       );
       drawArmRig(
         { x: 11, y: 52 },
-        { x: 5 - runArmSwing * 0.45, y: 68 },
-        { x: 10 - runArmSwing, y: 82 }
+        { x: 4 - runArmSwing * 0.5, y: 68 - runArmDrop * 0.5 },
+        { x: 7 - runArmSwing * 1.3, y: 81 - runArmDrop }
       );
     }
   }
