@@ -11443,6 +11443,22 @@ function clamp01(value) {
   return Math.max(0, Math.min(1, Number(value) || 0));
 }
 
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function lerpPoint(a, b, t) {
+  return { x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) };
+}
+
+function easeOutQuad(t) {
+  return 1 - (1 - t) * (1 - t);
+}
+
+function easeInQuad(t) {
+  return t * t;
+}
+
 function getFighterShadowSurface(f) {
   const centerX = f.x + f.w / 2;
   const feetY = f.y + f.h;
@@ -12256,30 +12272,71 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       drawRyukPunchAssist(f, attack, active);
     } else {
     const heavy = f.attacking === "heavy";
-    const shoulder = { x: 41, y: heavy ? 50 : 57 };
-    const elbow = heavy
-      ? windup
-        ? { x: 47, y: 34 }
-        : active ? { x: 57, y: 44 } : { x: 51, y: 60 }
-      : windup
-        ? { x: 50, y: 52 }
-        : active ? { x: 58, y: 56 } : { x: 52, y: 62 };
-    const fist = heavy
-      ? windup
-        ? { x: 37, y: 27 }
-        : active ? { x: 76, y: 47 } : { x: 60, y: 66 }
-      : windup
-        ? { x: 45, y: 44 }
-        : active ? { x: 66, y: 56 } : { x: 58, y: 64 };
-    drawArmRig(shoulder, elbow, fist);
-    drawArmRig(
-      { x: 12, y: heavy ? (windup ? 64 : 66) : 52 },
-      heavy ? { x: 24, y: windup ? 72 : 73 } : { x: 20, y: windup ? 62 : 64 },
-      heavy ? { x: 34, y: windup ? 65 : 67 } : { x: 29, y: windup ? 59 : 61 }
+    // PUNCH_SMOOTHING_PATCH: interpolate through windup/active/recovery
+    // instead of snapping between 3 fixed poses each phase - the instant
+    // jumps (especially the 13-tick heavy windup hold) read as clunky.
+    const windupT = windup ? easeInQuad(clamp01(f.attackFrame / Math.max(1, attack.windup))) : 1;
+    const activeT = active
+      ? easeOutQuad(clamp01((f.attackFrame - attack.windup) / Math.max(1, attack.active)))
+      : (windup ? 0 : 1);
+    const recoveryT = (!windup && !active)
+      ? easeOutQuad(clamp01((f.attackFrame - attack.windup - attack.active) / Math.max(1, attack.recovery)))
+      : 0;
+    // Each limb blends across 4 keyframes: rest (pre-punch) -> windup ->
+    // active (extended) -> recovery (settling), matching the original
+    // per-phase target poses but easing between them instead of snapping.
+    const blendPose = (restP, windupP, activeP, recoveryP) => {
+      if (windup) return lerpPoint(restP, windupP, windupT);
+      if (active) return lerpPoint(windupP, activeP, activeT);
+      return lerpPoint(activeP, recoveryP, recoveryT);
+    };
+    const blendValue = (restV, windupV, activeV, recoveryV) => {
+      if (windup) return lerp(restV, windupV, windupT);
+      if (active) return lerp(windupV, activeV, activeT);
+      return lerp(activeV, recoveryV, recoveryT);
+    };
+
+    const shoulder = blendPose(
+      { x: 42, y: 52 },
+      { x: 41, y: heavy ? 50 : 57 },
+      { x: 41, y: heavy ? 50 : 57 },
+      { x: 41, y: heavy ? 50 : 57 }
     );
+    const elbow = blendPose(
+      { x: 48, y: 68 },
+      heavy ? { x: 47, y: 34 } : { x: 50, y: 52 },
+      heavy ? { x: 57, y: 44 } : { x: 58, y: 56 },
+      heavy ? { x: 51, y: 60 } : { x: 52, y: 62 }
+    );
+    const fist = blendPose(
+      { x: 43, y: 82 },
+      heavy ? { x: 37, y: 27 } : { x: 45, y: 44 },
+      heavy ? { x: 76, y: 47 } : { x: 66, y: 56 },
+      heavy ? { x: 60, y: 66 } : { x: 58, y: 64 }
+    );
+    drawArmRig(shoulder, elbow, fist);
+    const guardShoulder = blendPose(
+      { x: 11, y: 52 },
+      { x: 12, y: heavy ? 64 : 52 },
+      { x: 12, y: heavy ? 66 : 52 },
+      { x: 12, y: heavy ? 66 : 52 }
+    );
+    const guardElbow = blendPose(
+      { x: 5, y: 68 },
+      heavy ? { x: 24, y: 72 } : { x: 20, y: 62 },
+      heavy ? { x: 24, y: 73 } : { x: 20, y: 64 },
+      heavy ? { x: 24, y: 73 } : { x: 20, y: 64 }
+    );
+    const guardFist = blendPose(
+      { x: 10, y: 82 },
+      heavy ? { x: 34, y: 65 } : { x: 29, y: 59 },
+      heavy ? { x: 34, y: 67 } : { x: 29, y: 61 },
+      heavy ? { x: 34, y: 67 } : { x: 29, y: 61 }
+    );
+    drawArmRig(guardShoulder, guardElbow, guardFist);
     if (f.technique === "shrine") {
-      const extraLift = heavy ? (windup ? -2 : active ? 1 : 0) : (windup ? -1 : active ? 1 : 0);
-      const extraReach = active ? 4 : windup ? -2 : 1;
+      const extraLift = blendValue(0, heavy ? -2 : -1, 1, 0);
+      const extraReach = blendValue(0, -2, 4, 1);
       drawArmRig(
         { x: 44, y: 64 + extraLift },
         { x: 54 + extraReach * 0.2, y: 74 + extraLift },
