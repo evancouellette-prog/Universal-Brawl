@@ -2272,11 +2272,15 @@ function startEyeDeal(f) {
 }
 
 function usePotatoChip(f) {
-  if (!isLight(f) || f.ko || (f.potatoCooldown || 0) > 0 || gameState !== "playing" || paused || gameOver) return false;
+  // LIGHT_BALANCE_PATCH: can't eat through a combo - only usable while
+  // actually safe, and it opens a brief real window where Light can't
+  // block/attack/dodge, matching "no protection while being activated."
+  if (!isLight(f) || f.ko || f.knockdown || f.stun > 0 || f.dodging > 0 || (f.potatoCooldown || 0) > 0 || gameState !== "playing" || paused || gameOver) return false;
   f.health = Math.min(f.maxHealth, f.health + 24);
   f.delayedHealth = Math.max(f.delayedHealth || 0, f.health);
   f.potatoCooldown = LIGHT_POTATO_COOLDOWN_TICKS;
   f.potatoFocusTicks = LIGHT_POTATO_FOCUS_TICKS;
+  f.potatoVulnerableTicks = 14;
   // Potato gives healing/focus, not free Info or Name.
   spawnHitSpark(f.x + f.w / 2, f.y + 42, f.dir, "brown");
   updateHud();
@@ -2288,6 +2292,7 @@ function updateLightSystems(f, opponent) {
 
   if (f.potatoCooldown > 0) f.potatoCooldown -= 1;
   if (f.potatoFocusTicks > 0) f.potatoFocusTicks -= 1;
+  if (f.potatoVulnerableTicks > 0) f.potatoVulnerableTicks -= 1;
   if (f.deathNoteSlowTicks > 0) f.deathNoteSlowTicks -= 1;
   if (f.eyeDealGlowTicks > 0) f.eyeDealGlowTicks -= 1;
   if (f.lightSummonHitFlash > 0) f.lightSummonHitFlash -= 1;
@@ -2904,6 +2909,7 @@ function makeFighter(config) {
     lightSummonAnchorDir: 0,
     potatoCooldown: 0,
     potatoFocusTicks: 0,
+    potatoVulnerableTicks: 0,
     lightRyukCooldown: 0,
     lightRyukCooldownMax: 0,
     lightInvestigationCooldown: 0,
@@ -2949,6 +2955,7 @@ function applyTechniqueStats(f, preserveMeters = false) {
     f.informationMeter = 0;
     f.potatoFocusTicks = 0;
     f.potatoCooldown = 0;
+    f.potatoVulnerableTicks = 0;
     f.lightRyukCooldown = 0;
     f.lightRyukCooldownMax = 0;
     f.lightInvestigationCooldown = 0;
@@ -3869,7 +3876,7 @@ function applyJoinerFighterStateOnHost(remoteFighter) {
     "teleportAiming", "teleportCooldown", "fugaAiming", "fugaChargeTicks", "fugaCooldown", "fugaCooldownMax", "ultimateAiming", "ultimateAimPoint",
     "ce", "maxCe", "ultimateMeter", "domainStartup", "domainAttemptType", "simpleDomainTicks", "simpleDomainFlash", "simpleDomainCooldown",
     "bindingVowType", "bindingVowTicks", "bindingVowCooldown", "bindingVowChoiceTicks", "bindingVowQuote", "bindingVowQuoteTicks", "bindingVowFlash", "sukunaThrowComboCooldown",
-    "informationMeter", "identityProgress", "lightSummonStage", "lightSummonType", "lightSummonHealth", "lightSummonMaxHealth", "lightSummonTicks", "lightSummonHitFlash", "lightSummonAnchorX", "lightSummonAnchorY", "lightSummonAnchorDir", "potatoCooldown", "potatoFocusTicks", "lightRyukCooldown", "lightRyukCooldownMax", "lightInvestigationCooldown", "lightInvestigationCooldownMax", "eyeDealUsed", "eyeDealGlowTicks", "deathNoteSlowTicks", "deathNoteFearTicks", "ctLockTimer"
+    "informationMeter", "identityProgress", "lightSummonStage", "lightSummonType", "lightSummonHealth", "lightSummonMaxHealth", "lightSummonTicks", "lightSummonHitFlash", "lightSummonAnchorX", "lightSummonAnchorY", "lightSummonAnchorDir", "potatoCooldown", "potatoFocusTicks", "potatoVulnerableTicks", "lightRyukCooldown", "lightRyukCooldownMax", "lightInvestigationCooldown", "lightInvestigationCooldownMax", "eyeDealUsed", "eyeDealGlowTicks", "deathNoteSlowTicks", "deathNoteFearTicks", "ctLockTimer"
   ];
 
   fields.forEach((field) => {
@@ -4378,6 +4385,7 @@ function getFighterNetworkState(f) {
     lightSummonAnchorDir: f.lightSummonAnchorDir,
     potatoCooldown: f.potatoCooldown,
     potatoFocusTicks: f.potatoFocusTicks,
+    potatoVulnerableTicks: f.potatoVulnerableTicks,
     lightRyukCooldown: f.lightRyukCooldown,
     lightRyukCooldownMax: f.lightRyukCooldownMax,
     lightInvestigationCooldown: f.lightInvestigationCooldown,
@@ -5424,7 +5432,7 @@ function isHeldBySpecial(f) {
 function isSpecialLocked(f) {
   const owner = getFighterOwner(f);
   const clashing = Boolean(owner && domainClash?.attempts?.[owner]);
-  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || (f?.domainStartup || 0) > 0 || clashing;
+  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || (f?.domainStartup || 0) > 0 || clashing || (f?.potatoVulnerableTicks || 0) > 0;
 }
 
 // DOMAIN_MOVEMENT_FIX
@@ -11206,24 +11214,29 @@ function drawDeathNoteCharacterModel(kind, x, footY, scale = 1, options = {}) {
     // twin tails / long side hair
     ctx.fillStyle = palette.hair;
     ctx.beginPath();
-    ctx.ellipse(-18, -88 + headBob, 8, 24, -0.18, 0, Math.PI * 2);
-    ctx.ellipse(18, -88 + headBob, 8, 24, 0.18, 0, Math.PI * 2);
+    ctx.ellipse(-16, -92 + headBob, 5.6, 17, -0.16, 0, Math.PI * 2);
+    ctx.ellipse(16, -92 + headBob, 5.6, 17, 0.16, 0, Math.PI * 2);
     ctx.fill();
 
     // black bows
     ctx.fillStyle = palette.coat;
     ctx.beginPath();
-    ctx.moveTo(-13, -100 + headBob); ctx.lineTo(-21, -104 + headBob); ctx.lineTo(-17, -96 + headBob); ctx.closePath();
-    ctx.moveTo(-13, -100 + headBob); ctx.lineTo(-19, -91 + headBob); ctx.lineTo(-13, -94 + headBob); ctx.closePath();
-    ctx.moveTo(13, -100 + headBob); ctx.lineTo(21, -104 + headBob); ctx.lineTo(17, -96 + headBob); ctx.closePath();
-    ctx.moveTo(13, -100 + headBob); ctx.lineTo(19, -91 + headBob); ctx.lineTo(13, -94 + headBob); ctx.closePath();
+    ctx.moveTo(-12, -101 + headBob); ctx.lineTo(-18, -104 + headBob); ctx.lineTo(-15, -98 + headBob); ctx.closePath();
+    ctx.moveTo(-12, -101 + headBob); ctx.lineTo(-16, -95 + headBob); ctx.lineTo(-11, -97 + headBob); ctx.closePath();
+    ctx.moveTo(12, -101 + headBob); ctx.lineTo(18, -104 + headBob); ctx.lineTo(15, -98 + headBob); ctx.closePath();
+    ctx.moveTo(12, -101 + headBob); ctx.lineTo(16, -95 + headBob); ctx.lineTo(11, -97 + headBob); ctx.closePath();
     ctx.fill();
 
     // face
+    ctx.fillStyle = "#fdf6ec";
+    ctx.beginPath();
+    ctx.ellipse(-4.4, -98 + headBob, 2.3, 1.9, 0, 0, Math.PI * 2);
+    ctx.ellipse(4.4, -98 + headBob, 2.3, 1.9, 0, 0, Math.PI * 2);
+    ctx.fill();
     ctx.fillStyle = palette.eye;
     ctx.beginPath();
-    ctx.arc(-4.4, -98 + headBob, 1.7, 0, Math.PI * 2);
-    ctx.arc(4.4, -98 + headBob, 1.7, 0, Math.PI * 2);
+    ctx.arc(-4.4, -98 + headBob, 1.3, 0, Math.PI * 2);
+    ctx.arc(4.4, -98 + headBob, 1.3, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = "rgba(17,24,39,0.75)";
     ctx.lineWidth = 1.3;
@@ -12080,6 +12093,46 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.lineTo(31, 25);
     ctx.stroke();
 
+    // LIGHT_FACE_PATCH: Light was rendering as a blank head. Give him a
+    // calm, sharp-eyed expression consistent with the other fighters.
+    ctx.strokeStyle = skin.hair;
+    ctx.lineWidth = 1.7;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(16.5, 24.2);
+    ctx.lineTo(22.5, 23.2);
+    ctx.moveTo(29.5, 23.2);
+    ctx.lineTo(35.5, 24.2);
+    ctx.stroke();
+
+    ctx.fillStyle = "#fdf6ec";
+    ctx.beginPath();
+    ctx.ellipse(20, 28, 3.1, 2.3, -0.08, 0, Math.PI * 2);
+    ctx.ellipse(32, 28, 3.1, 2.3, 0.08, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = skin.eye;
+    ctx.beginPath();
+    ctx.ellipse(20.6, 28.1, 1.7, 2, 0, 0, Math.PI * 2);
+    ctx.ellipse(31.4, 28.1, 1.7, 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(59, 36, 20, 0.55)";
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    ctx.moveTo(17, 26.4);
+    ctx.quadraticCurveTo(20, 25, 23.2, 26.6);
+    ctx.moveTo(28.8, 26.6);
+    ctx.quadraticCurveTo(32, 25, 35, 26.4);
+    ctx.stroke();
+
+    ctx.strokeStyle = "rgba(59, 36, 20, 0.65)";
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(22, 35.5);
+    ctx.quadraticCurveTo(26, 37.2, 30, 35.5);
+    ctx.stroke();
+
   } else {
     ctx.fillStyle = skin.eye;
     ctx.fillRect(31, 22, 4, 4);
@@ -12089,7 +12142,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   ctx.save();
   ctx.translate(lean, 0);
   const drawArmRig = (shoulder, elbow, hand, color = f.technique === "shrine" ? skinColor : bodyColor, handColor = skinColor) => {
-    const useOutline = f.technique !== "shrine" && f.technique !== "deathnote";
+    const useOutline = f.technique !== "shrine";
     const isShrineArm = f.technique === "shrine";
     const strokeArm = (strokeColor, width) => {
       ctx.strokeStyle = strokeColor;
