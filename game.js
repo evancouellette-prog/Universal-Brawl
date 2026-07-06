@@ -11520,8 +11520,18 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   const shrineWalkCycle = f.walkCycle || 0;
   const moveDirection = running ? Math.sign(f.vx) * f.dir : 1;
   const walkStride = running ? -Math.cos(shrineWalkCycle) : 0;
-  const armSwing = walkStride * moveDirection;
-  const runPose = walkStride;
+  // BACKWARD_WALK_FIX_PATCH: legs previously read off `walkStride` directly
+  // while arms read off `walkStride * moveDirection`. Those match while
+  // moving forward (moveDirection is 1) but fall out of phase with each
+  // other whenever the fighter backpedals (moveDirection flips to -1) -
+  // that's the mismatched arm swing. Both limbs now share one `legStride`,
+  // and a distinct backpedal gait (shorter stride, higher knee lift,
+  // calmer arm swing) layers on top when retreating instead of just
+  // reusing the forward walk cycle.
+  const legStride = walkStride * moveDirection;
+  const backpedal = retreating;
+  const armSwing = legStride * (backpedal ? 0.5 : 1);
+  const runPose = legStride;
   const runCenterLift = running ? Math.abs(Math.sin(shrineWalkCycle)) * 3 : 0;
   const bob = running ? 1 + runCenterLift * 0.45 : 0;
   const jumpPose = !f.grounded && !f.ko;
@@ -11581,10 +11591,11 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       ? { x: 60, y: 115 }
       : { x: 39, y: footY };
   if (running && !jumpPose) {
-    const humanStride = Math.max(-1, Math.min(1, walkStride));
-    const strideLen = gojoWalk ? 9 : f.technique === "shrine" ? 10 : 9.5;
-    const leftLift = Math.max(0, Math.sin(shrineWalkCycle)) * 2.6;
-    const rightLift = Math.max(0, -Math.sin(shrineWalkCycle)) * 2.6;
+    const humanStride = Math.max(-1, Math.min(1, legStride));
+    const strideLen = (gojoWalk ? 9 : f.technique === "shrine" ? 10 : 9.5) * (backpedal ? 0.6 : 1);
+    const liftScale = backpedal ? 1.5 : 1;
+    const leftLift = Math.max(0, Math.sin(shrineWalkCycle)) * 2.6 * liftScale;
+    const rightLift = Math.max(0, -Math.sin(shrineWalkCycle)) * 2.6 * liftScale;
     leftFoot.x = 18 - humanStride * strideLen;
     rightFoot.x = 34 + humanStride * strideLen;
     leftFoot.y = footY - leftLift;
@@ -11592,7 +11603,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
 
     const leftKneeDir = leftFoot.x >= leftHip.x ? 1 : -1;
     const rightKneeDir = rightFoot.x >= rightHip.x ? 1 : -1;
-    const kneeBend = 4.4 + Math.abs(Math.sin(shrineWalkCycle)) * 1.1;
+    const kneeBend = (4.4 + Math.abs(Math.sin(shrineWalkCycle)) * 1.1) * (backpedal ? 1.35 : 1);
     leftKnee.x = Math.max(
       Math.min(leftHip.x, leftFoot.x) - 5,
       Math.min(Math.max(leftHip.x, leftFoot.x) + 5, (leftHip.x + leftFoot.x) * 0.5 + leftKneeDir * kneeBend)
