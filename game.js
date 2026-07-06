@@ -10904,126 +10904,121 @@ function drawDeathNoteCharacterModel(kind, x, footY, scale = 1, options = {}) {
   }
 
   if (isRyuk) {
-    const bob = Math.sin(frame * 0.08) * 0.9;
-    const bodySway = pose === "punch" ? -3 - punch * 3 : 0;
-    const upperBob = bob * 0.45;
-    const torsoTop = -95;
-    const torsoBottom = -36;
-    const headY = -118;
-    const shoulderY = -84;
-    const hipY = -36;
-    const leftFootX = -18;
-    const rightFootX = 18;
+    // RYUK_BRAWLER_STYLE_PATCH: same construction as the playable brawlers
+    // (black-outlined legs, outlined torso block, ball-jointed outlined
+    // arms, plain faceless head) - just built bigger, and keeping his black
+    // spiked hair + wings so he still reads as Ryuk.
+    const bob = Math.sin(frame * 0.08) * 1.1;
+    const bodyDark = "#111318";
+    const greySkin = "#c7ced6";
+    const OUTLINE = "#020617";
+    const px = pose === "punch" ? punch : 0;
 
+    // ground shadow
     ctx.save();
     ctx.globalAlpha *= 0.26;
     ctx.fillStyle = "rgba(0,0,0,0.72)";
     ctx.beginPath();
-    ctx.ellipse(0, 2, 26, 7, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 2, 30, 8, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
-    ctx.strokeStyle = "#030303";
-    ctx.lineWidth = 10;
-    ctx.beginPath();
-    ctx.moveTo(-8, hipY);
-    ctx.lineTo(-13, -14);
-    ctx.lineTo(leftFootX, 0);
-    ctx.moveTo(8, hipY);
-    ctx.lineTo(13, -14);
-    ctx.lineTo(rightFootX, 0);
-    ctx.stroke();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
 
-    ctx.strokeStyle = "#090909";
-    ctx.lineWidth = 7;
-    ctx.beginPath();
-    ctx.moveTo(-8, hipY);
-    ctx.lineTo(-13, -14);
-    ctx.lineTo(leftFootX, 0);
-    ctx.moveTo(8, hipY);
-    ctx.lineTo(13, -14);
-    ctx.lineTo(rightFootX, 0);
-    ctx.stroke();
-
-    ctx.strokeStyle = "#040404";
-    ctx.lineWidth = 5;
-    ctx.beginPath();
-    ctx.moveTo(leftFootX - 6, 1); ctx.lineTo(leftFootX + 7, 1);
-    ctx.moveTo(rightFootX - 6, 1); ctx.lineTo(rightFootX + 7, 1);
-    ctx.stroke();
-
+    // wings behind the body
     ctx.fillStyle = "rgba(0,0,0,0.86)";
     ctx.beginPath();
-    ctx.moveTo(-20, -88);
-    ctx.quadraticCurveTo(-62, -92, -76, -54);
-    ctx.quadraticCurveTo(-58, -62, -52, -34);
-    ctx.quadraticCurveTo(-42, -56, -18, -48);
+    ctx.moveTo(-24, -120);
+    ctx.quadraticCurveTo(-84, -128, -104, -66);
+    ctx.quadraticCurveTo(-78, -80, -68, -44);
+    ctx.quadraticCurveTo(-54, -78, -22, -70);
     ctx.closePath();
     ctx.fill();
     ctx.beginPath();
-    ctx.moveTo(20, -88);
-    ctx.quadraticCurveTo(62, -92, 76, -54);
-    ctx.quadraticCurveTo(58, -62, 52, -34);
-    ctx.quadraticCurveTo(42, -56, 18, -48);
+    ctx.moveTo(24, -120);
+    ctx.quadraticCurveTo(84, -128, 104, -66);
+    ctx.quadraticCurveTo(78, -80, 68, -44);
+    ctx.quadraticCurveTo(54, -78, 22, -70);
     ctx.closePath();
     ctx.fill();
 
-    ctx.save();
-    ctx.translate(bodySway, upperBob);
-    ctx.fillStyle = "#111111";
-    ctx.beginPath();
-    ctx.moveTo(-20, torsoTop);
-    ctx.lineTo(20, torsoTop + 2);
-    ctx.lineTo(18, torsoBottom);
-    ctx.lineTo(8, torsoBottom + 14);
-    ctx.lineTo(0, torsoBottom + 6);
-    ctx.lineTo(-8, torsoBottom + 14);
-    ctx.lineTo(-18, torsoBottom);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = "rgba(255,255,255,0.08)";
-    ctx.fillRect(-5, torsoTop + 20, 10, 34);
+    // arm rig: black outline + dark fill + clawed grey hand (brawler build)
+    const armRig = (shoulder, elbow, hand) => {
+      ctx.strokeStyle = OUTLINE; ctx.lineWidth = 15;
+      ctx.beginPath();
+      ctx.moveTo(shoulder.x, shoulder.y); ctx.lineTo(elbow.x, elbow.y); ctx.lineTo(hand.x, hand.y);
+      ctx.stroke();
+      ctx.strokeStyle = bodyDark; ctx.lineWidth = 10;
+      ctx.beginPath();
+      ctx.moveTo(shoulder.x, shoulder.y); ctx.lineTo(elbow.x, elbow.y); ctx.lineTo(hand.x, hand.y);
+      ctx.stroke();
+      ctx.fillStyle = OUTLINE;
+      ctx.beginPath(); ctx.ellipse(hand.x, hand.y, 9, 7.5, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = greySkin;
+      ctx.beginPath(); ctx.ellipse(hand.x, hand.y, 6.6, 5.4, 0, 0, Math.PI * 2); ctx.fill();
+    };
 
-    const leftHand = pose === "punch" && punch > 0.05 ? { x: 34 + punch * 22, y: -62 + punch * 8 } : { x: -28, y: -49 + bob * 0.7 };
-    const rightHand = pose === "punch" ? { x: 54 + punch * 30, y: -56 + punch * 8 } : { x: 28, y: -49 - bob * 0.7 };
-    ctx.strokeStyle = "#111111";
-    ctx.lineWidth = 8;
+    // back (far) arm - sweeps down and forward on the punch
+    armRig(
+      { x: -22, y: -104 },
+      { x: -30 + px * 24, y: -82 + px * 20 },
+      { x: -30 + px * 48, y: -80 + px * 48 }
+    );
+
+    // legs: outlined dark, scaled up
+    const legPath = () => {
+      ctx.beginPath();
+      ctx.moveTo(-11, -46); ctx.lineTo(-15, -24); ctx.lineTo(-20, 0);
+      ctx.moveTo(11, -46); ctx.lineTo(15, -24); ctx.lineTo(20, 0);
+    };
+    ctx.strokeStyle = OUTLINE; ctx.lineWidth = 17; legPath(); ctx.stroke();
+    ctx.strokeStyle = bodyDark; ctx.lineWidth = 11; legPath(); ctx.stroke();
+    ctx.strokeStyle = OUTLINE; ctx.lineWidth = 8;
     ctx.beginPath();
-    ctx.moveTo(-16, shoulderY); ctx.lineTo(-20, -67); ctx.lineTo(leftHand.x, leftHand.y);
-    ctx.moveTo(16, shoulderY); ctx.lineTo(20 + punch * 8, -67 + punch * 2); ctx.lineTo(rightHand.x, rightHand.y);
+    ctx.moveTo(-27, 0); ctx.lineTo(-15, 0);
+    ctx.moveTo(15, 0); ctx.lineTo(27, 0);
     ctx.stroke();
-    ctx.fillStyle = "#c7ced6";
-    ctx.beginPath();
-    ctx.ellipse(leftHand.x, leftHand.y, 6, 5.5, 0, 0, Math.PI * 2);
-    ctx.ellipse(rightHand.x, rightHand.y, 9, 7.5, 0, 0, Math.PI * 2);
-    ctx.fill();
 
-    ctx.fillStyle = "#c7ced6";
-    ctx.beginPath();
-    ctx.ellipse(0, headY, 15, 18, 0, 0, Math.PI * 2);
-    ctx.fill();
+    // torso block, outlined
+    const torsoPath = () => {
+      ctx.beginPath();
+      ctx.moveTo(-22, -112);
+      ctx.lineTo(22, -112);
+      ctx.lineTo(19, -70);
+      ctx.lineTo(11, -46);
+      ctx.lineTo(-11, -46);
+      ctx.lineTo(-19, -70);
+      ctx.closePath();
+    };
+    ctx.fillStyle = bodyDark; torsoPath(); ctx.fill();
+    ctx.strokeStyle = OUTLINE; ctx.lineWidth = 3.5; torsoPath(); ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,0.06)";
+    ctx.fillRect(-6, -104, 12, 44);
+
+    // head: grey, outlined, no face
+    const hy = -132 + bob;
+    ctx.fillStyle = greySkin;
+    ctx.beginPath(); ctx.ellipse(0, hy, 18, 20, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = OUTLINE; ctx.lineWidth = 3.5;
+    ctx.beginPath(); ctx.ellipse(0, hy, 18, 20, 0, 0, Math.PI * 2); ctx.stroke();
+
+    // black spiky hair
     ctx.fillStyle = "#080808";
     ctx.beginPath();
-    ctx.moveTo(-20, headY - 2); ctx.lineTo(-28, headY - 30); ctx.lineTo(-14, headY - 18); ctx.lineTo(-8, headY - 38);
-    ctx.lineTo(0, headY - 18); ctx.lineTo(8, headY - 38); ctx.lineTo(14, headY - 18); ctx.lineTo(28, headY - 30); ctx.lineTo(20, headY - 2);
+    ctx.moveTo(-19, hy - 6);
+    ctx.lineTo(-30, hy - 44); ctx.lineTo(-13, hy - 24); ctx.lineTo(-6, hy - 50);
+    ctx.lineTo(0, hy - 24); ctx.lineTo(6, hy - 50); ctx.lineTo(13, hy - 24);
+    ctx.lineTo(30, hy - 44); ctx.lineTo(19, hy - 6);
     ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = "rgba(17,17,17,0.96)";
-    ctx.beginPath();
-    ctx.ellipse(0, headY + 27, 19, 5, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#f8fafc";
-    ctx.beginPath();
-    ctx.ellipse(-6, headY - 2, 2.6, 3.2, 0, 0, Math.PI * 2);
-    ctx.ellipse(6, headY - 2, 2.6, 3.2, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "rgba(255,255,255,0.8)";
-    ctx.lineWidth = 2.2;
-    ctx.beginPath();
-    ctx.moveTo(-6, headY + 9);
-    ctx.quadraticCurveTo(0, headY + 14, 6, headY + 9);
-    ctx.stroke();
-    ctx.restore();
+
+    // front (striking) arm on top - drives the slam
+    armRig(
+      { x: 22, y: -104 },
+      { x: 30 + px * 10, y: -82 + px * 22 },
+      { x: 30 + px * 16, y: -80 + px * 50 }
+    );
 
     ctx.shadowBlur = 0;
     ctx.restore();
@@ -11039,12 +11034,18 @@ function drawDeathNoteCharacterModel(kind, x, footY, scale = 1, options = {}) {
         skin: "#d9b394", hair: "#5f6775", hairDark: "#424853", coat: "#2c313a", trim: "#eef2f7", accent: "#8b1e22", pants: "#1f2937", shoe: "#111827", eye: "#111827"
       };
 
-  const bodyShift = pose === "punch" ? Math.min(10, 2 + punch * 12) : 0;
+  // BRAWLER_STYLE_SUMMON_PATCH: build the human summons the same way as
+  // the three playable brawlers - black-outlined legs, an outlined torso
+  // block, ball-jointed outlined arms, and a plain head with no eyes,
+  // mouth, or nose. Only the hair silhouette differs per character.
   const headBob = Math.sin(frame * 0.09) * 0.8;
   const armSwing = Math.sin(frame * 0.12) * 1.4;
-  const leftArmTarget = pose === "punch" ? { x: 20 + bodyShift * 1.3, y: -46 + punch * 2 } : { x: -16, y: -38 + armSwing * 0.35 };
-  const rightArmTarget = pose === "punch" ? { x: 42 + bodyShift * 1.5, y: -48 + punch * 3 } : { x: 16, y: -38 - armSwing * 0.35 };
+  const bodyColor = palette.coat;
+  const skinColor = palette.skin;
+  const legColor = isMisa ? palette.legwear : palette.pants;
+  const OUTLINE = "#020617";
 
+  // ground shadow
   ctx.save();
   ctx.globalAlpha *= 0.22;
   ctx.fillStyle = isMisa ? "rgba(20,18,23,0.48)" : "rgba(2,6,23,0.45)";
@@ -11053,241 +11054,155 @@ function drawDeathNoteCharacterModel(kind, x, footY, scale = 1, options = {}) {
   ctx.fill();
   ctx.restore();
 
-  // legs / stockings / pants
-  ctx.strokeStyle = isMisa ? palette.legwear : palette.pants;
-  ctx.lineWidth = isMisa ? 6 : 7;
-  ctx.beginPath();
-  ctx.moveTo(-8, -31); ctx.lineTo(-10, -11); ctx.lineTo(-12, 0);
-  ctx.moveTo(8, -31); ctx.lineTo(10, -11); ctx.lineTo(12, 0);
-  ctx.stroke();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
 
-  // shoes
-  ctx.strokeStyle = palette.shoe;
-  ctx.lineWidth = 4.5;
-  ctx.beginPath();
-  ctx.moveTo(-18, 0); ctx.lineTo(-8, 0);
-  ctx.moveTo(8, 0); ctx.lineTo(18, 0);
-  ctx.stroke();
-
-  // torso and clothing
-  if (isMisa) {
-    ctx.fillStyle = palette.coat;
+  // arm rig: black outline + fill + ball joints, same build as the brawlers
+  const armRig = (shoulder, elbow, hand) => {
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = 10;
     ctx.beginPath();
-    ctx.moveTo(-15, -80);
-    ctx.quadraticCurveTo(0, -88, 15, -80);
-    ctx.lineTo(13, -51);
-    ctx.lineTo(18, -33);
-    ctx.lineTo(0, -25);
-    ctx.lineTo(-18, -33);
-    ctx.lineTo(-13, -51);
-    ctx.closePath();
+    ctx.moveTo(shoulder.x, shoulder.y);
+    ctx.lineTo(elbow.x, elbow.y);
+    ctx.lineTo(hand.x, hand.y);
+    ctx.stroke();
+    ctx.strokeStyle = bodyColor;
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(shoulder.x, shoulder.y);
+    ctx.lineTo(elbow.x, elbow.y);
+    ctx.lineTo(hand.x, hand.y);
+    ctx.stroke();
+    ctx.fillStyle = OUTLINE;
+    ctx.beginPath();
+    ctx.arc(shoulder.x, shoulder.y, 4, 0, Math.PI * 2);
+    ctx.arc(elbow.x, elbow.y, 3.6, 0, Math.PI * 2);
     ctx.fill();
+    ctx.fillStyle = skinColor;
+    ctx.beginPath();
+    ctx.ellipse(hand.x, hand.y, 4.6, 3.8, 0, 0, Math.PI * 2);
+    ctx.fill();
+  };
 
+  // legs: black outline, then leg color, then shoe (brawler build)
+  const legPath = () => {
+    ctx.beginPath();
+    ctx.moveTo(-7, -34); ctx.lineTo(-8, -17); ctx.lineTo(-10, 0);
+    ctx.moveTo(7, -34); ctx.lineTo(8, -17); ctx.lineTo(10, 0);
+  };
+  ctx.strokeStyle = OUTLINE; ctx.lineWidth = 13; legPath(); ctx.stroke();
+  ctx.strokeStyle = legColor; ctx.lineWidth = 8; legPath(); ctx.stroke();
+  ctx.strokeStyle = OUTLINE; ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.moveTo(-14, 0); ctx.lineTo(-5, 0);
+  ctx.moveTo(5, 0); ctx.lineTo(14, 0);
+  ctx.stroke();
+  ctx.strokeStyle = palette.shoe; ctx.lineWidth = 3.2;
+  ctx.beginPath();
+  ctx.moveTo(-13, 0); ctx.lineTo(-5, 0);
+  ctx.moveTo(5, 0); ctx.lineTo(13, 0);
+  ctx.stroke();
+
+  // back arm behind the torso
+  armRig({ x: -12, y: -74 }, { x: -18, y: -58 }, { x: -16 + armSwing, y: -41 });
+
+  // torso: filled block with black outline
+  const torsoPath = () => {
+    ctx.beginPath();
+    ctx.moveTo(-15, -83);
+    ctx.lineTo(15, -83);
+    ctx.lineTo(16, -52);
+    ctx.lineTo(13, -33);
+    ctx.lineTo(-13, -33);
+    ctx.lineTo(-16, -52);
+    ctx.closePath();
+  };
+  ctx.fillStyle = bodyColor;
+  torsoPath();
+  ctx.fill();
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = 3;
+  torsoPath();
+  ctx.stroke();
+
+  // minimal clothing accent, kept simple to match the brawlers
+  if (isMisa) {
     ctx.fillStyle = palette.trim;
     ctx.beginPath();
-    ctx.moveTo(-9, -76);
-    ctx.lineTo(0, -63);
-    ctx.lineTo(9, -76);
-    ctx.lineTo(6, -54);
-    ctx.lineTo(-6, -54);
-    ctx.closePath();
+    ctx.moveTo(-6, -80); ctx.lineTo(0, -66); ctx.lineTo(6, -80);
+    ctx.lineTo(4, -55); ctx.lineTo(-4, -55); ctx.closePath();
     ctx.fill();
-
     ctx.fillStyle = palette.accent;
     ctx.beginPath();
-    ctx.moveTo(0, -67);
-    ctx.lineTo(6, -58);
-    ctx.lineTo(0, -49);
-    ctx.lineTo(-6, -58);
-    ctx.closePath();
+    ctx.moveTo(0, -70); ctx.lineTo(4, -63); ctx.lineTo(0, -55); ctx.lineTo(-4, -63); ctx.closePath();
     ctx.fill();
-
-    ctx.fillStyle = palette.skirt;
-    ctx.beginPath();
-    ctx.moveTo(-16, -32);
-    ctx.lineTo(16, -32);
-    ctx.lineTo(20, -19);
-    ctx.lineTo(12, -15);
-    ctx.lineTo(4, -21);
-    ctx.lineTo(0, -15);
-    ctx.lineTo(-4, -21);
-    ctx.lineTo(-12, -15);
-    ctx.lineTo(-20, -19);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.strokeStyle = "rgba(255,255,255,0.18)";
-    ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    ctx.moveTo(-11, -47); ctx.lineTo(11, -47);
-    ctx.moveTo(-13, -37); ctx.lineTo(13, -37);
-    ctx.stroke();
   } else {
-    ctx.fillStyle = palette.coat;
-    ctx.beginPath();
-    ctx.moveTo(-16, -81);
-    ctx.lineTo(16, -81);
-    ctx.lineTo(15, -32);
-    ctx.lineTo(0, -24);
-    ctx.lineTo(-15, -32);
-    ctx.closePath();
-    ctx.fill();
-
     ctx.fillStyle = palette.trim;
     ctx.beginPath();
-    ctx.moveTo(-7, -77);
-    ctx.lineTo(0, -64);
-    ctx.lineTo(7, -77);
-    ctx.lineTo(5, -48);
-    ctx.lineTo(-5, -48);
-    ctx.closePath();
+    ctx.moveTo(-5, -81); ctx.lineTo(0, -68); ctx.lineTo(5, -81);
+    ctx.lineTo(4, -52); ctx.lineTo(-4, -52); ctx.closePath();
     ctx.fill();
-
     ctx.fillStyle = palette.accent;
-    ctx.fillRect(-2.3, -71, 4.6, 23);
-
-    ctx.strokeStyle = "rgba(255,255,255,0.12)";
-    ctx.lineWidth = 1.6;
-    ctx.beginPath();
-    ctx.moveTo(-12, -56); ctx.lineTo(12, -56);
-    ctx.stroke();
-
-    ctx.fillStyle = "rgba(255,255,255,0.18)";
-    ctx.fillRect(8, -61, 4.5, 9);
+    ctx.fillRect(-2, -70, 4, 18);
   }
 
-  // arms / sleeves
-  ctx.strokeStyle = palette.coat;
-  ctx.lineWidth = isMisa ? 5.5 : 6;
+  // head: plain skin with a black outline, no facial features
+  ctx.fillStyle = skinColor;
   ctx.beginPath();
-  ctx.moveTo(-13, -72); ctx.lineTo(-18, -57); ctx.lineTo(leftArmTarget.x, leftArmTarget.y);
-  ctx.moveTo(13, -72); ctx.lineTo(18 + bodyShift * 0.25, -57); ctx.lineTo(rightArmTarget.x, rightArmTarget.y);
+  ctx.ellipse(0, -96 + headBob, 13, 14.6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = 2.4;
+  ctx.beginPath();
+  ctx.ellipse(0, -96 + headBob, 13, 14.6, 0, 0, Math.PI * 2);
   ctx.stroke();
 
+  // hair silhouette (per character), no face
   if (isMisa) {
-    ctx.strokeStyle = "rgba(255,255,255,0.8)";
-    ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    ctx.moveTo(-20, -57); ctx.lineTo(-15.5, -55);
-    ctx.moveTo(20, -57); ctx.lineTo(15.5, -55);
-    ctx.stroke();
-  }
-
-  ctx.fillStyle = palette.skin;
-  ctx.beginPath();
-  ctx.arc(leftArmTarget.x, leftArmTarget.y, 4.1, 0, Math.PI * 2);
-  ctx.arc(rightArmTarget.x, rightArmTarget.y, pose === "punch" ? 4.8 : 4.1, 0, Math.PI * 2);
-  ctx.fill();
-
-  // head
-  ctx.fillStyle = palette.skin;
-  ctx.beginPath();
-  ctx.ellipse(0, -98 + headBob, 13.4, 14.8, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  if (isMisa) {
-    // hair base + bangs
     ctx.fillStyle = palette.hair;
     ctx.beginPath();
-    ctx.moveTo(-14, -101 + headBob);
-    ctx.quadraticCurveTo(-10, -118 + headBob, 0, -116 + headBob);
-    ctx.quadraticCurveTo(11, -118 + headBob, 15, -101 + headBob);
+    ctx.moveTo(-14, -99 + headBob);
+    ctx.quadraticCurveTo(-10, -116 + headBob, 0, -114 + headBob);
+    ctx.quadraticCurveTo(11, -116 + headBob, 15, -99 + headBob);
     ctx.lineTo(13, -88 + headBob);
+    ctx.lineTo(8, -95 + headBob);
+    ctx.lineTo(3, -90 + headBob);
+    ctx.lineTo(-2, -96 + headBob);
+    ctx.lineTo(-7, -90 + headBob);
     ctx.lineTo(-13, -88 + headBob);
     ctx.closePath();
     ctx.fill();
-
-    ctx.fillStyle = palette.hairDark;
-    ctx.beginPath();
-    ctx.moveTo(-14, -101 + headBob);
-    ctx.lineTo(-7, -107 + headBob);
-    ctx.lineTo(-3, -100 + headBob);
-    ctx.lineTo(0, -108 + headBob);
-    ctx.lineTo(3, -100 + headBob);
-    ctx.lineTo(7, -107 + headBob);
-    ctx.lineTo(14, -101 + headBob);
-    ctx.lineTo(14, -95 + headBob);
-    ctx.lineTo(-14, -95 + headBob);
-    ctx.closePath();
-    ctx.fill();
-
-    // twin tails / long side hair
+    ctx.strokeStyle = palette.hairDark;
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    // twin tails
     ctx.fillStyle = palette.hair;
     ctx.beginPath();
-    ctx.ellipse(-16, -92 + headBob, 5.6, 17, -0.16, 0, Math.PI * 2);
-    ctx.ellipse(16, -92 + headBob, 5.6, 17, 0.16, 0, Math.PI * 2);
+    ctx.ellipse(-16, -90 + headBob, 5.4, 16, -0.16, 0, Math.PI * 2);
+    ctx.ellipse(16, -90 + headBob, 5.4, 16, 0.16, 0, Math.PI * 2);
     ctx.fill();
-
-    // black bows
-    ctx.fillStyle = palette.coat;
-    ctx.beginPath();
-    ctx.moveTo(-12, -101 + headBob); ctx.lineTo(-18, -104 + headBob); ctx.lineTo(-15, -98 + headBob); ctx.closePath();
-    ctx.moveTo(-12, -101 + headBob); ctx.lineTo(-16, -95 + headBob); ctx.lineTo(-11, -97 + headBob); ctx.closePath();
-    ctx.moveTo(12, -101 + headBob); ctx.lineTo(18, -104 + headBob); ctx.lineTo(15, -98 + headBob); ctx.closePath();
-    ctx.moveTo(12, -101 + headBob); ctx.lineTo(16, -95 + headBob); ctx.lineTo(11, -97 + headBob); ctx.closePath();
-    ctx.fill();
-
-    // face
-    ctx.fillStyle = "#fdf6ec";
-    ctx.beginPath();
-    ctx.ellipse(-4.4, -98 + headBob, 2.3, 1.9, 0, 0, Math.PI * 2);
-    ctx.ellipse(4.4, -98 + headBob, 2.3, 1.9, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = palette.eye;
-    ctx.beginPath();
-    ctx.arc(-4.4, -98 + headBob, 1.3, 0, Math.PI * 2);
-    ctx.arc(4.4, -98 + headBob, 1.3, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "rgba(17,24,39,0.75)";
-    ctx.lineWidth = 1.3;
-    ctx.beginPath();
-    ctx.moveTo(-8, -101 + headBob); ctx.quadraticCurveTo(-4.5, -103 + headBob, -1.5, -101 + headBob);
-    ctx.moveTo(1.5, -101 + headBob); ctx.quadraticCurveTo(4.5, -103 + headBob, 8, -101 + headBob);
-    ctx.stroke();
-    ctx.strokeStyle = "rgba(139,30,34,0.8)";
-    ctx.lineWidth = 1.6;
-    ctx.beginPath();
-    ctx.moveTo(-3.8, -90 + headBob); ctx.lineTo(0, -88 + headBob); ctx.lineTo(3.8, -90 + headBob);
-    ctx.stroke();
-
-    // little necklace/cross accent
-    ctx.strokeStyle = "rgba(236, 72, 153, 0.35)";
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.moveTo(0, -51); ctx.lineTo(0, -45);
-    ctx.moveTo(-2, -47.5); ctx.lineTo(2, -47.5);
+    ctx.strokeStyle = palette.hairDark;
+    ctx.lineWidth = 1.4;
     ctx.stroke();
   } else {
     ctx.fillStyle = palette.hair;
     ctx.beginPath();
-    ctx.moveTo(-13, -101 + headBob);
-    ctx.quadraticCurveTo(-10, -116 + headBob, 3, -115 + headBob);
-    ctx.quadraticCurveTo(13, -112 + headBob, 14, -100 + headBob);
-    ctx.lineTo(10, -92 + headBob);
-    ctx.lineTo(2, -96 + headBob);
-    ctx.lineTo(-5, -90 + headBob);
-    ctx.lineTo(-13, -94 + headBob);
+    ctx.moveTo(-13, -99 + headBob);
+    ctx.quadraticCurveTo(-11, -114 + headBob, 3, -113 + headBob);
+    ctx.quadraticCurveTo(13, -111 + headBob, 14, -98 + headBob);
+    ctx.lineTo(9, -94 + headBob);
+    ctx.lineTo(2, -98 + headBob);
+    ctx.lineTo(-5, -93 + headBob);
+    ctx.lineTo(-13, -95 + headBob);
     ctx.closePath();
     ctx.fill();
-
-    ctx.strokeStyle = "rgba(17,24,39,0.75)";
-    ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    ctx.ellipse(-4, -98 + headBob, 3.3, 4.2, 0, 0, Math.PI * 2);
-    ctx.ellipse(4, -98 + headBob, 3.3, 4.2, 0, 0, Math.PI * 2);
-    ctx.moveTo(-1, -98 + headBob); ctx.lineTo(1, -98 + headBob);
-    ctx.stroke();
-    ctx.fillStyle = palette.eye;
-    ctx.beginPath();
-    ctx.arc(-4, -98 + headBob, 1.1, 0, Math.PI * 2);
-    ctx.arc(4, -98 + headBob, 1.1, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "rgba(75,85,99,0.6)";
-    ctx.lineWidth = 1.1;
-    ctx.beginPath();
-    ctx.moveTo(-8, -90 + headBob); ctx.quadraticCurveTo(0, -86 + headBob, 8, -90 + headBob);
+    ctx.strokeStyle = palette.hairDark;
+    ctx.lineWidth = 1.3;
     ctx.stroke();
   }
+
+  // front arm on top of the torso
+  armRig({ x: 12, y: -74 }, { x: 18, y: -58 }, { x: 16 - armSwing, y: -41 });
 
   ctx.shadowBlur = 0;
   ctx.restore();
@@ -12014,39 +11929,45 @@ const armSwing = running ? (shrineWalk ? shrineStride : [-1, -0.55, 0, 0.55, 1, 
     ctx.strokeStyle = "#831843";
     ctx.lineWidth = 2;
     ctx.stroke();
-    // SUKUNA_TATTOO_PATCH: authentic symmetric cursed-technique tattoo
-    // linework across the face - no eyes/mouth/nose, just markings.
+    // SUKUNA_TATTOO_PATCH_V2: matches the real cursed-technique tattoo -
+    // a top crown notch, twin cracked claw marks flanking the eyes, a
+    // center gull mark, and a jaw curve with a chevron at the chin.
+    // No eyes/mouth/nose, just markings.
     ctx.strokeStyle = "#020617";
-    ctx.lineWidth = 2.2;
+    ctx.lineWidth = 1.8;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
     ctx.beginPath();
-    // brow-ridge chevrons
-    ctx.moveTo(15, 21);
-    ctx.lineTo(23, 24.5);
-    ctx.moveTo(37, 21);
-    ctx.lineTo(29, 24.5);
-    // under-ridge ticks
-    ctx.moveTo(17, 32);
-    ctx.lineTo(24, 29);
-    ctx.moveTo(35, 32);
-    ctx.lineTo(28, 29);
-    // forehead accent ticks
-    ctx.moveTo(20, 15);
-    ctx.lineTo(23, 20);
-    ctx.moveTo(32, 15);
-    ctx.lineTo(29, 20);
-    // signature centerline running the length of the face
-    ctx.moveTo(26, 12);
-    ctx.lineTo(26, 40);
-    ctx.stroke();
-
-    ctx.strokeStyle = "rgba(157, 23, 77, 0.85)";
-    ctx.lineWidth = 1.6;
-    ctx.beginPath();
-    // symmetric cheek marks
-    ctx.moveTo(13, 25);
-    ctx.quadraticCurveTo(17, 31, 15, 38);
-    ctx.moveTo(39, 25);
-    ctx.quadraticCurveTo(35, 31, 37, 38);
+    // top crown / brow notch
+    ctx.moveTo(21, 18);
+    ctx.quadraticCurveTo(22, 13, 19, 10);
+    ctx.quadraticCurveTo(23, 11, 25, 16);
+    ctx.moveTo(31, 18);
+    ctx.quadraticCurveTo(30, 13, 33, 10);
+    ctx.quadraticCurveTo(29, 11, 27, 16);
+    // twin cracked claw marks flanking the eyes
+    ctx.moveTo(13, 21);
+    ctx.lineTo(17, 19);
+    ctx.lineTo(15, 24);
+    ctx.lineTo(18, 23);
+    ctx.lineTo(16, 29);
+    ctx.moveTo(39, 21);
+    ctx.lineTo(35, 19);
+    ctx.lineTo(37, 24);
+    ctx.lineTo(34, 23);
+    ctx.lineTo(36, 29);
+    // center gull / mustache mark
+    ctx.moveTo(20, 28);
+    ctx.quadraticCurveTo(23, 25, 26, 28);
+    ctx.quadraticCurveTo(29, 25, 32, 28);
+    // jaw curve
+    ctx.moveTo(16, 30);
+    ctx.quadraticCurveTo(18, 38, 26, 39);
+    ctx.quadraticCurveTo(34, 38, 36, 30);
+    // chin chevron
+    ctx.moveTo(22, 36);
+    ctx.lineTo(26, 33);
+    ctx.lineTo(30, 36);
     ctx.stroke();
   } else if (f.technique === "deathnote") {
     const hairSway = idle;
@@ -12117,11 +12038,18 @@ const armSwing = running ? (shrineWalk ? shrineStride : [-1, -0.55, 0, 0.55, 1, 
       ctx.lineTo(hand.x, hand.y);
       ctx.stroke();
     }
+    // LIGHT_ARM_JOINT_PATCH: on the dark-armed brawlers these black joint
+    // dots blend into the arm, but on Light's tan arms they read as stark
+    // black rings segmenting the limb. The round line-join already keeps
+    // his elbow smooth, so skip the interior joint dots for Light - only
+    // the hand cap stays (it sits under the skin-colored hand anyway).
     if (useOutline) {
       ctx.fillStyle = "#020617";
       ctx.beginPath();
-      ctx.arc(shoulder.x, shoulder.y, 5.5, 0, Math.PI * 2);
-      ctx.arc(elbow.x, elbow.y, 5, 0, Math.PI * 2);
+      if (f.technique !== "deathnote") {
+        ctx.arc(shoulder.x, shoulder.y, 5.5, 0, Math.PI * 2);
+        ctx.arc(elbow.x, elbow.y, 5, 0, Math.PI * 2);
+      }
       ctx.ellipse(hand.x, hand.y, 7, 5.5, 0, 0, Math.PI * 2);
       ctx.fill();
     }
