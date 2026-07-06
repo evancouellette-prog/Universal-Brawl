@@ -9584,7 +9584,9 @@ function updateFighter(f, opponent) {
   f.vy += GRAVITY;
   f.x += f.vx;
   f.y += f.vy;
-  if (f.technique === "shrine" && f.grounded && Math.abs(f.vx) > 0.3 && !f.attacking && !f.blocking && f.stun <= 0 && f.dodging <= 0) {
+  // WALK_CYCLE_ALL_PATCH: every fighter advances the continuous walk cycle
+  // (it used to be shrine-only, leaving the others on a snappy 8-frame gait).
+  if (f.grounded && Math.abs(f.vx) > 0.3 && !f.attacking && !f.blocking && f.stun <= 0 && f.dodging <= 0) {
     f.walkCycle = ((f.walkCycle || 0) + Math.abs(f.vx) * 0.065) % (Math.PI * 2);
   } else if (f.grounded && !f.attacking && !f.blocking) {
     f.walkCycle = 0;
@@ -10882,18 +10884,32 @@ function drawSukunaGrabThrowHud(f) {
 
 
 function drawDeathNoteCharacterModel(kind, x, footY, scale = 1, options = {}) {
+  // SUMMON_EXACT_BRAWLER_PATCH: the summons are now literal re-skins of the
+  // playable fighter rig. Every coordinate below is the fighter body from
+  // drawFighter translated into summon space (fighter x-26, y-124, so the
+  // origin sits at the feet center), so the build, proportions, outlines
+  // and joint construction match the brawlers exactly. No faces - hair
+  // silhouettes only. Ryuk uses the same rig scaled up ~1.3x with his
+  // wings and spiked hair kept so he still reads as Ryuk.
   const alpha = Number.isFinite(options.alpha) ? options.alpha : 1;
   const pose = options.pose || "idle";
   const hitFlash = Math.max(0, Math.min(1, options.hitFlash || 0));
   const punch = Math.max(0, Math.min(1, options.punch || 0));
   const dir = options.dir || 1;
-  const idle = Math.sin(frame * 0.08) * 0.9;
   const isRyuk = kind === "ryuk";
   const isMisa = kind === "misa";
+  const effScale = scale * (isRyuk ? 1.3 : 1);
+  const idleSway = Math.sin(frame * 0.08);
+
+  const palette = isRyuk
+    ? { body: "#111318", skin: "#c7ced6", pants: "#0b0d12", shoe: "#374151", hair: "#080808", trim: null, accent: null }
+    : isMisa
+      ? { body: "#141217", skin: "#f4cfb0", pants: "#09090b", shoe: "#f8fafc", hair: "#dbc06c", hairDark: "#a88b48", trim: "#f8fafc", accent: "#8b1e22" }
+      : { body: "#2c313a", skin: "#d9b394", pants: "#1f2937", shoe: "#e5e7eb", hair: "#8b929e", hairDark: "#4b5563", trim: "#eef2f7", accent: "#8b1e22" };
 
   ctx.save();
   ctx.translate(x, footY);
-  ctx.scale(dir * scale, scale);
+  ctx.scale(dir * effScale, effScale);
   ctx.globalAlpha *= alpha;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
@@ -10903,273 +10919,197 @@ function drawDeathNoteCharacterModel(kind, x, footY, scale = 1, options = {}) {
     ctx.shadowBlur = 14 * hitFlash;
   }
 
-  if (isRyuk) {
-    // RYUK_BRAWLER_STYLE_PATCH: same construction as the playable brawlers
-    // (black-outlined legs, outlined torso block, ball-jointed outlined
-    // arms, plain faceless head) - just built bigger, and keeping his black
-    // spiked hair + wings so he still reads as Ryuk.
-    const bob = Math.sin(frame * 0.08) * 1.1;
-    const bodyDark = "#111318";
-    const greySkin = "#c7ced6";
-    const OUTLINE = "#020617";
-    const px = pose === "punch" ? punch : 0;
-
-    // ground shadow
-    ctx.save();
-    ctx.globalAlpha *= 0.26;
-    ctx.fillStyle = "rgba(0,0,0,0.72)";
-    ctx.beginPath();
-    ctx.ellipse(0, 2, 30, 8, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-
-    // wings behind the body
-    ctx.fillStyle = "rgba(0,0,0,0.86)";
-    ctx.beginPath();
-    ctx.moveTo(-24, -120);
-    ctx.quadraticCurveTo(-84, -128, -104, -66);
-    ctx.quadraticCurveTo(-78, -80, -68, -44);
-    ctx.quadraticCurveTo(-54, -78, -22, -70);
-    ctx.closePath();
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(24, -120);
-    ctx.quadraticCurveTo(84, -128, 104, -66);
-    ctx.quadraticCurveTo(78, -80, 68, -44);
-    ctx.quadraticCurveTo(54, -78, 22, -70);
-    ctx.closePath();
-    ctx.fill();
-
-    // arm rig: black outline + dark fill + clawed grey hand (brawler build)
-    const armRig = (shoulder, elbow, hand) => {
-      ctx.strokeStyle = OUTLINE; ctx.lineWidth = 15;
-      ctx.beginPath();
-      ctx.moveTo(shoulder.x, shoulder.y); ctx.lineTo(elbow.x, elbow.y); ctx.lineTo(hand.x, hand.y);
-      ctx.stroke();
-      ctx.strokeStyle = bodyDark; ctx.lineWidth = 10;
-      ctx.beginPath();
-      ctx.moveTo(shoulder.x, shoulder.y); ctx.lineTo(elbow.x, elbow.y); ctx.lineTo(hand.x, hand.y);
-      ctx.stroke();
-      ctx.fillStyle = OUTLINE;
-      ctx.beginPath(); ctx.ellipse(hand.x, hand.y, 9, 7.5, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = greySkin;
-      ctx.beginPath(); ctx.ellipse(hand.x, hand.y, 6.6, 5.4, 0, 0, Math.PI * 2); ctx.fill();
-    };
-
-    // back (far) arm - sweeps down and forward on the punch
-    armRig(
-      { x: -22, y: -104 },
-      { x: -30 + px * 24, y: -82 + px * 20 },
-      { x: -30 + px * 48, y: -80 + px * 48 }
-    );
-
-    // legs: outlined dark, scaled up
-    const legPath = () => {
-      ctx.beginPath();
-      ctx.moveTo(-11, -46); ctx.lineTo(-15, -24); ctx.lineTo(-20, 0);
-      ctx.moveTo(11, -46); ctx.lineTo(15, -24); ctx.lineTo(20, 0);
-    };
-    ctx.strokeStyle = OUTLINE; ctx.lineWidth = 17; legPath(); ctx.stroke();
-    ctx.strokeStyle = bodyDark; ctx.lineWidth = 11; legPath(); ctx.stroke();
-    ctx.strokeStyle = OUTLINE; ctx.lineWidth = 8;
-    ctx.beginPath();
-    ctx.moveTo(-27, 0); ctx.lineTo(-15, 0);
-    ctx.moveTo(15, 0); ctx.lineTo(27, 0);
-    ctx.stroke();
-
-    // torso block, outlined
-    const torsoPath = () => {
-      ctx.beginPath();
-      ctx.moveTo(-22, -112);
-      ctx.lineTo(22, -112);
-      ctx.lineTo(19, -70);
-      ctx.lineTo(11, -46);
-      ctx.lineTo(-11, -46);
-      ctx.lineTo(-19, -70);
-      ctx.closePath();
-    };
-    ctx.fillStyle = bodyDark; torsoPath(); ctx.fill();
-    ctx.strokeStyle = OUTLINE; ctx.lineWidth = 3.5; torsoPath(); ctx.stroke();
-    ctx.fillStyle = "rgba(255,255,255,0.06)";
-    ctx.fillRect(-6, -104, 12, 44);
-
-    // head: grey, outlined, no face
-    const hy = -132 + bob;
-    ctx.fillStyle = greySkin;
-    ctx.beginPath(); ctx.ellipse(0, hy, 18, 20, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = OUTLINE; ctx.lineWidth = 3.5;
-    ctx.beginPath(); ctx.ellipse(0, hy, 18, 20, 0, 0, Math.PI * 2); ctx.stroke();
-
-    // black spiky hair
-    ctx.fillStyle = "#080808";
-    ctx.beginPath();
-    ctx.moveTo(-19, hy - 6);
-    ctx.lineTo(-30, hy - 44); ctx.lineTo(-13, hy - 24); ctx.lineTo(-6, hy - 50);
-    ctx.lineTo(0, hy - 24); ctx.lineTo(6, hy - 50); ctx.lineTo(13, hy - 24);
-    ctx.lineTo(30, hy - 44); ctx.lineTo(19, hy - 6);
-    ctx.closePath();
-    ctx.fill();
-
-    // front (striking) arm on top - drives the slam
-    armRig(
-      { x: 22, y: -104 },
-      { x: 30 + px * 10, y: -82 + px * 22 },
-      { x: 30 + px * 16, y: -80 + px * 50 }
-    );
-
-    ctx.shadowBlur = 0;
-    ctx.restore();
-    return;
-  }
-
-  // Human summons use a fighter/dummy-like base with more visible character parts.
-  const palette = isMisa
-    ? {
-        skin: "#f4cfb0", hair: "#dbc06c", hairDark: "#a88b48", coat: "#141217", trim: "#f8fafc", accent: "#8b1e22", skirt: "#1b1620", legwear: "#09090b", shoe: "#0a0a0b", eye: "#111827", mouth: "#7f1d1d"
-      }
-    : {
-        skin: "#d9b394", hair: "#5f6775", hairDark: "#424853", coat: "#2c313a", trim: "#eef2f7", accent: "#8b1e22", pants: "#1f2937", shoe: "#111827", eye: "#111827"
-      };
-
-  // BRAWLER_STYLE_SUMMON_PATCH: build the human summons the same way as
-  // the three playable brawlers - black-outlined legs, an outlined torso
-  // block, ball-jointed outlined arms, and a plain head with no eyes,
-  // mouth, or nose. Only the hair silhouette differs per character.
-  const headBob = Math.sin(frame * 0.09) * 0.8;
-  const armSwing = Math.sin(frame * 0.12) * 1.4;
-  const bodyColor = palette.coat;
-  const skinColor = palette.skin;
-  const legColor = isMisa ? palette.legwear : palette.pants;
-  const OUTLINE = "#020617";
-
   // ground shadow
   ctx.save();
-  ctx.globalAlpha *= 0.22;
-  ctx.fillStyle = isMisa ? "rgba(20,18,23,0.48)" : "rgba(2,6,23,0.45)";
+  ctx.globalAlpha *= 0.24;
+  ctx.fillStyle = "rgba(2,6,23,0.5)";
   ctx.beginPath();
-  ctx.ellipse(0, 2, 18, 5.5, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 2, isRyuk ? 26 : 20, 6, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-
-  // arm rig: black outline + fill + ball joints, same build as the brawlers
-  const armRig = (shoulder, elbow, hand) => {
-    ctx.strokeStyle = OUTLINE;
-    ctx.lineWidth = 10;
+  // Ryuk's wings sit behind everything else
+  if (isRyuk) {
+    ctx.fillStyle = "rgba(0,0,0,0.86)";
     ctx.beginPath();
-    ctx.moveTo(shoulder.x, shoulder.y);
-    ctx.lineTo(elbow.x, elbow.y);
-    ctx.lineTo(hand.x, hand.y);
-    ctx.stroke();
-    ctx.strokeStyle = bodyColor;
-    ctx.lineWidth = 6;
-    ctx.beginPath();
-    ctx.moveTo(shoulder.x, shoulder.y);
-    ctx.lineTo(elbow.x, elbow.y);
-    ctx.lineTo(hand.x, hand.y);
-    ctx.stroke();
-    ctx.fillStyle = OUTLINE;
-    ctx.beginPath();
-    ctx.arc(shoulder.x, shoulder.y, 4, 0, Math.PI * 2);
-    ctx.arc(elbow.x, elbow.y, 3.6, 0, Math.PI * 2);
+    ctx.moveTo(-16, -86);
+    ctx.quadraticCurveTo(-66, -96, -84, -46);
+    ctx.quadraticCurveTo(-60, -60, -52, -30);
+    ctx.quadraticCurveTo(-42, -58, -14, -52);
+    ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = skinColor;
     ctx.beginPath();
-    ctx.ellipse(hand.x, hand.y, 4.6, 3.8, 0, 0, Math.PI * 2);
+    ctx.moveTo(16, -86);
+    ctx.quadraticCurveTo(66, -96, 84, -46);
+    ctx.quadraticCurveTo(60, -60, 52, -30);
+    ctx.quadraticCurveTo(42, -58, 14, -52);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // fighter-identical arm rig (outline 13 / fill 8 / joint dots / hand)
+  const armRig = (shoulder, elbow, hand) => {
+    const strokeArm = (strokeColor, width) => {
+      ctx.strokeStyle = strokeColor;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      ctx.moveTo(shoulder.x, shoulder.y);
+      ctx.lineTo(elbow.x, elbow.y);
+      ctx.lineTo(hand.x, hand.y);
+      ctx.stroke();
+    };
+    strokeArm("#020617", 13);
+    strokeArm(palette.body, 8);
+    ctx.fillStyle = "#020617";
+    ctx.beginPath();
+    ctx.arc(shoulder.x, shoulder.y, 5.5, 0, Math.PI * 2);
+    ctx.arc(elbow.x, elbow.y, 5, 0, Math.PI * 2);
+    ctx.ellipse(hand.x, hand.y, 7, 5.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = palette.body;
+    ctx.beginPath();
+    ctx.arc(shoulder.x, shoulder.y, 3.8, 0, Math.PI * 2);
+    ctx.arc(elbow.x, elbow.y, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = palette.skin;
+    ctx.beginPath();
+    ctx.ellipse(hand.x - 1, hand.y - 1, 4.8, 3.8, 0, 0, Math.PI * 2);
     ctx.fill();
   };
 
-  // legs: black outline, then leg color, then shoe (brawler build)
+  const armSway = idleSway * 1.2;
+  const punchDrive = pose === "punch" ? punch : 0;
+
+  // back (left) arm behind the torso
+  armRig(
+    { x: -15, y: -72 },
+    { x: -21 + punchDrive * 6, y: -56 + punchDrive * 4 },
+    { x: -16 - armSway + punchDrive * 14, y: -42 + punchDrive * 2 }
+  );
+
+  // legs: fighter-identical (outline 17 / color 11), idle stance offsets
   const legPath = () => {
     ctx.beginPath();
-    ctx.moveTo(-7, -34); ctx.lineTo(-8, -17); ctx.lineTo(-10, 0);
-    ctx.moveTo(7, -34); ctx.lineTo(8, -17); ctx.lineTo(10, 0);
+    ctx.moveTo(-8, -50);
+    ctx.lineTo(-11, -23);
+    ctx.lineTo(-15, 0);
+    ctx.moveTo(8, -50);
+    ctx.lineTo(11, -23);
+    ctx.lineTo(17, 0);
   };
-  ctx.strokeStyle = OUTLINE; ctx.lineWidth = 13; legPath(); ctx.stroke();
-  ctx.strokeStyle = legColor; ctx.lineWidth = 8; legPath(); ctx.stroke();
-  ctx.strokeStyle = OUTLINE; ctx.lineWidth = 6;
-  ctx.beginPath();
-  ctx.moveTo(-14, 0); ctx.lineTo(-5, 0);
-  ctx.moveTo(5, 0); ctx.lineTo(14, 0);
+  ctx.strokeStyle = "#020617";
+  ctx.lineWidth = 17;
+  legPath();
   ctx.stroke();
-  ctx.strokeStyle = palette.shoe; ctx.lineWidth = 3.2;
+  ctx.strokeStyle = palette.pants;
+  ctx.lineWidth = 11;
+  legPath();
+  ctx.stroke();
+  ctx.strokeStyle = "#020617";
+  ctx.lineWidth = 8;
   ctx.beginPath();
-  ctx.moveTo(-13, 0); ctx.lineTo(-5, 0);
-  ctx.moveTo(5, 0); ctx.lineTo(13, 0);
+  ctx.moveTo(-22, 1);
+  ctx.lineTo(-3, 1);
+  ctx.moveTo(10, 1);
+  ctx.lineTo(29, 1);
+  ctx.stroke();
+  ctx.strokeStyle = palette.shoe;
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(-20, 1);
+  ctx.lineTo(-5, 1);
+  ctx.moveTo(12, 1);
+  ctx.lineTo(27, 1);
   ctx.stroke();
 
-  // back arm behind the torso
-  armRig({ x: -12, y: -74 }, { x: -18, y: -58 }, { x: -16 + armSwing, y: -41 });
-
-  // torso: filled block with black outline
-  const torsoPath = () => {
-    ctx.beginPath();
-    ctx.moveTo(-15, -83);
-    ctx.lineTo(15, -83);
-    ctx.lineTo(16, -52);
-    ctx.lineTo(13, -33);
-    ctx.lineTo(-13, -33);
-    ctx.lineTo(-16, -52);
-    ctx.closePath();
-  };
-  ctx.fillStyle = bodyColor;
-  torsoPath();
+  // torso: fighter-identical black base + colored inset
+  ctx.fillStyle = "#020617";
+  ctx.beginPath();
+  ctx.moveTo(-13, -90);
+  ctx.lineTo(17, -88);
+  ctx.lineTo(21, -45);
+  ctx.lineTo(3, -38);
+  ctx.lineTo(-18, -44);
+  ctx.lineTo(-18, -81);
+  ctx.closePath();
   ctx.fill();
-  ctx.strokeStyle = OUTLINE;
-  ctx.lineWidth = 3;
-  torsoPath();
-  ctx.stroke();
+  ctx.fillStyle = palette.body;
+  ctx.beginPath();
+  ctx.moveTo(-11, -88);
+  ctx.lineTo(15, -86);
+  ctx.lineTo(17, -48);
+  ctx.lineTo(3, -42);
+  ctx.lineTo(-15, -47);
+  ctx.lineTo(-15, -80);
+  ctx.closePath();
+  ctx.fill();
 
-  // minimal clothing accent, kept simple to match the brawlers
-  if (isMisa) {
-    ctx.fillStyle = palette.trim;
-    ctx.beginPath();
-    ctx.moveTo(-6, -80); ctx.lineTo(0, -66); ctx.lineTo(6, -80);
-    ctx.lineTo(4, -55); ctx.lineTo(-4, -55); ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = palette.accent;
-    ctx.beginPath();
-    ctx.moveTo(0, -70); ctx.lineTo(4, -63); ctx.lineTo(0, -55); ctx.lineTo(-4, -63); ctx.closePath();
-    ctx.fill();
+  // clothing accent: white collar V + red tie, same construction as
+  // Light's shirt (skipped for Ryuk, who gets a subtle coat highlight)
+  if (isRyuk) {
+    ctx.fillStyle = "rgba(255,255,255,0.07)";
+    ctx.fillRect(-4, -80, 8, 34);
   } else {
     ctx.fillStyle = palette.trim;
     ctx.beginPath();
-    ctx.moveTo(-5, -81); ctx.lineTo(0, -68); ctx.lineTo(5, -81);
-    ctx.lineTo(4, -52); ctx.lineTo(-4, -52); ctx.closePath();
+    ctx.moveTo(-5, -87);
+    ctx.lineTo(7, -86);
+    ctx.lineTo(9, -48);
+    ctx.lineTo(1, -42);
+    ctx.lineTo(-8, -48);
+    ctx.lineTo(-8, -81);
+    ctx.closePath();
     ctx.fill();
     ctx.fillStyle = palette.accent;
-    ctx.fillRect(-2, -70, 4, 18);
+    ctx.beginPath();
+    ctx.moveTo(0, -85);
+    ctx.lineTo(5, -76);
+    ctx.lineTo(3, -48);
+    ctx.lineTo(-2, -46);
+    ctx.lineTo(-4, -76);
+    ctx.closePath();
+    ctx.fill();
   }
 
-  // head: plain skin with a black outline, no facial features
-  ctx.fillStyle = skinColor;
+  // head: fighter-identical skin ellipse with black outline, no face
+  const headBob = idleSway * 0.7;
+  ctx.fillStyle = palette.skin;
   ctx.beginPath();
-  ctx.ellipse(0, -96 + headBob, 13, 14.6, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, -101 + headBob, 13, 15, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = OUTLINE;
-  ctx.lineWidth = 2.4;
+  ctx.strokeStyle = "#020617";
+  ctx.lineWidth = 2.6;
   ctx.beginPath();
-  ctx.ellipse(0, -96 + headBob, 13, 14.6, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, -101 + headBob, 13, 15, 0, 0, Math.PI * 2);
   ctx.stroke();
 
-  // hair silhouette (per character), no face
-  if (isMisa) {
+  // hair silhouettes - the only per-character difference above the neck
+  if (isRyuk) {
     ctx.fillStyle = palette.hair;
     ctx.beginPath();
-    ctx.moveTo(-14, -99 + headBob);
-    ctx.quadraticCurveTo(-10, -116 + headBob, 0, -114 + headBob);
-    ctx.quadraticCurveTo(11, -116 + headBob, 15, -99 + headBob);
-    ctx.lineTo(13, -88 + headBob);
-    ctx.lineTo(8, -95 + headBob);
-    ctx.lineTo(3, -90 + headBob);
-    ctx.lineTo(-2, -96 + headBob);
-    ctx.lineTo(-7, -90 + headBob);
-    ctx.lineTo(-13, -88 + headBob);
+    ctx.moveTo(-14, -107 + headBob);
+    ctx.lineTo(-24, -140 + headBob);
+    ctx.lineTo(-10, -122 + headBob);
+    ctx.lineTo(-5, -146 + headBob);
+    ctx.lineTo(0, -122 + headBob);
+    ctx.lineTo(5, -146 + headBob);
+    ctx.lineTo(10, -122 + headBob);
+    ctx.lineTo(24, -140 + headBob);
+    ctx.lineTo(14, -107 + headBob);
+    ctx.closePath();
+    ctx.fill();
+  } else if (isMisa) {
+    ctx.fillStyle = palette.hair;
+    ctx.beginPath();
+    ctx.moveTo(-14, -104 + headBob);
+    ctx.quadraticCurveTo(-10, -121 + headBob, 0, -119 + headBob);
+    ctx.quadraticCurveTo(11, -121 + headBob, 15, -104 + headBob);
+    ctx.lineTo(13, -93 + headBob);
+    ctx.lineTo(8, -100 + headBob);
+    ctx.lineTo(3, -95 + headBob);
+    ctx.lineTo(-2, -101 + headBob);
+    ctx.lineTo(-7, -95 + headBob);
+    ctx.lineTo(-13, -93 + headBob);
     ctx.closePath();
     ctx.fill();
     ctx.strokeStyle = palette.hairDark;
@@ -11178,8 +11118,8 @@ function drawDeathNoteCharacterModel(kind, x, footY, scale = 1, options = {}) {
     // twin tails
     ctx.fillStyle = palette.hair;
     ctx.beginPath();
-    ctx.ellipse(-16, -90 + headBob, 5.4, 16, -0.16, 0, Math.PI * 2);
-    ctx.ellipse(16, -90 + headBob, 5.4, 16, 0.16, 0, Math.PI * 2);
+    ctx.ellipse(-16, -95 + headBob, 5.4, 16, -0.16, 0, Math.PI * 2);
+    ctx.ellipse(16, -95 + headBob, 5.4, 16, 0.16, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = palette.hairDark;
     ctx.lineWidth = 1.4;
@@ -11187,13 +11127,13 @@ function drawDeathNoteCharacterModel(kind, x, footY, scale = 1, options = {}) {
   } else {
     ctx.fillStyle = palette.hair;
     ctx.beginPath();
-    ctx.moveTo(-13, -99 + headBob);
-    ctx.quadraticCurveTo(-11, -114 + headBob, 3, -113 + headBob);
-    ctx.quadraticCurveTo(13, -111 + headBob, 14, -98 + headBob);
-    ctx.lineTo(9, -94 + headBob);
-    ctx.lineTo(2, -98 + headBob);
-    ctx.lineTo(-5, -93 + headBob);
-    ctx.lineTo(-13, -95 + headBob);
+    ctx.moveTo(-13, -104 + headBob);
+    ctx.quadraticCurveTo(-11, -119 + headBob, 3, -118 + headBob);
+    ctx.quadraticCurveTo(13, -116 + headBob, 14, -103 + headBob);
+    ctx.lineTo(9, -99 + headBob);
+    ctx.lineTo(2, -103 + headBob);
+    ctx.lineTo(-5, -98 + headBob);
+    ctx.lineTo(-13, -100 + headBob);
     ctx.closePath();
     ctx.fill();
     ctx.strokeStyle = palette.hairDark;
@@ -11201,8 +11141,12 @@ function drawDeathNoteCharacterModel(kind, x, footY, scale = 1, options = {}) {
     ctx.stroke();
   }
 
-  // front arm on top of the torso
-  armRig({ x: 12, y: -74 }, { x: 18, y: -58 }, { x: 16 - armSwing, y: -41 });
+  // front (right) arm on top - drives the Ryuk punch
+  armRig(
+    { x: 16, y: -72 },
+    { x: 22 + punchDrive * 14, y: -56 + punchDrive * 10 },
+    { x: 17 + armSway + punchDrive * 34, y: -42 + punchDrive * 12 }
+  );
 
   ctx.shadowBlur = 0;
   ctx.restore();
@@ -11568,25 +11512,18 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   const dodgeAlpha = f.dodging > 0 ? 0.48 : 1;
   const running = !f.ko && f.grounded && Math.abs(f.vx) > 0.65 && !f.blocking && f.stun <= 0 && f.dodging <= 0;
   const gojoWalk = running && f.technique === "limitless";
-  const shrineWalk = running && f.technique === "shrine";
   const retreating = running && Math.sign(f.vx) === -f.dir;
-  const runSpeed = running ? Math.max(0.75, Math.min(1.6, Math.abs(f.vx) / BASE_MOVE_SPEED)) : 1;
+  // WALK_GAIT_PATCH: one continuous, phase-locked gait for every fighter.
+  // The legs use the inverse-kinematics stepper below (previously
+  // shrine-only) and the arms swing from the exact same phase, so nothing
+  // snaps between keyframes or drifts out of sync anymore.
   const shrineWalkCycle = f.walkCycle || 0;
-  const runFrame = running
-    ? shrineWalk
-      ? Math.floor(((shrineWalkCycle % (Math.PI * 2)) / (Math.PI * 2)) * 8) % 8
-      : Math.floor(frame * runSpeed / (gojoWalk ? 3 : 4)) % 8
-    : 0;
-  const runPhase = shrineWalk ? shrineWalkCycle : runFrame / 8 * Math.PI * 2;
   const moveDirection = running ? Math.sign(f.vx) * f.dir : 1;
-  const shrineStride = shrineWalk ? -Math.cos(shrineWalkCycle) : 0;
-  const runCycle = running ? Math.sin(runPhase) : 0;
-const armSwing = running ? (shrineWalk ? shrineStride : [-1, -0.55, 0, 0.55, 1, 0.55, 0, -0.55][runFrame]) * moveDirection : 0;
-  const runPoseFrames = shrineWalk ? [-1, -0.85, -0.25, 0.4, 1, 0.85, 0.25, -0.4] : [-1, -0.55, 0, 0.55, 1, 0.55, 0, -0.55];
-  const runLiftFrames = shrineWalk ? [0, 1.5, 4.5, 2.4, 0, 1.5, 4.5, 2.4] : [0, 2, 4, 2, 0, 2, 4, 2];
-  const runPose = running ? shrineWalk ? shrineStride : runPoseFrames[runFrame] : 0;
-  const runCenterLift = running ? runLiftFrames[runFrame] : 0;
-  const bob = running ? (gojoWalk ? 0.8 : 1.4) + runCenterLift * (gojoWalk ? 0.35 : 0.55) : 0;
+  const walkStride = running ? -Math.cos(shrineWalkCycle) : 0;
+  const armSwing = walkStride * moveDirection;
+  const runPose = walkStride;
+  const runCenterLift = running ? Math.abs(Math.sin(shrineWalkCycle)) * 3 : 0;
+  const bob = running ? 1 + runCenterLift * 0.45 : 0;
   const jumpPose = !f.grounded && !f.ko;
   const jumpRetreating = jumpPose && Math.sign(f.vx) === -f.dir;
   const jumpCycle = jumpPose ? Math.sin(frame * 0.32) : 0;
@@ -11625,42 +11562,31 @@ const armSwing = running ? (shrineWalk ? shrineStride : [-1, -0.55, 0, 0.55, 1, 
   const footY = 124;
   const leftHip = { x: 18, y: hipY };
   const rightHip = { x: 34, y: hipY };
-  const stride = running ? (retreating ? -runPose * 0.62 : runPose) : 0;
   const risingJump = jumpPose && f.vy < -0.3;
   const fallingJump = jumpPose && !risingJump;
-  const stepLiftAmount = shrineWalk ? 4.6 : gojoWalk ? 2.5 : 5.2;
-  const leftStepLift = running ? Math.max(0, runPose) * stepLiftAmount + (Math.abs(runPose) < 0.05 ? runCenterLift * 0.45 : 0) : 0;
-  const rightStepLift = running ? Math.max(0, -runPose) * stepLiftAmount + (Math.abs(runPose) < 0.05 ? runCenterLift * 0.45 : 0) : 0;
-  const kneeBendSize = shrineWalk ? 9 : gojoWalk ? 5 : 8;
-  const kneeStride = shrineWalk ? 9 : gojoWalk ? 5 : 8;
-  const footStride = shrineWalk ? 16 : gojoWalk ? 9 : 15;
-  const leftKneeBend = running ? [-7, -4, 2, 6, 7, 6, 2, -4][runFrame] * (kneeBendSize / 8) : 0;
-  const rightKneeBend = running ? [7, 6, 2, -4, -7, -4, 2, 6][runFrame] * (kneeBendSize / 8) : 0;
-  const kneeDropScale = shrineWalk ? 0.95 : gojoWalk ? 0.55 : 0.85;
-  const leftKneeDrop = running ? [0, 2, 5, 3, 0, 3, 5, 2][runFrame] * kneeDropScale : 0;
-  const rightKneeDrop = running ? [0, 3, 5, 2, 0, 2, 5, 3][runFrame] * kneeDropScale : 0;
   const leftKnee = jumpPose
     ? { x: fallingJump ? 20 : 21, y: fallingJump ? 96 : 95 }
-    : { x: 16 - stride * kneeStride + leftKneeBend, y: kneeY - leftStepLift + leftKneeDrop };
+    : { x: 16, y: kneeY };
   const rightKnee = risingJump
     ? { x: 61, y: 77 }
     : jumpPose
       ? { x: 60, y: 79 }
-      : { x: 36 + stride * kneeStride + rightKneeBend, y: kneeY - rightStepLift + rightKneeDrop };
+      : { x: 36, y: kneeY };
   const leftFoot = jumpPose
     ? { x: fallingJump ? -10 : -11, y: fallingJump ? 98 : 96 }
-    : { x: 14 - stride * footStride, y: footY - leftStepLift * 0.16 };
+    : { x: 14, y: footY };
   const rightFoot = risingJump
     ? { x: 61, y: 114 }
     : jumpPose
       ? { x: 60, y: 115 }
-      : { x: 39 + stride * footStride, y: footY - rightStepLift * 0.16 };
-  if (shrineWalk && !jumpPose) {
-    const humanStride = Math.max(-1, Math.min(1, shrineStride));
-    const leftLift = Math.max(0, Math.sin(shrineWalkCycle)) * 2.4;
-    const rightLift = Math.max(0, -Math.sin(shrineWalkCycle)) * 2.4;
-    leftFoot.x = 18 - humanStride * 10;
-    rightFoot.x = 34 + humanStride * 10;
+      : { x: 39, y: footY };
+  if (running && !jumpPose) {
+    const humanStride = Math.max(-1, Math.min(1, walkStride));
+    const strideLen = gojoWalk ? 9 : f.technique === "shrine" ? 10 : 9.5;
+    const leftLift = Math.max(0, Math.sin(shrineWalkCycle)) * 2.6;
+    const rightLift = Math.max(0, -Math.sin(shrineWalkCycle)) * 2.6;
+    leftFoot.x = 18 - humanStride * strideLen;
+    rightFoot.x = 34 + humanStride * strideLen;
     leftFoot.y = footY - leftLift;
     rightFoot.y = footY - rightLift;
 
@@ -11822,27 +11748,26 @@ const armSwing = running ? (shrineWalk ? shrineStride : [-1, -0.55, 0, 0.55, 1, 
     ctx.lineTo(13, 45);
     ctx.closePath();
     ctx.fill();
+    // SUKUNA_BODY_TATTOO_PATCH: replaces the old rib-grid with markings in
+    // the reference style - a barbed hook curve on each pec, a short
+    // sternum line, and a mirrored double band under the chest.
     ctx.strokeStyle = "#020617";
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = 2.1;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
     ctx.beginPath();
-    ctx.moveTo(18, 42);
-    ctx.quadraticCurveTo(27, 48, 37, 42);
-    ctx.moveTo(18, 56);
-    ctx.quadraticCurveTo(27, 61, 37, 56);
-    ctx.moveTo(27, 42);
-    ctx.lineTo(27, 70);
-    ctx.moveTo(17, 48);
-    ctx.lineTo(13, 62);
-    ctx.moveTo(37, 48);
-    ctx.lineTo(41, 62);
-    ctx.moveTo(19, 51);
-    ctx.lineTo(35, 51);
-    ctx.moveTo(20, 66);
-    ctx.lineTo(34, 66);
-    ctx.moveTo(22, 44);
-    ctx.lineTo(17, 57);
-    ctx.moveTo(32, 44);
-    ctx.lineTo(37, 57);
+    ctx.moveTo(19, 41);
+    ctx.quadraticCurveTo(15.5, 46, 18.5, 51);
+    ctx.lineTo(21.5, 48.5);
+    ctx.moveTo(35, 41);
+    ctx.quadraticCurveTo(38.5, 46, 35.5, 51);
+    ctx.lineTo(32.5, 48.5);
+    ctx.moveTo(27, 40);
+    ctx.lineTo(27, 52);
+    ctx.moveTo(17, 55);
+    ctx.quadraticCurveTo(27, 58.5, 37, 55);
+    ctx.moveTo(18, 59);
+    ctx.quadraticCurveTo(27, 62, 36, 59);
     ctx.stroke();
     ctx.fillStyle = "#020617";
     ctx.beginPath();
@@ -11874,12 +11799,35 @@ const armSwing = running ? (shrineWalk ? shrineStride : [-1, -0.55, 0, 0.55, 1, 
     ctx.fillStyle = "rgba(255, 255, 255, 0.22)";
     ctx.fillRect(18, 45, 18, 8);
   }
+  // HEAD_OUTLINE_PATCH: every head gets the same black outline the limbs
+  // and torso already have - previously bare on the dummy and Light, whose
+  // hair doesn't wrap the whole head.
   ctx.fillStyle = skinColor;
   ctx.beginPath();
   ctx.ellipse(26, 23, 13, 15, 0, 0, Math.PI * 2);
   ctx.fill();
+  ctx.strokeStyle = flash ? "#ffffff" : "#020617";
+  ctx.lineWidth = 2.6;
+  ctx.beginPath();
+  ctx.ellipse(26, 23, 13, 15, 0, 0, Math.PI * 2);
+  ctx.stroke();
 
   if (isPracticeDummy(f)) {
+    // DUMMY_X_EYES_PATCH: the X eyes are back - they're a dummy marking,
+    // not a face.
+    ctx.strokeStyle = "#111827";
+    ctx.lineWidth = 2.8;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(17, 18);
+    ctx.lineTo(23, 25);
+    ctx.moveTo(23, 18);
+    ctx.lineTo(17, 25);
+    ctx.moveTo(30, 18);
+    ctx.lineTo(36, 25);
+    ctx.moveTo(36, 18);
+    ctx.lineTo(30, 25);
+    ctx.stroke();
     ctx.fillStyle = "rgba(17, 24, 39, 0.16)";
     ctx.fillRect(13, 12, 26, 3);
   } else if (f.technique === "limitless") {
@@ -11929,45 +11877,50 @@ const armSwing = running ? (shrineWalk ? shrineStride : [-1, -0.55, 0, 0.55, 1, 
     ctx.strokeStyle = "#831843";
     ctx.lineWidth = 2;
     ctx.stroke();
-    // SUKUNA_TATTOO_PATCH_V2: matches the real cursed-technique tattoo -
-    // a top crown notch, twin cracked claw marks flanking the eyes, a
-    // center gull mark, and a jaw curve with a chevron at the chin.
-    // No eyes/mouth/nose, just markings.
+    // SUKUNA_TATTOO_PATCH_V3: traced from the reference sheet - forehead
+    // teardrop dot flanked by two down-hooked spikes, a nose-bridge arch,
+    // under-eye flicks sweeping to the temples with a tick below each, and
+    // long angular jaw lines that zigzag into twin chin spikes.
+    // No eyes/mouth/nose, just the markings.
+    ctx.fillStyle = "#020617";
+    ctx.beginPath();
+    ctx.ellipse(26, 17, 1.4, 1.9, 0, 0, Math.PI * 2);
+    ctx.fill();
     ctx.strokeStyle = "#020617";
-    ctx.lineWidth = 1.8;
+    ctx.lineWidth = 1.7;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.beginPath();
-    // top crown / brow notch
-    ctx.moveTo(21, 18);
-    ctx.quadraticCurveTo(22, 13, 19, 10);
-    ctx.quadraticCurveTo(23, 11, 25, 16);
-    ctx.moveTo(31, 18);
-    ctx.quadraticCurveTo(30, 13, 33, 10);
-    ctx.quadraticCurveTo(29, 11, 27, 16);
-    // twin cracked claw marks flanking the eyes
-    ctx.moveTo(13, 21);
-    ctx.lineTo(17, 19);
-    ctx.lineTo(15, 24);
-    ctx.lineTo(18, 23);
-    ctx.lineTo(16, 29);
-    ctx.moveTo(39, 21);
-    ctx.lineTo(35, 19);
-    ctx.lineTo(37, 24);
-    ctx.lineTo(34, 23);
-    ctx.lineTo(36, 29);
-    // center gull / mustache mark
-    ctx.moveTo(20, 28);
-    ctx.quadraticCurveTo(23, 25, 26, 28);
-    ctx.quadraticCurveTo(29, 25, 32, 28);
-    // jaw curve
-    ctx.moveTo(16, 30);
-    ctx.quadraticCurveTo(18, 38, 26, 39);
-    ctx.quadraticCurveTo(34, 38, 36, 30);
-    // chin chevron
-    ctx.moveTo(22, 36);
-    ctx.lineTo(26, 33);
-    ctx.lineTo(30, 36);
+    // forehead spikes flanking the dot, barbed outward at the bottom
+    ctx.moveTo(23, 13.5);
+    ctx.quadraticCurveTo(22.2, 16.5, 22.8, 19.8);
+    ctx.lineTo(20.4, 18.2);
+    ctx.moveTo(29, 13.5);
+    ctx.quadraticCurveTo(29.8, 16.5, 29.2, 19.8);
+    ctx.lineTo(31.6, 18.2);
+    // nose-bridge arch
+    ctx.moveTo(21.5, 26);
+    ctx.quadraticCurveTo(26, 21.8, 30.5, 26);
+    // under-eye flicks toward the temples, with a tick under each
+    ctx.moveTo(20.5, 22.5);
+    ctx.quadraticCurveTo(16, 23.5, 13.2, 21);
+    ctx.moveTo(18.8, 25.4);
+    ctx.lineTo(14.2, 24.2);
+    ctx.moveTo(31.5, 22.5);
+    ctx.quadraticCurveTo(36, 23.5, 38.8, 21);
+    ctx.moveTo(33.2, 25.4);
+    ctx.lineTo(37.8, 24.2);
+    // jaw lines sweeping down to the chin, zigzag into twin chin spikes
+    ctx.moveTo(13.5, 26.5);
+    ctx.lineTo(15.5, 34.5);
+    ctx.lineTo(22, 38.6);
+    ctx.lineTo(23.6, 36.2);
+    ctx.lineTo(24.6, 40);
+    ctx.moveTo(38.5, 26.5);
+    ctx.lineTo(36.5, 34.5);
+    ctx.lineTo(30, 38.6);
+    ctx.lineTo(28.4, 36.2);
+    ctx.lineTo(27.4, 40);
     ctx.stroke();
   } else if (f.technique === "deathnote") {
     const hairSway = idle;
@@ -12028,14 +11981,24 @@ const armSwing = running ? (shrineWalk ? shrineStride : [-1, -0.55, 0, 0.55, 1, 
     if (useOutline) strokeArm("#020617", 13);
     strokeArm(color, 8);
     if (isShrineArm) {
-      ctx.strokeStyle = "rgba(2, 6, 23, 0.45)";
-      ctx.lineWidth = 1.7;
+      // SUKUNA_ARM_BAND_PATCH: two solid tattoo rings around each upper
+      // arm (drawn perpendicular to the shoulder-elbow segment), matching
+      // the reference's banded arms, instead of the old faint muscle line.
+      const segX = elbow.x - shoulder.x;
+      const segY = elbow.y - shoulder.y;
+      const segLen = Math.max(0.001, Math.hypot(segX, segY));
+      const perpX = -segY / segLen;
+      const perpY = segX / segLen;
+      ctx.strokeStyle = "#020617";
+      ctx.lineWidth = 2;
       ctx.lineCap = "round";
       ctx.beginPath();
-      ctx.moveTo(shoulder.x + (hand.x > shoulder.x ? 2 : -2), shoulder.y + 2);
-      ctx.lineTo(elbow.x + (hand.x > shoulder.x ? 2 : -2), elbow.y);
-      ctx.moveTo(elbow.x, elbow.y + 2);
-      ctx.lineTo(hand.x, hand.y);
+      [0.42, 0.62].forEach((t) => {
+        const bx = shoulder.x + segX * t;
+        const by = shoulder.y + segY * t;
+        ctx.moveTo(bx - perpX * 4.2, by - perpY * 4.2);
+        ctx.lineTo(bx + perpX * 4.2, by + perpY * 4.2);
+      });
       ctx.stroke();
     }
     // LIGHT_ARM_JOINT_PATCH: on the dark-armed brawlers these black joint
