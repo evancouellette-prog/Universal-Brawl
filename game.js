@@ -11513,27 +11513,30 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   const running = !f.ko && f.grounded && Math.abs(f.vx) > 0.65 && !f.blocking && f.stun <= 0 && f.dodging <= 0;
   const gojoWalk = running && f.technique === "limitless";
   const retreating = running && Math.sign(f.vx) === -f.dir;
-  // WALK_GAIT_PATCH: one continuous, phase-locked gait for every fighter.
-  // The legs use the inverse-kinematics stepper below (previously
-  // shrine-only) and the arms swing from the exact same phase, so nothing
-  // snaps between keyframes or drifts out of sync anymore.
-  const shrineWalkCycle = f.walkCycle || 0;
-  const moveDirection = running ? Math.sign(f.vx) * f.dir : 1;
-  const walkStride = running ? -Math.cos(shrineWalkCycle) : 0;
-  // BACKWARD_WALK_FIX_PATCH: legs previously read off `walkStride` directly
-  // while arms read off `walkStride * moveDirection`. Those match while
-  // moving forward (moveDirection is 1) but fall out of phase with each
-  // other whenever the fighter backpedals (moveDirection flips to -1) -
-  // that's the mismatched arm swing. Both limbs now share one `legStride`,
-  // and a distinct backpedal gait (shorter stride, higher knee lift,
-  // calmer arm swing) layers on top when retreating instead of just
-  // reusing the forward walk cycle.
-  const legStride = walkStride * moveDirection;
   const backpedal = retreating;
-  const armSwing = legStride * (backpedal ? 0.5 : 1);
-  const runPose = legStride;
-  const runCenterLift = running ? Math.abs(Math.sin(shrineWalkCycle)) * 3 : 0;
-  const bob = running ? 1 + runCenterLift * 0.45 : 0;
+  // WALK_GAIT_PATCH: one continuous, phase-locked gait for every fighter.
+  // The legs use the inverse-kinematics stepper below and the arms swing
+  // from the exact same phase value, so nothing snaps or drifts.
+  //
+  // CONTRALATERAL INVARIANT (holds frame by frame, both directions):
+  //   walkStride = +1  ->  rightFoot leads (34 + stride), leftFoot trails
+  //                        right arm swings BACK, left arm swings FORWARD
+  //   walkStride = -1  ->  leftFoot leads (18 + stride), rightFoot trails
+  //                        left arm swings BACK, right arm swings FORWARD
+  // Feet and arms both read walkStride directly - the arm formulas below
+  // subtract it on the right arm and add it on the left, which is what
+  // pins the opposite arm forward from the leading leg at every phase.
+  // (armSwing must NOT flip sign when retreating: in a human backward walk
+  // the same temporal arm/leg phase persists, so the old *moveDirection
+  // flip was inverting the pairing while backpedaling.)
+  const shrineWalkCycle = f.walkCycle || 0;
+  // Backpedal cadence is quicker relative to stride (short choppy steps).
+  const gaitPhase = backpedal ? shrineWalkCycle * 1.3 : shrineWalkCycle;
+  const walkStride = running ? -Math.cos(gaitPhase) : 0;
+  const armSwing = walkStride;
+  const runPose = walkStride;
+  const runCenterLift = running ? Math.abs(Math.sin(gaitPhase)) * (backpedal ? 2.2 : 3) : 0;
+  const bob = running ? (backpedal ? 0.8 : 1) + runCenterLift * 0.45 : 0;
   const jumpPose = !f.grounded && !f.ko;
   const jumpRetreating = jumpPose && Math.sign(f.vx) === -f.dir;
   const jumpCycle = jumpPose ? Math.sin(frame * 0.32) : 0;
@@ -11591,29 +11594,55 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       ? { x: 60, y: 115 }
       : { x: 39, y: footY };
   if (running && !jumpPose) {
-    const humanStride = Math.max(-1, Math.min(1, legStride));
-    const strideLen = (gojoWalk ? 9 : f.technique === "shrine" ? 10 : 9.5) * (backpedal ? 0.6 : 1);
-    const liftScale = backpedal ? 1.5 : 1;
-    const leftLift = Math.max(0, Math.sin(shrineWalkCycle)) * 2.6 * liftScale;
-    const rightLift = Math.max(0, -Math.sin(shrineWalkCycle)) * 2.6 * liftScale;
-    leftFoot.x = 18 - humanStride * strideLen;
-    rightFoot.x = 34 + humanStride * strideLen;
+    const swingWave = Math.sin(gaitPhase);
+    let strideCurve, strideLen, leftLift, rightLift, kneeBend, kneeYDrop, kneeXBias, kneeLiftPull;
+    if (backpedal) {
+      // BACKPEDAL_GAIT_PATCH: a distinct backward-walk, not the forward
+      // cycle scaled down. Short choppy steps (eased stride curve so the
+      // foot plants quickly and dwells), knees carried higher and bent
+      // harder (the cautious can't-see-where-I'm-stepping gait), and the
+      // swing foot travels toward -x, the direction of travel - so the
+      // lift phase here is the mirror of the forward path's.
+      strideCurve = Math.sign(walkStride) * Math.pow(Math.abs(walkStride), 0.72);
+      strideLen = 5.5;
+      leftLift = Math.max(0, swingWave) * 4.4;
+      rightLift = Math.max(0, -swingWave) * 4.4;
+      kneeBend = 6.6 + Math.abs(swingWave) * 2.2;
+      kneeYDrop = 6.2;
+      kneeXBias = -1.6;
+      kneeLiftPull = 0.55;
+    } else {
+      // Forward walk. The lifted (swing) foot must be the one traveling
+      // toward +x relative to the body while the planted foot slides back:
+      // leftFoot.x = 18 - walkStride*len travels back-to-front during the
+      // half-cycle where sin(gaitPhase) < 0, so that is when it lifts.
+      // (The previous lift phase was inverted - a subtle moonwalk.)
+      strideCurve = Math.max(-1, Math.min(1, walkStride));
+      strideLen = gojoWalk ? 9 : f.technique === "shrine" ? 10 : 9.5;
+      leftLift = Math.max(0, -swingWave) * 2.6;
+      rightLift = Math.max(0, swingWave) * 2.6;
+      kneeBend = 4.4 + Math.abs(swingWave) * 1.1;
+      kneeYDrop = 8.5;
+      kneeXBias = 0;
+      kneeLiftPull = 0.25;
+    }
+    leftFoot.x = 18 - strideCurve * strideLen;
+    rightFoot.x = 34 + strideCurve * strideLen;
     leftFoot.y = footY - leftLift;
     rightFoot.y = footY - rightLift;
 
     const leftKneeDir = leftFoot.x >= leftHip.x ? 1 : -1;
     const rightKneeDir = rightFoot.x >= rightHip.x ? 1 : -1;
-    const kneeBend = (4.4 + Math.abs(Math.sin(shrineWalkCycle)) * 1.1) * (backpedal ? 1.35 : 1);
     leftKnee.x = Math.max(
       Math.min(leftHip.x, leftFoot.x) - 5,
-      Math.min(Math.max(leftHip.x, leftFoot.x) + 5, (leftHip.x + leftFoot.x) * 0.5 + leftKneeDir * kneeBend)
+      Math.min(Math.max(leftHip.x, leftFoot.x) + 5, (leftHip.x + leftFoot.x) * 0.5 + leftKneeDir * kneeBend + kneeXBias)
     );
     rightKnee.x = Math.max(
       Math.min(rightHip.x, rightFoot.x) - 5,
-      Math.min(Math.max(rightHip.x, rightFoot.x) + 5, (rightHip.x + rightFoot.x) * 0.5 + rightKneeDir * kneeBend)
+      Math.min(Math.max(rightHip.x, rightFoot.x) + 5, (rightHip.x + rightFoot.x) * 0.5 + rightKneeDir * kneeBend + kneeXBias)
     );
-    leftKnee.y = (leftHip.y + leftFoot.y) * 0.5 + 8.5 - leftLift * 0.25;
-    rightKnee.y = (rightHip.y + rightFoot.y) * 0.5 + 8.5 - rightLift * 0.25;
+    leftKnee.y = (leftHip.y + leftFoot.y) * 0.5 + kneeYDrop - leftLift * kneeLiftPull;
+    rightKnee.y = (rightHip.y + rightFoot.y) * 0.5 + kneeYDrop - rightLift * kneeLiftPull;
   }
   if (!jumpPose && !running) {
     leftFoot.x -= f.technique === "shrine" ? 5 : 3;
@@ -11663,10 +11692,12 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   ctx.lineTo(rightFoot.x + 10, rightFoot.y + 1);
   ctx.stroke();
 
-  const lean = f.attacking ? -7 : f.blocking ? 4 : jumpRetreating ? 4 : jumpPose ? -2 : retreating ? 3 : gojoWalk ? -3 + runPose * 0.4 : running ? -5 : f.technique === "shrine" ? -4 : -2;
+  // BACKPEDAL torso: shifted and rotated slightly BACK (positive), the
+  // opposite of the forward walk's forward lean.
+  const lean = f.attacking ? -7 : f.blocking ? 4 : jumpRetreating ? 4 : jumpPose ? -2 : backpedal ? 4.5 : gojoWalk ? -3 + runPose * 0.4 : running ? -5 : f.technique === "shrine" ? -4 : -2;
   ctx.save();
   ctx.translate(lean, 0);
-  ctx.rotate((f.technique === "shrine" ? -0.04 : -0.025) + idle * 0.01);
+  ctx.rotate((f.technique === "shrine" ? -0.04 : -0.025) + idle * 0.01 + (backpedal ? 0.06 : 0));
 
   ctx.fillStyle = "#020617";
   ctx.beginPath();
@@ -12052,7 +12083,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   }
   if (f.technique === "shrine" && !f.attacking && !jumpPose && !f.blocking) {
     const lowerBreath = running ? runCenterLift * 0.12 : idle * 2;
-    const lowerSwing = running ? armSwing * 8 : idle * 1.2;
+    const lowerSwing = running ? armSwing * (backpedal ? 2.8 : 8) : idle * 1.2;
     drawArmRig(
       { x: 43, y: 63 + lowerBreath },
       { x: 50 - lowerSwing * 0.48, y: 76 + lowerBreath },
@@ -12314,7 +12345,8 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   } else if (!f.blocking) {
     if (f.technique === "shrine") {
       const upperBreath = running ? runCenterLift * 0.08 : idle * 2;
-      const upperSwing = running ? armSwing * 2.4 : idle * 0.45;
+      // Backpedal carries the extra arms close with only a subtle sway.
+      const upperSwing = running ? armSwing * (backpedal ? 0.9 : 2.4) : idle * 0.45;
       drawArmRig(
         { x: 44, y: 48 + upperBreath },
         { x: 55 - upperSwing * 0.4, y: 57 + upperBreath },
@@ -12327,19 +12359,39 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
         { x: -6 + upperSwing, y: 68 + upperBreath * 0.3 },
         skinColor
       );
-    } else {
-      const runArmSwing = running ? armSwing * 8 : idle * 1.2;
-      const runArmLift = running ? Math.max(0, armSwing) * 7 : 0;
-      const runArmDrop = running ? Math.max(0, -armSwing) * 5 : 0;
+    } else if (backpedal) {
+      // BACKPEDAL arm carriage: elbows bent and held near the ribs, hands
+      // riding at waist height with a small guarded sway - not the full
+      // contralateral pump of the forward walk. The sway still reads off
+      // armSwing so the (reduced) pairing stays in phase with the feet.
+      const guardSway = armSwing * 2.6;
       drawArmRig(
         { x: 42, y: 52 },
-        { x: 49 - runArmSwing * 0.5, y: 68 - runArmDrop * 0.5 },
-        { x: 46 - runArmSwing * 1.3, y: 81 - runArmDrop }
+        { x: 47 - guardSway * 0.3, y: 63 },
+        { x: 44 - guardSway, y: 74 }
       );
       drawArmRig(
         { x: 11, y: 52 },
-        { x: 4 + runArmSwing * 0.5, y: 68 - runArmLift * 0.5 },
-        { x: 7 + runArmSwing * 1.3, y: 81 - runArmLift }
+        { x: 6 + guardSway * 0.3, y: 63 },
+        { x: 9 + guardSway, y: 74 }
+      );
+    } else {
+      // Forward walk: full contralateral pump. armSwing = walkStride, so
+      // walkStride=+1 (rightFoot leading) drives the right hand back
+      // (46 - swing) and the left hand forward (7 + swing); the forward-
+      // swinging arm is also the raised one via the fwdRaise terms.
+      const runArmSwing = running ? armSwing * 8 : idle * 1.2;
+      const fwdRaiseLeft = running ? Math.max(0, armSwing) * 7 : 0;
+      const fwdRaiseRight = running ? Math.max(0, -armSwing) * 5 : 0;
+      drawArmRig(
+        { x: 42, y: 52 },
+        { x: 49 - runArmSwing * 0.5, y: 68 - fwdRaiseRight * 0.5 },
+        { x: 46 - runArmSwing * 1.3, y: 81 - fwdRaiseRight }
+      );
+      drawArmRig(
+        { x: 11, y: 52 },
+        { x: 4 + runArmSwing * 0.5, y: 68 - fwdRaiseLeft * 0.5 },
+        { x: 7 + runArmSwing * 1.3, y: 81 - fwdRaiseLeft }
       );
     }
   }
