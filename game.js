@@ -11617,8 +11617,14 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       // leftFoot.x = 18 - walkStride*len travels back-to-front during the
       // half-cycle where sin(gaitPhase) < 0, so that is when it lifts.
       // (The previous lift phase was inverted - a subtle moonwalk.)
+      // NO_LEG_CROSS_PATCH: stride must stay under 8 (half the 16px hip
+      // gap) or the rear leg overtakes the front leg at full stride and
+      // the flat 2D legs visually swap - which made the front arm look
+      // like it swings the same way as the "front" foot. With the feet
+      // never crossing, the contralateral pairing reads correctly at
+      // every phase: front foot planted forward = front arm back.
       strideCurve = Math.max(-1, Math.min(1, walkStride));
-      strideLen = gojoWalk ? 9 : f.technique === "shrine" ? 10 : 9.5;
+      strideLen = gojoWalk ? 7 : 7.5;
       leftLift = Math.max(0, -swingWave) * 2.6;
       rightLift = Math.max(0, swingWave) * 2.6;
       kneeBend = 4.4 + Math.abs(swingWave) * 1.1;
@@ -12083,7 +12089,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   }
   if (f.technique === "shrine" && !f.attacking && !jumpPose && !f.blocking) {
     const lowerBreath = running ? runCenterLift * 0.12 : idle * 2;
-    const lowerSwing = running ? armSwing * (backpedal ? 2.8 : 8) : idle * 1.2;
+    const lowerSwing = running ? armSwing * (backpedal ? 1.1 : 8) : idle * 1.2; // EQUAL_ARM_PATCH: same backpedal sway as the upper pair
     drawArmRig(
       { x: 43, y: 63 + lowerBreath },
       { x: 50 - lowerSwing * 0.48, y: 76 + lowerBreath },
@@ -12346,7 +12352,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     if (f.technique === "shrine") {
       const upperBreath = running ? runCenterLift * 0.08 : idle * 2;
       // Backpedal carries the extra arms close with only a subtle sway.
-      const upperSwing = running ? armSwing * (backpedal ? 0.9 : 2.4) : idle * 0.45;
+      const upperSwing = running ? armSwing * (backpedal ? 1.1 : 2.4) : idle * 0.45; // EQUAL_ARM_PATCH: same backpedal sway as the lower pair
       drawArmRig(
         { x: 44, y: 48 + upperBreath },
         { x: 55 - upperSwing * 0.4, y: 57 + upperBreath },
@@ -12381,8 +12387,11 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       // (46 - swing) and the left hand forward (7 + swing); the forward-
       // swinging arm is also the raised one via the fwdRaise terms.
       const runArmSwing = running ? armSwing * 8 : idle * 1.2;
-      const fwdRaiseLeft = running ? Math.max(0, armSwing) * 7 : 0;
-      const fwdRaiseRight = running ? Math.max(0, -armSwing) * 5 : 0;
+      // EQUAL_ARM_PATCH: identical raise amplitude on both sides - the old
+      // 7-vs-5 split made one arm ride visibly higher and read as a
+      // different length than the other mid-stride.
+      const fwdRaiseLeft = running ? Math.max(0, armSwing) * 6 : 0;
+      const fwdRaiseRight = running ? Math.max(0, -armSwing) * 6 : 0;
       drawArmRig(
         { x: 42, y: 52 },
         { x: 49 - runArmSwing * 0.5, y: 68 - fwdRaiseRight * 0.5 },
