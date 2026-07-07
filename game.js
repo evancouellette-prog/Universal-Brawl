@@ -1743,6 +1743,25 @@ const MALEVOLENT_SHRINE_TICKS = 7 * 60;
 const MALEVOLENT_SLASH_INTERVAL = 27;
 const MALEVOLENT_CLEAVE_INTERVAL = 240;
 const PRACTICE_BOT_RETURN_TICKS = 300;
+
+// THRAGG_BRAWLER_PATCH: constants for the grappler kit - a teched command
+// grab, a flying dash gap-closer, and a single weak ground-break projectile.
+const THRAGG_MOVE_MULTIPLIER = 0.82;
+const THRAGG_GRAB_STARTUP_TICKS = 16;
+const THRAGG_GRAB_RANGE = 66;
+const THRAGG_GRAB_TECH_WINDOW_TICKS = 20;
+const THRAGG_GRAB_TECH_RECOVERY_TICKS = 18;
+const THRAGG_GRAB_WHIFF_COOLDOWN_TICKS = 40;
+const THRAGG_GRAB_TECHED_COOLDOWN_TICKS = 70;
+const THRAGG_GRAB_LANDED_COOLDOWN_TICKS = 90;
+const THRAGG_GRAB_SLAM_DAMAGE = 22;
+const THRAGG_GRAB_SLAM_KNOCKBACK = 34;
+const THRAGG_DASH_ACTIVE_TICKS = 20;
+const THRAGG_DASH_SPEED = 15.5;
+const THRAGG_DASH_STUMBLE_TICKS = 16;
+const THRAGG_DASH_COOLDOWN_TICKS = 85;
+const THRAGG_GROUND_BREAK_COOLDOWN = TECHNIQUE_HEAVY_COOLDOWN + 20;
+
 const TECHNIQUE_STATS = {
   limitless: {
     maxHealth: 540,
@@ -1770,6 +1789,16 @@ const TECHNIQUE_STATS = {
     knockbackTakenMultiplier: 1.08,
     ceRegenRate: CE_REGEN_RATE + 0.02,
     ceLowRegenBonus: CE_LOW_REGEN_BONUS + 0.03
+  },
+  // THRAGG_BRAWLER_PATCH: tanky, slow, hits like a truck up close.
+  brawler: {
+    maxHealth: 760,
+    healthBars: 8,
+    maxCe: 100,
+    damageTakenMultiplier: 0.92,
+    knockbackTakenMultiplier: 0.88,
+    ceRegenRate: CE_REGEN_RATE - 0.03,
+    ceLowRegenBonus: CE_LOW_REGEN_BONUS - 0.01
   }
 };
 const keys = new Set();
@@ -2574,6 +2603,24 @@ function getAttackSpec(f, type = f.attacking) {
       attack.knockback += 4;
     }
   }
+  // THRAGG_BRAWLER_PATCH: big hurtboxes, slow starts, heavy payoff.
+  if (f.technique === "brawler" && type !== "backThrow") {
+    if (type === "light") {
+      attack.damage += 3;
+      attack.range += 6;
+      attack.width += 10;
+      attack.windup += 3;
+      attack.recovery += 4;
+      attack.knockback += 3;
+    } else if (type === "heavy") {
+      attack.damage += 9;
+      attack.range += 10;
+      attack.width += 14;
+      attack.windup += 5;
+      attack.recovery += 6;
+      attack.knockback += 8;
+    }
+  }
   if (isDomainVictim(f, "unlimitedVoid") && type !== "backThrow") {
     // Stronger Unlimited Void overload: bigger stun and much slower attacks.
     attack.windup = Math.ceil(attack.windup * 3.35);
@@ -2593,13 +2640,19 @@ const techniqueMoves = {
   cleave: { cost: 32, damage: 24, speed: 0, radius: 42, knockback: 22, life: 14 },
   fuga: { cost: 70, damage: 76, speed: 9.2, radius: 20, knockback: 38, life: 100, explosionRadius: 174, cooldown: FUGA_COOLDOWN_TICKS },
   ryukStrike: { cost: 30, damage: 34, speed: 0, radius: 66, knockback: 34, life: 24 },
-  nameInvestigation: { cost: 26, damage: 0, speed: 0, radius: 1, knockback: 0, life: 1 }
+  nameInvestigation: { cost: 26, damage: 0, speed: 0, radius: 1, knockback: 0, life: 1 },
+  // THRAGG_BRAWLER_PATCH: his only ranged tool - a slow, weak chunk of
+  // broken ground. Deliberately worse than every other projectile in the
+  // game; it exists so he isn't helpless against zoning, not to zone himself.
+  groundBreak: { cost: 24, damage: 9, speed: 8.4, radius: 17, knockback: 10, life: 46 }
 };
 
 function getTechniqueMoveKey(f, slot) {
   if (f.technique === "limitless") return slot === 2 ? "red" : "blue";
   if (f.technique === "shrine") return slot === 2 ? "cleave" : "slash";
   if (f.technique === "deathnote") return slot === 2 ? "nameInvestigation" : "ryukStrike";
+  // THRAGG_BRAWLER_PATCH: only one ranged tool, mapped to both mouse buttons.
+  if (f.technique === "brawler") return "groundBreak";
   return "blue";
 }
 
@@ -2608,6 +2661,8 @@ function getTechniqueDisplayName(move) {
   if (move === "fuga") return "FUGA";
   if (move === "ryukStrike") return "RYUK";
   if (move === "nameInvestigation") return "INVESTIGATE";
+  if (move === "groundBreak") return "GROUND BREAK";
+  if (move === "flyingDash") return "FLYING DASH";
   return move.toUpperCase();
 }
 
@@ -2617,6 +2672,9 @@ function getTechniqueCooldownTicks(move, f = null) {
   // Ryuk/Shinigami Strike is 4 seconds and does not share cooldown with Investigation.
   if (move === "ryukStrike") return getLightFocusedCooldown(f, 4 * 60);
   if (move === "nameInvestigation") return getLightFocusedCooldown(f, 13 * 60);
+  // THRAGG_BRAWLER_PATCH:
+  if (move === "groundBreak") return THRAGG_GROUND_BREAK_COOLDOWN;
+  if (move === "flyingDash") return THRAGG_DASH_COOLDOWN_TICKS;
   let base = move === "red" || move === "cleave" ? TECHNIQUE_HEAVY_COOLDOWN : TECHNIQUE_FAST_COOLDOWN;
   if (move === "cleave" && hasBindingVow(f, "cleave")) base = Math.max(10, Math.ceil(base * 0.55));
   return base;
@@ -2658,13 +2716,14 @@ function getAffordableChargeRatio(f, move, chargeRatio) {
 
 function pickRandomTechnique() {
   const roll = Math.random();
-  if (roll < 0.42) return "limitless";
-  if (roll < 0.84) return "shrine";
-  return "deathnote";
+  if (roll < 0.32) return "limitless";
+  if (roll < 0.64) return "shrine";
+  if (roll < 0.85) return "deathnote";
+  return "brawler";
 }
 
 function isValidTechnique(technique) {
-  return technique === "limitless" || technique === "shrine" || technique === "deathnote";
+  return technique === "limitless" || technique === "shrine" || technique === "deathnote" || technique === "brawler";
 }
 
 function rollCpuOpponentTechnique(reason = "") {
@@ -2873,6 +2932,13 @@ function makeFighter(config) {
     grabHeldTimer: 0,
     grabHeldBy: null,
     grabLockY: null,
+    grabTechable: false,
+    // THRAGG_BRAWLER_PATCH: grapple state machine + flying dash state.
+    thraggGrabState: "idle",
+    thraggGrabTimer: 0,
+    thraggGrabCooldown: 0,
+    thraggDashActiveTimer: 0,
+    thraggDashCooldown: 0,
     blocking: false,
     shieldTicks: SHIELD_MAX_TICKS,
     shieldCooldown: 0,
@@ -2925,7 +2991,7 @@ function applyTechniqueStats(f, preserveMeters = false) {
   const stats = TECHNIQUE_STATS[f.technique] || TECHNIQUE_STATS.limitless;
   const healthRatio = f.maxHealth > 0 ? f.health / f.maxHealth : 1;
   const ceRatio = f.maxCe > 0 ? f.ce / f.maxCe : 1;
-  f.speed = BASE_MOVE_SPEED * (f.technique === "limitless" ? LIMITLESS_MOVE_MULTIPLIER : f.technique === "deathnote" ? 0.94 : 1);
+  f.speed = BASE_MOVE_SPEED * (f.technique === "limitless" ? LIMITLESS_MOVE_MULTIPLIER : f.technique === "deathnote" ? 0.94 : f.technique === "brawler" ? THRAGG_MOVE_MULTIPLIER : 1);
   f.maxHealth = stats.maxHealth;
   f.healthBars = stats.healthBars || 3;
   f.maxCe = stats.maxCe;
@@ -2992,6 +3058,7 @@ function getTechniqueHudMoves(f) {
   if (isPracticeDummy(f)) return [];
   if (f.technique === "shrine") return ["slash", "cleave", "fuga"];
   if (f.technique === "deathnote") return ["ryukStrike", "nameInvestigation"];
+  if (f.technique === "brawler") return ["groundBreak", "flyingDash"];
   return ["blue", "red", "teleport"];
 }
 
@@ -3034,6 +3101,17 @@ function getTechniqueHudState(f, move) {
       lowCe: f.ce < cost,
       charging: Boolean(f.fugaAiming),
       chargeRatio,
+      blocked
+    };
+  }
+  // THRAGG_BRAWLER_PATCH: flying dash costs no CE, gated purely by cooldown.
+  if (move === "flyingDash") {
+    return {
+      cost: 0,
+      cooling: (f.thraggDashCooldown || 0) > 0,
+      cooldown: f.thraggDashCooldown || 0,
+      maxCooldown: THRAGG_DASH_COOLDOWN_TICKS,
+      lowCe: false,
       blocked
     };
   }
@@ -3173,6 +3251,10 @@ function pinStationaryPracticeDummy(f = enemy) {
   f.grabHeldTimer = 0;
   f.grabHeldBy = null;
   f.grabLockY = null;
+  f.grabTechable = false;
+  f.thraggGrabState = "idle";
+  f.thraggGrabTimer = 0;
+  f.thraggDashActiveTimer = 0;
   f.dodging = 0;
 }
 
@@ -3968,7 +4050,8 @@ if (data.type === "role") {
       if (data.aim) setFighterTechniqueAim(enemy, data.aim);
       if (data.action === "light") startAttack(enemy, "light");
       if (data.action === "heavy") startAttack(enemy, "heavy");
-      if (data.action === "backThrow") startBackThrow(enemy, false);
+      if (data.action === "backThrow") handleThrowInput(enemy, false);
+      if (data.action === "flying-dash") startFlyingDash(enemy);
       if (data.action === "dodge") startDodge(enemy, getVectorFromInput(remoteInput));
       if (data.action === "jump") jumpFighterWithMove(enemy, (remoteInput.right ? 1 : 0) - (remoteInput.left ? 1 : 0));
       if (data.action === "infinity" && !hasCtLock(enemy)) toggleInfinity(enemy);
@@ -4119,6 +4202,7 @@ function getOnlineAction(key, code, repeat) {
   if (isEventForAction("ultimate", key, code) && !repeat) return "ultimate-start";
   if (isEventForAction("specialAim", key, code) && !repeat) {
     if (enemy?.technique === "deathnote") return "potato-chip";
+    if (enemy?.technique === "brawler") return "flying-dash";
     return enemy?.technique === "shrine" ? "fuga-start" : "teleport-start";
   }
   return null;
@@ -4857,6 +4941,10 @@ function getExtraCooldownItems(f) {
   const rctMax = RCT_COOLDOWN_TICKS[f.technique] || 180;
   items.push({ name: "RCT", current: f.rctCooldown || 0, max: rctMax });
 
+  if (f.technique === "brawler") {
+    items.push({ name: "GRAPPLE", current: f.thraggGrabCooldown || 0, max: THRAGG_GRAB_LANDED_COOLDOWN_TICKS });
+  }
+
   if (f.technique === "limitless") {
     const bluePunchMax = GOJO_BLUE_PUNCH_COOLDOWN_TICKS || 600;
     const stunComboMax = GOJO_PUSH_PULL_FINISHER_COOLDOWN_TICKS || GOJO_LIGHT_FINISHER_COOLDOWN_TICKS || 300;
@@ -5429,10 +5517,16 @@ function isHeldBySpecial(f) {
   return Boolean(f && ((f.barrageHeldTimer || 0) > 0 || (f.grabHeldTimer || 0) > 0));
 }
 
+// THRAGG_BRAWLER_PATCH: locks the attacker out of everything else while
+// their grab is winding up/holding, or while mid-flying-dash.
+function isThraggCommitted(f) {
+  return Boolean(f && ((f.thraggGrabState && f.thraggGrabState !== "idle") || (f.thraggDashActiveTimer || 0) > 0));
+}
+
 function isSpecialLocked(f) {
   const owner = getFighterOwner(f);
   const clashing = Boolean(owner && domainClash?.attempts?.[owner]);
-  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || (f?.domainStartup || 0) > 0 || clashing || (f?.potatoVulnerableTicks || 0) > 0;
+  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || (f?.domainStartup || 0) > 0 || clashing || (f?.potatoVulnerableTicks || 0) > 0;
 }
 
 // DOMAIN_MOVEMENT_FIX
@@ -5441,7 +5535,7 @@ function isSpecialLocked(f) {
 function isMovementLocked(f) {
   const owner = getFighterOwner(f);
   const clashing = Boolean(owner && domainClash?.attempts?.[owner]);
-  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || clashing;
+  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || clashing;
 }
 
 function getMoveInputForFighter(f) {
@@ -5542,6 +5636,20 @@ function startBackThrow(f, requireButtons = true) {
   return true;
 }
 
+// THRAGG_BRAWLER_PATCH: the "throw" button now does three different things
+// depending on context - break a grab you're currently caught in, start
+// Thragg's grapple if you're playing him, or fall back to the normal
+// back throw for everyone else.
+function handleThrowInput(f, requireButtons = true) {
+  const opponent = getOpponent(f);
+  if (f.grabTechable && f.grabHeldBy === (f === player ? "enemy" : "player")) {
+    breakThraggGrab(f, opponent);
+    return true;
+  }
+  if (f.technique === "brawler") return startThraggGrab(f);
+  return startBackThrow(f, requireButtons);
+}
+
 function beginAttack(f, type) {
   f.attacking = type;
   f.attackFrame = 0;
@@ -5591,6 +5699,184 @@ function startDash(f) {
   f.dodgeCooldown = f.technique === "limitless" ? Math.round(DODGE_COOLDOWN_TICKS * 0.68) : Math.round(DODGE_COOLDOWN_TICKS * 0.82);
   f.blocking = false;
   f.vx = f.dir * 12.5;
+}
+
+// ==========================================================================
+// THRAGG_BRAWLER_PATCH: grapple grab (beats block, teched with the same
+// throw button) and the flying dash gap-closer. Bound to the existing
+// "throw" key and the ct1+ct2 mouse-hold combo respectively - see the
+// handleThrowInput() and mouse-down hook further down in the file.
+// ==========================================================================
+
+function canStartThraggGrab(f) {
+  return Boolean(
+    f &&
+    !gameOver &&
+    !paused &&
+    !isSpecialLocked(f) &&
+    !f.rctHealing &&
+    !f.ko &&
+    f.stun <= 0 &&
+    f.dodging <= 0 &&
+    !f.knockdown &&
+    !f.attacking &&
+    f.thraggGrabState === "idle" &&
+    (f.thraggGrabCooldown || 0) <= 0
+  );
+}
+
+function startThraggGrab(f) {
+  if (!canStartThraggGrab(f)) return false;
+  f.thraggGrabState = "startup";
+  f.thraggGrabTimer = THRAGG_GRAB_STARTUP_TICKS;
+  f.blocking = false;
+  f.vx *= 0.2;
+  return true;
+}
+
+function clearThraggGrabHold(defender) {
+  defender.grabHeldTimer = 0;
+  defender.grabHeldBy = null;
+  defender.grabLockY = null;
+  defender.grabTechable = false;
+}
+
+// Called when the defender presses their own "throw" key while held -
+// breaks the grab for free before the slam resolves.
+function breakThraggGrab(defender, attacker) {
+  clearThraggGrabHold(defender);
+  defender.stun = Math.max(0, THRAGG_GRAB_TECH_RECOVERY_TICKS - 4);
+  defender.vx = -attacker.dir * 4;
+  if (attacker) {
+    attacker.thraggGrabState = "idle";
+    attacker.thraggGrabTimer = 0;
+    attacker.thraggGrabCooldown = THRAGG_GRAB_TECHED_COOLDOWN_TICKS;
+    attacker.stun = Math.max(attacker.stun, THRAGG_GRAB_TECH_RECOVERY_TICKS);
+    attacker.vx = attacker.dir * -4;
+  }
+  showActionWarning("GRAB TECHED!");
+  updateHud();
+}
+
+function resolveThraggGrabSlam(attacker, defender) {
+  clearThraggGrabHold(defender);
+  const damage = getTakenDamage(defender, Math.max(1, Math.ceil(THRAGG_GRAB_SLAM_DAMAGE * getOutgoingDamageMultiplier(attacker))));
+  applyFighterDamage(defender, damage);
+  cancelRct(defender, false);
+  resetCombo(defender);
+  defender.vx = attacker.dir * getTakenKnockback(defender, THRAGG_GRAB_SLAM_KNOCKBACK) * 0.4;
+  defender.vy = -6.5;
+  defender.grounded = false;
+  defender.onPlatform = false;
+  defender.knockdown = true;
+  defender.knockdownTimer = 26;
+  defender.hurt = 18;
+  defender.stun = Math.max(defender.stun, 20);
+  attacker.thraggGrabCooldown = THRAGG_GRAB_LANDED_COOLDOWN_TICKS;
+  gainCe(attacker, HEAVY_HIT_CE_GAIN);
+  hitStopTicks = Math.max(hitStopTicks, HITSTOP_HEAVY);
+  shake = Math.max(shake, 12);
+  spawnHitSpark(defender.x + defender.w / 2, defender.y + 42, attacker.dir, "heavy");
+  if (!pacifistBot && defender.health <= 0) startKnockout(attacker, defender);
+  updateHud();
+}
+
+function updateThraggGrab(f) {
+  if ((f.thraggGrabCooldown || 0) > 0) f.thraggGrabCooldown -= 1;
+  if (f.thraggGrabState === "idle") return;
+  const opponent = getOpponent(f);
+  if (!opponent || f.ko || opponent.ko) {
+    f.thraggGrabState = "idle";
+    f.thraggGrabTimer = 0;
+    return;
+  }
+  if (f.thraggGrabState === "startup") {
+    f.thraggGrabTimer -= 1;
+    if (f.thraggGrabTimer > 0) return;
+    const fCenter = getFighterCenter(f);
+    const oppCenter = getFighterCenter(opponent);
+    const dx = oppCenter.x - fCenter.x;
+    const inRange = Math.abs(dx) <= THRAGG_GRAB_RANGE && Math.abs(oppCenter.y - fCenter.y) <= 60;
+    const canBeGrabbed = !opponent.ko && opponent.dodging <= 0 && (opponent.grabHeldTimer || 0) <= 0 && !(opponent.knockdown && opponent.grounded);
+    if (inRange && canBeGrabbed) {
+      f.dir = Math.sign(dx) || f.dir;
+      f.thraggGrabState = "techWindow";
+      f.thraggGrabTimer = THRAGG_GRAB_TECH_WINDOW_TICKS;
+      opponent.grabHeldTimer = THRAGG_GRAB_TECH_WINDOW_TICKS + 2;
+      opponent.grabHeldBy = f === player ? "player" : "enemy";
+      opponent.grabLockY = opponent.y;
+      opponent.grabTechable = true;
+      opponent.blocking = false;
+      opponent.attacking = null;
+      opponent.dir = -f.dir;
+      opponent.stun = Math.max(opponent.stun, THRAGG_GRAB_TECH_WINDOW_TICKS + 6);
+    } else {
+      f.thraggGrabState = "idle";
+      f.thraggGrabCooldown = THRAGG_GRAB_WHIFF_COOLDOWN_TICKS;
+    }
+    return;
+  }
+  if (f.thraggGrabState === "techWindow") {
+    const stillHeld = opponent.grabHeldBy === (f === player ? "player" : "enemy") && (opponent.grabHeldTimer || 0) > 0;
+    if (!stillHeld) {
+      // Defender teched it (breakThraggGrab already reset the attacker too).
+      if (f.thraggGrabState !== "idle") {
+        f.thraggGrabState = "idle";
+        f.thraggGrabTimer = 0;
+      }
+      return;
+    }
+    if (Number.isFinite(opponent.grabLockY)) opponent.y = opponent.grabLockY;
+    f.thraggGrabTimer -= 1;
+    if (f.thraggGrabTimer <= 0) {
+      resolveThraggGrabSlam(f, opponent);
+      f.thraggGrabState = "idle";
+      f.thraggGrabTimer = 0;
+    }
+  }
+}
+
+function canStartFlyingDash(f) {
+  return Boolean(
+    f &&
+    !gameOver &&
+    !paused &&
+    !isSpecialLocked(f) &&
+    !f.rctHealing &&
+    !f.ko &&
+    f.stun <= 0 &&
+    f.dodging <= 0 &&
+    !f.knockdown &&
+    (f.thraggDashActiveTimer || 0) <= 0 &&
+    (f.thraggDashCooldown || 0) <= 0
+  );
+}
+
+function startFlyingDash(f) {
+  if (!canStartFlyingDash(f)) return false;
+  f.attacking = null;
+  f.blocking = false;
+  f.thraggDashActiveTimer = THRAGG_DASH_ACTIVE_TICKS;
+  f.thraggDashCooldown = THRAGG_DASH_COOLDOWN_TICKS;
+  f.grounded = false;
+  f.onPlatform = false;
+  f.vy = -1.5;
+  f.vx = f.dir * THRAGG_DASH_SPEED;
+  return true;
+}
+
+function updateFlyingDash(f) {
+  if ((f.thraggDashCooldown || 0) > 0) f.thraggDashCooldown -= 1;
+  if ((f.thraggDashActiveTimer || 0) <= 0) return;
+  f.vx = f.dir * THRAGG_DASH_SPEED;
+  f.vy = Math.min(f.vy + 0.4, 2.5);
+  f.thraggDashActiveTimer -= 1;
+  if (f.thraggDashActiveTimer <= 0) {
+    // Short, mildly-punishable recovery on landing - reuses the shared
+    // stun timer so every existing "can this fighter act" check already
+    // respects it with no further wiring needed.
+    f.stun = Math.max(f.stun, THRAGG_DASH_STUMBLE_TICKS);
+  }
 }
 
 function startKnockout(attacker, defender) {
@@ -8914,7 +9200,19 @@ function tryCpuTeleport(cpu, distance) {
 }
 
 function tryCpuThrow(cpu, distance) {
-  if (distance > BACK_THROW_RANGE + 8 || enemy.rctHealing) return false;
+  if (enemy.rctHealing) return false;
+  // THRAGG_BRAWLER_PATCH: CPU uses the teched grapple grab instead of the
+  // plain back throw when playing Thragg.
+  if (enemy.technique === "brawler") {
+    if (distance > THRAGG_GRAB_RANGE + 8) return false;
+    const grabChance = cpuDifficulty === "hard" ? 0.3 : cpuDifficulty === "medium" ? 0.16 : 0.04;
+    if (Math.random() > grabChance) return false;
+    if (!startThraggGrab(enemy)) return false;
+    enemy.aiGoal = "throw";
+    enemy.aiCooldown = Math.max(30, cpu.attackCooldown);
+    return true;
+  }
+  if (distance > BACK_THROW_RANGE + 8) return false;
   const chance = cpuDifficulty === "hard" ? 0.38 : cpuDifficulty === "medium" ? 0.2 : 0.04;
   if (Math.random() > chance) return false;
   enemy.vx = enemy.dir * Math.max(enemy.speed * 0.45, 1);
@@ -9253,6 +9551,21 @@ function tryCpuLightActions(cpu, distance) {
 function updateEnemyAi() {
   updateCpuStuckRecovery();
 
+  // THRAGG_BRAWLER_PATCH: react to being grabbed even though stun > 0 would
+  // otherwise bail out of AI early below - the tech window needs an input.
+  if (enemy.grabTechable && enemy.grabHeldBy === "player" && !gameOver) {
+    const cpu = cpuSettings[cpuDifficulty] || cpuSettings.medium;
+    const techChance = cpuDifficulty === "hard" ? 0.85 : cpuDifficulty === "medium" ? 0.55 : 0.25;
+    if (!enemy.thraggTechRolled) {
+      enemy.thraggTechRolled = true;
+      enemy.thraggWillTech = Math.random() < techChance;
+    }
+    if (enemy.thraggWillTech) breakThraggGrab(enemy, player);
+  } else if (enemy.thraggTechRolled) {
+    enemy.thraggTechRolled = false;
+    enemy.thraggWillTech = false;
+  }
+
   if (gameOver || isSpecialLocked(enemy) || enemy.stun > 0 || enemy.knockdown) return;
 
   enemy.aiCooldown = Number.isFinite(enemy.aiCooldown) ? enemy.aiCooldown - 1 : 0;
@@ -9428,6 +9741,9 @@ function updateFighter(f, opponent) {
   }
   updateBluePunchTimers(f);
   if (f.gojoPushPullCooldown > 0) f.gojoPushPullCooldown -= 1;
+  // THRAGG_BRAWLER_PATCH
+  updateThraggGrab(f);
+  updateFlyingDash(f);
 
   if (f.ko) {
     f.attacking = null;
@@ -10284,6 +10600,21 @@ function getTechniqueSkin(f, flash) {
       hair: "#f472b6",
       eye: "#111827",
       mark: "#7f1d1d"
+    };
+  }
+
+  // THRAGG_BRAWLER_PATCH: dark leathery skin, bandaged forearms, dull iron
+  // accents - reads as heavy and durable rather than flashy.
+  if (f.technique === "brawler") {
+    return {
+      body: "#4b3524",
+      skin: "#8a6a4e",
+      accent: "#9a3412",
+      pants: "#241a12",
+      shoe: "#1c1410",
+      hair: "#1c1410",
+      eye: "#0b0705",
+      mark: "#c2410c"
     };
   }
 
@@ -11513,30 +11844,27 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   const running = !f.ko && f.grounded && Math.abs(f.vx) > 0.65 && !f.blocking && f.stun <= 0 && f.dodging <= 0;
   const gojoWalk = running && f.technique === "limitless";
   const retreating = running && Math.sign(f.vx) === -f.dir;
-  const backpedal = retreating;
   // WALK_GAIT_PATCH: one continuous, phase-locked gait for every fighter.
-  // The legs use the inverse-kinematics stepper below and the arms swing
-  // from the exact same phase value, so nothing snaps or drifts.
-  //
-  // CONTRALATERAL INVARIANT (holds frame by frame, both directions):
-  //   walkStride = +1  ->  rightFoot leads (34 + stride), leftFoot trails
-  //                        right arm swings BACK, left arm swings FORWARD
-  //   walkStride = -1  ->  leftFoot leads (18 + stride), rightFoot trails
-  //                        left arm swings BACK, right arm swings FORWARD
-  // Feet and arms both read walkStride directly - the arm formulas below
-  // subtract it on the right arm and add it on the left, which is what
-  // pins the opposite arm forward from the leading leg at every phase.
-  // (armSwing must NOT flip sign when retreating: in a human backward walk
-  // the same temporal arm/leg phase persists, so the old *moveDirection
-  // flip was inverting the pairing while backpedaling.)
+  // The legs use the inverse-kinematics stepper below (previously
+  // shrine-only) and the arms swing from the exact same phase, so nothing
+  // snaps between keyframes or drifts out of sync anymore.
   const shrineWalkCycle = f.walkCycle || 0;
-  // Backpedal cadence is quicker relative to stride (short choppy steps).
-  const gaitPhase = backpedal ? shrineWalkCycle * 1.3 : shrineWalkCycle;
-  const walkStride = running ? -Math.cos(gaitPhase) : 0;
-  const armSwing = walkStride;
-  const runPose = walkStride;
-  const runCenterLift = running ? Math.abs(Math.sin(gaitPhase)) * (backpedal ? 2.2 : 3) : 0;
-  const bob = running ? (backpedal ? 0.8 : 1) + runCenterLift * 0.45 : 0;
+  const moveDirection = running ? Math.sign(f.vx) * f.dir : 1;
+  const walkStride = running ? -Math.cos(shrineWalkCycle) : 0;
+  // BACKWARD_WALK_FIX_PATCH: legs previously read off `walkStride` directly
+  // while arms read off `walkStride * moveDirection`. Those match while
+  // moving forward (moveDirection is 1) but fall out of phase with each
+  // other whenever the fighter backpedals (moveDirection flips to -1) -
+  // that's the mismatched arm swing. Both limbs now share one `legStride`,
+  // and a distinct backpedal gait (shorter stride, higher knee lift,
+  // calmer arm swing) layers on top when retreating instead of just
+  // reusing the forward walk cycle.
+  const legStride = walkStride * moveDirection;
+  const backpedal = retreating;
+  const armSwing = legStride * (backpedal ? 0.5 : 1);
+  const runPose = legStride;
+  const runCenterLift = running ? Math.abs(Math.sin(shrineWalkCycle)) * 3 : 0;
+  const bob = running ? 1 + runCenterLift * 0.45 : 0;
   const jumpPose = !f.grounded && !f.ko;
   const jumpRetreating = jumpPose && Math.sign(f.vx) === -f.dir;
   const jumpCycle = jumpPose ? Math.sin(frame * 0.32) : 0;
@@ -11594,61 +11922,29 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       ? { x: 60, y: 115 }
       : { x: 39, y: footY };
   if (running && !jumpPose) {
-    const swingWave = Math.sin(gaitPhase);
-    let strideCurve, strideLen, leftLift, rightLift, kneeBend, kneeYDrop, kneeXBias, kneeLiftPull;
-    if (backpedal) {
-      // BACKPEDAL_GAIT_PATCH: a distinct backward-walk, not the forward
-      // cycle scaled down. Short choppy steps (eased stride curve so the
-      // foot plants quickly and dwells), knees carried higher and bent
-      // harder (the cautious can't-see-where-I'm-stepping gait), and the
-      // swing foot travels toward -x, the direction of travel - so the
-      // lift phase here is the mirror of the forward path's.
-      strideCurve = Math.sign(walkStride) * Math.pow(Math.abs(walkStride), 0.72);
-      strideLen = 5.5;
-      leftLift = Math.max(0, swingWave) * 4.4;
-      rightLift = Math.max(0, -swingWave) * 4.4;
-      kneeBend = 6.6 + Math.abs(swingWave) * 2.2;
-      kneeYDrop = 6.2;
-      kneeXBias = -1.6;
-      kneeLiftPull = 0.55;
-    } else {
-      // Forward walk. The lifted (swing) foot must be the one traveling
-      // toward +x relative to the body while the planted foot slides back:
-      // leftFoot.x = 18 - walkStride*len travels back-to-front during the
-      // half-cycle where sin(gaitPhase) < 0, so that is when it lifts.
-      // (The previous lift phase was inverted - a subtle moonwalk.)
-      // NO_LEG_CROSS_PATCH: stride must stay under 8 (half the 16px hip
-      // gap) or the rear leg overtakes the front leg at full stride and
-      // the flat 2D legs visually swap - which made the front arm look
-      // like it swings the same way as the "front" foot. With the feet
-      // never crossing, the contralateral pairing reads correctly at
-      // every phase: front foot planted forward = front arm back.
-      strideCurve = Math.max(-1, Math.min(1, walkStride));
-      strideLen = gojoWalk ? 7 : 7.5;
-      leftLift = Math.max(0, -swingWave) * 2.6;
-      rightLift = Math.max(0, swingWave) * 2.6;
-      kneeBend = 4.4 + Math.abs(swingWave) * 1.1;
-      kneeYDrop = 8.5;
-      kneeXBias = 0;
-      kneeLiftPull = 0.25;
-    }
-    leftFoot.x = 18 - strideCurve * strideLen;
-    rightFoot.x = 34 + strideCurve * strideLen;
+    const humanStride = Math.max(-1, Math.min(1, legStride));
+    const strideLen = (gojoWalk ? 9 : f.technique === "shrine" ? 10 : 9.5) * (backpedal ? 0.6 : 1);
+    const liftScale = backpedal ? 1.5 : 1;
+    const leftLift = Math.max(0, Math.sin(shrineWalkCycle)) * 2.6 * liftScale;
+    const rightLift = Math.max(0, -Math.sin(shrineWalkCycle)) * 2.6 * liftScale;
+    leftFoot.x = 18 - humanStride * strideLen;
+    rightFoot.x = 34 + humanStride * strideLen;
     leftFoot.y = footY - leftLift;
     rightFoot.y = footY - rightLift;
 
     const leftKneeDir = leftFoot.x >= leftHip.x ? 1 : -1;
     const rightKneeDir = rightFoot.x >= rightHip.x ? 1 : -1;
+    const kneeBend = (4.4 + Math.abs(Math.sin(shrineWalkCycle)) * 1.1) * (backpedal ? 1.35 : 1);
     leftKnee.x = Math.max(
       Math.min(leftHip.x, leftFoot.x) - 5,
-      Math.min(Math.max(leftHip.x, leftFoot.x) + 5, (leftHip.x + leftFoot.x) * 0.5 + leftKneeDir * kneeBend + kneeXBias)
+      Math.min(Math.max(leftHip.x, leftFoot.x) + 5, (leftHip.x + leftFoot.x) * 0.5 + leftKneeDir * kneeBend)
     );
     rightKnee.x = Math.max(
       Math.min(rightHip.x, rightFoot.x) - 5,
-      Math.min(Math.max(rightHip.x, rightFoot.x) + 5, (rightHip.x + rightFoot.x) * 0.5 + rightKneeDir * kneeBend + kneeXBias)
+      Math.min(Math.max(rightHip.x, rightFoot.x) + 5, (rightHip.x + rightFoot.x) * 0.5 + rightKneeDir * kneeBend)
     );
-    leftKnee.y = (leftHip.y + leftFoot.y) * 0.5 + kneeYDrop - leftLift * kneeLiftPull;
-    rightKnee.y = (rightHip.y + rightFoot.y) * 0.5 + kneeYDrop - rightLift * kneeLiftPull;
+    leftKnee.y = (leftHip.y + leftFoot.y) * 0.5 + 8.5 - leftLift * 0.25;
+    rightKnee.y = (rightHip.y + rightFoot.y) * 0.5 + 8.5 - rightLift * 0.25;
   }
   if (!jumpPose && !running) {
     leftFoot.x -= f.technique === "shrine" ? 5 : 3;
@@ -11698,12 +11994,10 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   ctx.lineTo(rightFoot.x + 10, rightFoot.y + 1);
   ctx.stroke();
 
-  // BACKPEDAL torso: shifted and rotated slightly BACK (positive), the
-  // opposite of the forward walk's forward lean.
-  const lean = f.attacking ? -7 : f.blocking ? 4 : jumpRetreating ? 4 : jumpPose ? -2 : backpedal ? 4.5 : gojoWalk ? -3 + runPose * 0.4 : running ? -5 : f.technique === "shrine" ? -4 : -2;
+  const lean = f.attacking ? -7 : f.blocking ? 4 : jumpRetreating ? 4 : jumpPose ? -2 : retreating ? 3 : gojoWalk ? -3 + runPose * 0.4 : running ? -5 : f.technique === "shrine" ? -4 : -2;
   ctx.save();
   ctx.translate(lean, 0);
-  ctx.rotate((f.technique === "shrine" ? -0.04 : -0.025) + idle * 0.01 + (backpedal ? 0.06 : 0));
+  ctx.rotate((f.technique === "shrine" ? -0.04 : -0.025) + idle * 0.01);
 
   ctx.fillStyle = "#020617";
   ctx.beginPath();
@@ -12089,7 +12383,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   }
   if (f.technique === "shrine" && !f.attacking && !jumpPose && !f.blocking) {
     const lowerBreath = running ? runCenterLift * 0.12 : idle * 2;
-    const lowerSwing = running ? armSwing * (backpedal ? 1.1 : 8) : idle * 1.2; // EQUAL_ARM_PATCH: same backpedal sway as the upper pair
+    const lowerSwing = running ? armSwing * 8 : idle * 1.2;
     drawArmRig(
       { x: 43, y: 63 + lowerBreath },
       { x: 50 - lowerSwing * 0.48, y: 76 + lowerBreath },
@@ -12351,8 +12645,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   } else if (!f.blocking) {
     if (f.technique === "shrine") {
       const upperBreath = running ? runCenterLift * 0.08 : idle * 2;
-      // Backpedal carries the extra arms close with only a subtle sway.
-      const upperSwing = running ? armSwing * (backpedal ? 1.1 : 2.4) : idle * 0.45; // EQUAL_ARM_PATCH: same backpedal sway as the lower pair
+      const upperSwing = running ? armSwing * 2.4 : idle * 0.45;
       drawArmRig(
         { x: 44, y: 48 + upperBreath },
         { x: 55 - upperSwing * 0.4, y: 57 + upperBreath },
@@ -12365,42 +12658,19 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
         { x: -6 + upperSwing, y: 68 + upperBreath * 0.3 },
         skinColor
       );
-    } else if (backpedal) {
-      // BACKPEDAL arm carriage: elbows bent and held near the ribs, hands
-      // riding at waist height with a small guarded sway - not the full
-      // contralateral pump of the forward walk. The sway still reads off
-      // armSwing so the (reduced) pairing stays in phase with the feet.
-      const guardSway = armSwing * 2.6;
-      drawArmRig(
-        { x: 42, y: 52 },
-        { x: 47 - guardSway * 0.3, y: 63 },
-        { x: 44 - guardSway, y: 74 }
-      );
-      drawArmRig(
-        { x: 11, y: 52 },
-        { x: 6 + guardSway * 0.3, y: 63 },
-        { x: 9 + guardSway, y: 74 }
-      );
     } else {
-      // Forward walk: full contralateral pump. armSwing = walkStride, so
-      // walkStride=+1 (rightFoot leading) drives the right hand back
-      // (46 - swing) and the left hand forward (7 + swing); the forward-
-      // swinging arm is also the raised one via the fwdRaise terms.
       const runArmSwing = running ? armSwing * 8 : idle * 1.2;
-      // EQUAL_ARM_PATCH: identical raise amplitude on both sides - the old
-      // 7-vs-5 split made one arm ride visibly higher and read as a
-      // different length than the other mid-stride.
-      const fwdRaiseLeft = running ? Math.max(0, armSwing) * 6 : 0;
-      const fwdRaiseRight = running ? Math.max(0, -armSwing) * 6 : 0;
+      const runArmLift = running ? Math.max(0, armSwing) * 7 : 0;
+      const runArmDrop = running ? Math.max(0, -armSwing) * 5 : 0;
       drawArmRig(
         { x: 42, y: 52 },
-        { x: 49 - runArmSwing * 0.5, y: 68 - fwdRaiseRight * 0.5 },
-        { x: 46 - runArmSwing * 1.3, y: 81 - fwdRaiseRight }
+        { x: 49 - runArmSwing * 0.5, y: 68 - runArmDrop * 0.5 },
+        { x: 46 - runArmSwing * 1.3, y: 81 - runArmDrop }
       );
       drawArmRig(
         { x: 11, y: 52 },
-        { x: 4 + runArmSwing * 0.5, y: 68 - fwdRaiseLeft * 0.5 },
-        { x: 7 + runArmSwing * 1.3, y: 81 - fwdRaiseLeft }
+        { x: 4 + runArmSwing * 0.5, y: 68 - runArmLift * 0.5 },
+        { x: 7 + runArmSwing * 1.3, y: 81 - runArmLift }
       );
     }
   }
@@ -12494,11 +12764,11 @@ function drawTechniquePreview(canvasEl, technique) {
   const previousCtx = ctx;
   const previewFighter = makeFighter({
     x: 450,
-    w: technique === "shrine" ? 52 : 50,
+    w: technique === "shrine" ? 52 : technique === "brawler" ? 54 : 50,
     h: 128,
     dir: 1,
-    color: technique === "shrine" ? "#dc2626" : technique === "deathnote" ? "#111827" : "#2563eb",
-    accent: technique === "shrine" ? "#991b1b" : technique === "deathnote" ? "#b91c1c" : "#1d4ed8"
+    color: technique === "shrine" ? "#dc2626" : technique === "deathnote" ? "#111827" : technique === "brawler" ? "#4b3524" : "#2563eb",
+    accent: technique === "shrine" ? "#991b1b" : technique === "deathnote" ? "#b91c1c" : technique === "brawler" ? "#9a3412" : "#1d4ed8"
   });
   previewFighter.technique = technique;
   previewFighter.y = GROUND - previewFighter.h;
@@ -12507,7 +12777,7 @@ function drawTechniquePreview(canvasEl, technique) {
   ctx = previewCtx;
   ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
   const backdrop = ctx.createLinearGradient(0, 0, 0, canvasEl.height);
-  backdrop.addColorStop(0, technique === "shrine" ? "#2b1420" : technique === "deathnote" ? "#180b12" : "#142033");
+  backdrop.addColorStop(0, technique === "shrine" ? "#2b1420" : technique === "deathnote" ? "#180b12" : technique === "brawler" ? "#1c140c" : "#142033");
   backdrop.addColorStop(1, "#050814");
   ctx.fillStyle = backdrop;
   ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
@@ -12530,7 +12800,45 @@ function renderTechniquePreviews() {
   drawTechniquePreview(techniquePreviewCanvases.limitless, "limitless");
   drawTechniquePreview(techniquePreviewCanvases.shrine, "shrine");
   drawTechniquePreview(techniquePreviewCanvases.deathnote, "deathnote");
+  drawTechniquePreview(techniquePreviewCanvases.brawler, "brawler");
 }
+
+// THRAGG_BRAWLER_PATCH: install his character-select card the same way
+// Light Yagami's was added - cloned from an existing button at runtime, so
+// no index.html edits are required.
+function installThraggTechniqueOption() {
+  if (!techniqueScreen) return;
+  const existing = techniqueScreen.querySelector('[data-technique="brawler"]');
+  if (!existing) {
+    const sample = techniqueScreen.querySelector(".technique-button");
+    const button = sample ? sample.cloneNode(true) : document.createElement("button");
+    button.type = "button";
+    button.className = sample ? sample.className : "technique-button";
+    button.dataset.technique = "brawler";
+    button.innerHTML = `
+      <canvas id="brawlerPreview" width="320" height="180" aria-hidden="true"></canvas>
+      <strong>Thragg</strong>
+      <span>Slow, tanky brawler/grappler</span>
+      <small>Teched grapple grab · flying dash · ground break</small>
+    `;
+    const holder = sample?.parentNode || techniqueScreen;
+    holder.appendChild(button);
+  }
+
+  const canvas = document.getElementById("brawlerPreview");
+  if (canvas) techniquePreviewCanvases.brawler = canvas;
+
+  techniqueButtons = Array.from(document.querySelectorAll(".technique-button"));
+  techniqueButtons.forEach((button) => {
+    if (button.dataset.thraggBound === "1") return;
+    button.dataset.thraggBound = "1";
+    button.addEventListener("click", () => finishTechniqueSelect(button.dataset.technique));
+  });
+
+  renderTechniquePreviews();
+}
+
+window.addEventListener("DOMContentLoaded", installThraggTechniqueOption);
 
 
 function drawSukunaModelCleanup(f) {
@@ -14313,7 +14621,7 @@ window.addEventListener("keydown", (event) => {
   if (gameMode === "online" && onlineRole === "p2") {
     if (!event.repeat && isEventForAction("light", key, code)) noteAttackButtonPress(enemy, "light");
     if (!event.repeat && isEventForAction("heavy", key, code)) noteAttackButtonPress(enemy, "heavy");
-    if (isEventForAction("throw", key, code) && !event.repeat && startBackThrow(enemy, false)) {
+    if (isEventForAction("throw", key, code) && !event.repeat && handleThrowInput(enemy, false)) {
       sendOnlineInput("backThrow");
       return;
     }
@@ -14334,7 +14642,7 @@ window.addEventListener("keydown", (event) => {
   }
   if (!event.repeat && isEventForAction("light", key, code)) noteAttackButtonPress(player, "light");
   if (!event.repeat && isEventForAction("heavy", key, code)) noteAttackButtonPress(player, "heavy");
-  if (isEventForAction("throw", key, code) && !event.repeat && startBackThrow(player, false)) return;
+  if (isEventForAction("throw", key, code) && !event.repeat && handleThrowInput(player, false)) return;
   if (!event.repeat && isEventForAction("light", key, code)) startAttack(player, "light");
   if (!event.repeat && isEventForAction("heavy", key, code)) startAttack(player, "heavy");
   if ((key === "f" || code === "keyf") && !event.repeat) {
@@ -14361,6 +14669,9 @@ window.addEventListener("keydown", (event) => {
     } else if (fighter?.technique === "deathnote") {
       usePotatoChip(fighter);
       if (gameMode === "online" && onlineRole === "p2") sendOnlineInput("potato-chip");
+    } else if (fighter?.technique === "brawler") {
+      // THRAGG_BRAWLER_PATCH: flying dash is instant, no aim/charge needed.
+      if (startFlyingDash(fighter) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("flying-dash");
     }
   }
   if (isEventForAction("ultimate", key, code) && !event.repeat) beginUltimateAim(player, mouseAimWorld);
@@ -14369,7 +14680,7 @@ window.addEventListener("keydown", (event) => {
   if (gameMode === "pvp") {
     if (!event.repeat && (key === "n" || code === "keyn")) noteAttackButtonPress(enemy, "light");
     if (!event.repeat && (key === "m" || code === "keym")) noteAttackButtonPress(enemy, "heavy");
-    if ((key === "n" || code === "keyn" || key === "m" || code === "keym") && startBackThrow(enemy)) return;
+    if ((key === "n" || code === "keyn" || key === "m" || code === "keym") && handleThrowInput(enemy)) return;
     if (!event.repeat && (key === "n" || code === "keyn")) startAttack(enemy, "light");
     if (!event.repeat && (key === "m" || code === "keym")) startAttack(enemy, "heavy");
     if (key === "/" || code === "slash") startDodge(enemy, getRivalDodgeVector());
