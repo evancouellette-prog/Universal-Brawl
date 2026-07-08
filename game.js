@@ -1747,8 +1747,8 @@ const PRACTICE_BOT_RETURN_TICKS = 300;
 // THRAGG_BRAWLER_PATCH: constants for the grappler kit - a teched command
 // grab, a flying dash gap-closer, and a single weak ground-break projectile.
 const THRAGG_MOVE_MULTIPLIER = 0.82;
-const THRAGG_GRAB_STARTUP_TICKS = 16;
-const THRAGG_GRAB_RANGE = 66;
+const THRAGG_GRAB_STARTUP_TICKS = 12;
+const THRAGG_GRAB_RANGE = 84;
 const THRAGG_GRAB_TECH_WINDOW_TICKS = 20;
 const THRAGG_GRAB_TECH_RECOVERY_TICKS = 18;
 const THRAGG_GRAB_WHIFF_COOLDOWN_TICKS = 40;
@@ -1756,10 +1756,13 @@ const THRAGG_GRAB_TECHED_COOLDOWN_TICKS = 70;
 const THRAGG_GRAB_LANDED_COOLDOWN_TICKS = 90;
 const THRAGG_GRAB_SLAM_DAMAGE = 22;
 const THRAGG_GRAB_SLAM_KNOCKBACK = 34;
-const THRAGG_DASH_ACTIVE_TICKS = 20;
-const THRAGG_DASH_SPEED = 15.5;
-const THRAGG_DASH_STUMBLE_TICKS = 16;
-const THRAGG_DASH_COOLDOWN_TICKS = 85;
+// THRAGG_FLIGHT_PATCH: real sustained Viltrumite flight, replacing the old
+// fixed-arc dash. Hold jump to rise, release to sink; move keys steer.
+const THRAGG_FLIGHT_TICKS = 170;
+const THRAGG_FLIGHT_SPEED = 7.4;
+const THRAGG_FLIGHT_RISE = -3.6;
+const THRAGG_FLIGHT_SINK = 1.15;
+const THRAGG_DASH_COOLDOWN_TICKS = 280;
 const THRAGG_GROUND_BREAK_COOLDOWN = TECHNIQUE_HEAVY_COOLDOWN + 20;
 
 const TECHNIQUE_STATS = {
@@ -2426,6 +2429,7 @@ function getLightExtraHudItems(f) {
 function getTechniqueCharacterName(technique) {
   if (technique === "shrine") return "Sukuna";
   if (technique === "deathnote") return "Light";
+  if (technique === "brawler") return "Thragg";
   return "Gojo";
 }
 
@@ -2644,7 +2648,7 @@ const techniqueMoves = {
   // THRAGG_BRAWLER_PATCH: his only ranged tool - a slow, weak chunk of
   // broken ground. Deliberately worse than every other projectile in the
   // game; it exists so he isn't helpless against zoning, not to zone himself.
-  groundBreak: { cost: 24, damage: 9, speed: 8.4, radius: 17, knockback: 10, life: 46 }
+  groundBreak: { cost: 0, damage: 9, speed: 8.4, radius: 17, knockback: 10, life: 46 } // THRAGG_NO_JJK_PATCH: no CE
 };
 
 function getTechniqueMoveKey(f, slot) {
@@ -2662,7 +2666,7 @@ function getTechniqueDisplayName(move) {
   if (move === "ryukStrike") return "RYUK";
   if (move === "nameInvestigation") return "INVESTIGATE";
   if (move === "groundBreak") return "GROUND BREAK";
-  if (move === "flyingDash") return "FLYING DASH";
+  if (move === "flyingDash") return "FLIGHT";
   return move.toUpperCase();
 }
 
@@ -2937,7 +2941,7 @@ function makeFighter(config) {
     thraggGrabState: "idle",
     thraggGrabTimer: 0,
     thraggGrabCooldown: 0,
-    thraggDashActiveTimer: 0,
+    thraggFlightTicks: 0,
     thraggDashCooldown: 0,
     blocking: false,
     shieldTicks: SHIELD_MAX_TICKS,
@@ -3254,7 +3258,7 @@ function pinStationaryPracticeDummy(f = enemy) {
   f.grabTechable = false;
   f.thraggGrabState = "idle";
   f.thraggGrabTimer = 0;
-  f.thraggDashActiveTimer = 0;
+  f.thraggFlightTicks = 0;
   f.dodging = 0;
 }
 
@@ -5042,7 +5046,7 @@ function updateResourceBarLabels() {
   const playerUltFrame = playerUltimateEl ? playerUltimateEl.closest(".ultimate-frame") : null;
   const enemyUltFrame = enemyUltimateEl ? enemyUltimateEl.closest(".ultimate-frame") : null;
 
-  ensureResourceBarLabel(playerCeFrame, isLight(player) ? "Information" : "Cursed Energy", "ce");
+  ensureResourceBarLabel(playerCeFrame, isLight(player) ? "Information" : player?.technique === "brawler" ? "" : "Cursed Energy", "ce");
   ensureResourceBarLabel(playerUltFrame, isLight(player) ? "Name" : "Ultimate", "ultimate");
 
   // DUMMY_HUD_NO_WORDS_PATCH:
@@ -5053,7 +5057,7 @@ function updateResourceBarLabels() {
     return;
   }
 
-  ensureResourceBarLabel(enemyCeFrame, isLight(enemy) ? "Information" : "Cursed Energy", "ce");
+  ensureResourceBarLabel(enemyCeFrame, isLight(enemy) ? "Information" : enemy?.technique === "brawler" ? "" : "Cursed Energy", "ce");
   ensureResourceBarLabel(enemyUltFrame, isLight(enemy) ? "Name" : "Ultimate", "ultimate");
 }
 
@@ -5092,11 +5096,13 @@ function updateLightHudVisibility() {
 
   // LIGHT_REAL_INFO_NAME_BARS_PATCH:
   // Light uses the CE slot as INFO and the Ultimate slot as NAME.
-  setHudElementHidden(playerCeFrame, false);
+  // THRAGG_NO_JJK_PATCH: Thragg has no Cursed Energy at all - his CE bar
+  // is hidden outright (abilities are cooldown-gated).
+  setHudElementHidden(playerCeFrame, player?.technique === "brawler");
   setHudElementHidden(playerUltFrame, false);
 
   if (gameMode !== "practice") {
-    setHudElementHidden(enemyCeFrame, false);
+    setHudElementHidden(enemyCeFrame, enemy?.technique === "brawler");
     setHudElementHidden(enemyUltFrame, false);
   } else {
     setHudElementHidden(enemyCeFrame, true);
@@ -5520,7 +5526,9 @@ function isHeldBySpecial(f) {
 // THRAGG_BRAWLER_PATCH: locks the attacker out of everything else while
 // their grab is winding up/holding, or while mid-flying-dash.
 function isThraggCommitted(f) {
-  return Boolean(f && ((f.thraggGrabState && f.thraggGrabState !== "idle") || (f.thraggDashActiveTimer || 0) > 0));
+  // Flight no longer locks him out - he can punch on the wing. Only the
+  // grab windup/hold commits him.
+  return Boolean(f && f.thraggGrabState && f.thraggGrabState !== "idle");
 }
 
 function isSpecialLocked(f) {
@@ -5773,7 +5781,6 @@ function resolveThraggGrabSlam(attacker, defender) {
   defender.hurt = 18;
   defender.stun = Math.max(defender.stun, 20);
   attacker.thraggGrabCooldown = THRAGG_GRAB_LANDED_COOLDOWN_TICKS;
-  gainCe(attacker, HEAVY_HIT_CE_GAIN);
   hitStopTicks = Math.max(hitStopTicks, HITSTOP_HEAVY);
   shake = Math.max(shake, 12);
   spawnHitSpark(defender.x + defender.w / 2, defender.y + 42, attacker.dir, "heavy");
@@ -5791,6 +5798,9 @@ function updateThraggGrab(f) {
     return;
   }
   if (f.thraggGrabState === "startup") {
+    // GRAB_FEEL_PATCH: step-in lunge so the grab actually reaches instead
+    // of whiffing in place, and so it reads as a committed grapple.
+    if (f.grounded) f.vx = f.dir * 2.6;
     f.thraggGrabTimer -= 1;
     if (f.thraggGrabTimer > 0) return;
     const fCenter = getFighterCenter(f);
@@ -5810,6 +5820,7 @@ function updateThraggGrab(f) {
       opponent.attacking = null;
       opponent.dir = -f.dir;
       opponent.stun = Math.max(opponent.stun, THRAGG_GRAB_TECH_WINDOW_TICKS + 6);
+      if (opponent === player) showActionWarning("GRABBED! TAB TO TECH");
     } else {
       f.thraggGrabState = "idle";
       f.thraggGrabCooldown = THRAGG_GRAB_WHIFF_COOLDOWN_TICKS;
@@ -5827,6 +5838,11 @@ function updateThraggGrab(f) {
       return;
     }
     if (Number.isFinite(opponent.grabLockY)) opponent.y = opponent.grabLockY;
+    // GRAB_FEEL_PATCH: pin the victim in Thragg's hands so the hold is
+    // visually solid instead of them drifting apart.
+    opponent.x = f.x + f.dir * (f.w * 0.5 + 18);
+    opponent.vx = 0;
+    f.vx *= 0.5;
     f.thraggGrabTimer -= 1;
     if (f.thraggGrabTimer <= 0) {
       resolveThraggGrabSlam(f, opponent);
@@ -5847,36 +5863,69 @@ function canStartFlyingDash(f) {
     f.stun <= 0 &&
     f.dodging <= 0 &&
     !f.knockdown &&
-    (f.thraggDashActiveTimer || 0) <= 0 &&
+    (f.thraggFlightTicks || 0) <= 0 &&
     (f.thraggDashCooldown || 0) <= 0
   );
 }
 
+// THRAGG_FLIGHT_PATCH: press S to take off into sustained flight. Hold
+// jump to rise, release to sink slowly, steer with the move keys, and
+// attack freely while airborne. Ends when the timer runs out, on landing,
+// or when knocked out of the air; the cooldown starts when flight ends.
 function startFlyingDash(f) {
   if (!canStartFlyingDash(f)) return false;
-  f.attacking = null;
   f.blocking = false;
-  f.thraggDashActiveTimer = THRAGG_DASH_ACTIVE_TICKS;
-  f.thraggDashCooldown = THRAGG_DASH_COOLDOWN_TICKS;
+  f.thraggFlightTicks = THRAGG_FLIGHT_TICKS;
   f.grounded = false;
   f.onPlatform = false;
-  f.vy = -1.5;
-  f.vx = f.dir * THRAGG_DASH_SPEED;
+  f.vy = -6.5;
   return true;
 }
 
-function updateFlyingDash(f) {
-  if ((f.thraggDashCooldown || 0) > 0) f.thraggDashCooldown -= 1;
-  if ((f.thraggDashActiveTimer || 0) <= 0) return;
-  f.vx = f.dir * THRAGG_DASH_SPEED;
-  f.vy = Math.min(f.vy + 0.4, 2.5);
-  f.thraggDashActiveTimer -= 1;
-  if (f.thraggDashActiveTimer <= 0) {
-    // Short, mildly-punishable recovery on landing - reuses the shared
-    // stun timer so every existing "can this fighter act" check already
-    // respects it with no further wiring needed.
-    f.stun = Math.max(f.stun, THRAGG_DASH_STUMBLE_TICKS);
+function endThraggFlight(f) {
+  if ((f.thraggFlightTicks || 0) <= 0) return;
+  f.thraggFlightTicks = 0;
+  f.thraggDashCooldown = THRAGG_DASH_COOLDOWN_TICKS;
+}
+
+function thraggFlightWantsRise(f) {
+  if (f === player) return isPressed(" ", "space");
+  if (gameMode === "pvp" && f === enemy) return isPressed("arrowup");
+  if (gameMode === "online" && f === enemy && onlineRole === "p1") return Boolean(remoteInput.up);
+  if (gameMode === "cpu" && f === enemy) {
+    const opp = getOpponent(f);
+    return opp ? getFighterCenter(opp).y < getFighterCenter(f).y - 10 : false;
   }
+  return false;
+}
+
+function updateFlyingDash(f) {
+  if ((f.thraggDashCooldown || 0) > 0 && (f.thraggFlightTicks || 0) <= 0) f.thraggDashCooldown -= 1;
+  if ((f.thraggFlightTicks || 0) <= 0) return;
+  if (f.ko || f.knockdown || f.stun > 0) {
+    endThraggFlight(f);
+    return;
+  }
+  f.thraggFlightTicks -= 1;
+  const elapsed = THRAGG_FLIGHT_TICKS - f.thraggFlightTicks;
+  if (elapsed < 10) {
+    // Takeoff boost: guarantee he actually leaves the ground before the
+    // rise/sink control takes over (sink used to shove him straight back
+    // into the floor and end the flight instantly).
+    f.vy = -5.2;
+    f.grounded = false;
+    f.onPlatform = false;
+  } else {
+    f.vy = thraggFlightWantsRise(f) ? THRAGG_FLIGHT_RISE : THRAGG_FLIGHT_SINK;
+  }
+  const move = getMoveInputForFighter(f);
+  if (move !== 0) {
+    f.vx = Math.max(-THRAGG_FLIGHT_SPEED, Math.min(THRAGG_FLIGHT_SPEED, f.vx + move * 1.1));
+  }
+  f.jumpsUsed = 2;
+  // Flight ends on the timer or on being hit - touching down mid-flight
+  // just skims; holding jump lifts off again.
+  if (f.thraggFlightTicks <= 0) endThraggFlight(f);
 }
 
 function startKnockout(attacker, defender) {
@@ -6423,7 +6472,7 @@ function getRctHealPerTick(f) {
 }
 
 function canStartRct(f) {
-  if (isLight(f)) return false;
+  if (isLight(f) || f?.technique === "brawler") return false; // THRAGG_NO_JJK_PATCH
   if (!f || gameOver || paused || isSpecialLocked(f) || f.ko || f.knockdown || f.dodging > 0) return false;
   if (f.health >= getCurrentHealthBarCeiling(f) || f.rctCooldown > 0) return false;
   return f.ce >= f.maxCe * RCT_MIN_CE_RATIO;
@@ -6445,7 +6494,7 @@ function cancelRct(f, startCooldown = true) {
 }
 
 function setRctHealing(f, wantsRct) {
-  if (isLight(f)) {
+  if (isLight(f) || f?.technique === "brawler") { // THRAGG_NO_JJK_PATCH
     cancelRct(f, false);
     return;
   }
@@ -6637,14 +6686,68 @@ function spawnUltimateChargeEffect(f, kind) {
   });
 }
 
+// THRAGG_NO_JJK_PATCH: his ultimate is a Viltrumite WAR STOMP, not a
+// borrowed Hollow Purple. Instant cast: he slams the ground and sends
+// three escalating shockwaves rolling out in each direction.
+function startThraggUltimate(f) {
+  if (!canStartUltimate(f)) {
+    const warning = getUltimateFailureMessage(f);
+    if (warning) showActionWarning(warning);
+    return false;
+  }
+  f.ultimateMeter = 0;
+  f.vx = 0;
+  if (f.grounded) f.vy = -3;
+  const cx = f.x + f.w / 2;
+  const groundY = f.y + f.h - 12;
+  [-1, 1].forEach((side) => {
+    for (let i = 0; i < 3; i += 1) {
+      const speed = side * (7 + i * 1.2);
+      projectiles.push({
+        owner: f === player ? "player" : "enemy",
+        move: "groundBreak",
+        x: cx + side * (30 + i * 10),
+        y: groundY,
+        vx: speed,
+        vy: 0,
+        baseVx: speed,
+        baseVy: 0,
+        radius: 24 + i * 7,
+        damage: Math.ceil((15 + i * 6) * getOutgoingDamageMultiplier(f)),
+        knockback: 30 + i * 4,
+        dir: side,
+        aimX: side,
+        aimY: 0,
+        angle: side > 0 ? 0 : Math.PI,
+        maxTravel: null,
+        traveled: 0,
+        life: 60,
+        startup: 6 + i * 7,
+        startupMax: 6 + i * 7,
+        warningRadius: 24 + i * 7,
+        maxLife: 60,
+        hit: false
+      });
+    }
+  });
+  shake = Math.max(shake, 16);
+  hitStopTicks = Math.max(hitStopTicks, HITSTOP_HEAVY);
+  spawnHitSpark(cx, groundY, f.dir, "heavy");
+  showActionWarning("WAR STOMP");
+  updateHud();
+  return true;
+}
+
 function startUltimate(f, aimPoint = null) {
   if (isLight(f)) return startDeathNoteUltimate(f);
+  if (f.technique === "brawler") return startThraggUltimate(f); // THRAGG_NO_JJK_PATCH
   return beginUltimateAim(f, aimPoint);
 }
 
 
 function beginUltimateAim(f, aimPoint = null) {
   if (isLight(f)) return startDeathNoteUltimate(f);
+  if (f.technique === "brawler") return startThraggUltimate(f); // THRAGG_NO_JJK_PATCH
   if (!canStartUltimate(f)) {
     const warning = getUltimateFailureMessage(f);
     if (warning) showActionWarning(warning);
@@ -7060,7 +7163,7 @@ function canStartSimpleDomain(f) {
 }
 
 function startSimpleDomain(f) {
-  if (isLight(f)) return false;
+  if (isLight(f) || f?.technique === "brawler") return false; // THRAGG_NO_JJK_PATCH
   if (!canStartSimpleDomain(f)) {
     showActionWarning(f && f.ce < Math.ceil(f.maxCe * SIMPLE_DOMAIN_CE_COST_RATIO) ? "Not Enough Cursed Energy" : "Can't Use Simple Domain");
     return false;
@@ -7155,7 +7258,7 @@ function getDomainAttemptForFighter(f) {
 }
 
 function canStartDomain(f) {
-  if (isLight(f)) return false;
+  if (isLight(f) || f?.technique === "brawler") return false; // THRAGG_NO_JJK_PATCH
   if (!f || gameState !== "playing" || gameOver || paused || f.ko || f.knockdown || f.stun > 0) return false;
   if (isSpecialLocked(f) || f.attacking || f.dodging > 0 || f.rctHealing || hasCtLock(f)) return false;
   if (activeDomain || domainClash) return false;
@@ -10603,18 +10706,19 @@ function getTechniqueSkin(f, flash) {
     };
   }
 
-  // THRAGG_BRAWLER_PATCH: dark leathery skin, bandaged forearms, dull iron
-  // accents - reads as heavy and durable rather than flashy.
+  // THRAGG_LOOK_PATCH: the actual Viltrumite - pale skin, slicked black
+  // hair and the walrus mustache (drawn in the head section), charcoal
+  // Viltrumite uniform with blood-red trim and grey boots.
   if (f.technique === "brawler") {
     return {
-      body: "#4b3524",
-      skin: "#8a6a4e",
-      accent: "#9a3412",
-      pants: "#241a12",
-      shoe: "#1c1410",
-      hair: "#1c1410",
+      body: "#23262d",
+      skin: "#efc9a8",
+      accent: "#dc2626",
+      pants: "#171a20",
+      shoe: "#9ca3af",
+      hair: "#101114",
       eye: "#0b0705",
-      mark: "#c2410c"
+      mark: "#dc2626"
     };
   }
 
@@ -11848,23 +11952,23 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   // The legs use the inverse-kinematics stepper below (previously
   // shrine-only) and the arms swing from the exact same phase, so nothing
   // snaps between keyframes or drifts out of sync anymore.
-  const shrineWalkCycle = f.walkCycle || 0;
-  const moveDirection = running ? Math.sign(f.vx) * f.dir : 1;
-  const walkStride = running ? -Math.cos(shrineWalkCycle) : 0;
-  // BACKWARD_WALK_FIX_PATCH: legs previously read off `walkStride` directly
-  // while arms read off `walkStride * moveDirection`. Those match while
-  // moving forward (moveDirection is 1) but fall out of phase with each
-  // other whenever the fighter backpedals (moveDirection flips to -1) -
-  // that's the mismatched arm swing. Both limbs now share one `legStride`,
-  // and a distinct backpedal gait (shorter stride, higher knee lift,
-  // calmer arm swing) layers on top when retreating instead of just
-  // reusing the forward walk cycle.
-  const legStride = walkStride * moveDirection;
   const backpedal = retreating;
-  const armSwing = legStride * (backpedal ? 0.5 : 1);
-  const runPose = legStride;
-  const runCenterLift = running ? Math.abs(Math.sin(shrineWalkCycle)) * 3 : 0;
-  const bob = running ? 1 + runCenterLift * 0.45 : 0;
+  // CONTRALATERAL INVARIANT (holds frame by frame, both directions):
+  //   walkStride = +1  ->  rightFoot leads (34 + stride), leftFoot trails
+  //                        right arm swings BACK, left arm swings FORWARD
+  //   walkStride = -1  ->  leftFoot leads (18 + stride), rightFoot trails
+  //                        left arm swings BACK, right arm swings FORWARD
+  // Feet and arms both read walkStride directly. armSwing must NOT flip
+  // sign when retreating: in a human backward walk the same temporal
+  // arm/leg phase persists.
+  const shrineWalkCycle = f.walkCycle || 0;
+  // Backpedal cadence is quicker relative to stride (short choppy steps).
+  const gaitPhase = backpedal ? shrineWalkCycle * 1.3 : shrineWalkCycle;
+  const walkStride = running ? -Math.cos(gaitPhase) : 0;
+  const armSwing = walkStride;
+  const runPose = walkStride;
+  const runCenterLift = running ? Math.abs(Math.sin(gaitPhase)) * (backpedal ? 2.2 : 3) : 0;
+  const bob = running ? (backpedal ? 0.8 : 1) + runCenterLift * 0.45 : 0;
   const jumpPose = !f.grounded && !f.ko;
   const jumpRetreating = jumpPose && Math.sign(f.vx) === -f.dir;
   const jumpCycle = jumpPose ? Math.sin(frame * 0.32) : 0;
@@ -11922,29 +12026,55 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       ? { x: 60, y: 115 }
       : { x: 39, y: footY };
   if (running && !jumpPose) {
-    const humanStride = Math.max(-1, Math.min(1, legStride));
-    const strideLen = (gojoWalk ? 9 : f.technique === "shrine" ? 10 : 9.5) * (backpedal ? 0.6 : 1);
-    const liftScale = backpedal ? 1.5 : 1;
-    const leftLift = Math.max(0, Math.sin(shrineWalkCycle)) * 2.6 * liftScale;
-    const rightLift = Math.max(0, -Math.sin(shrineWalkCycle)) * 2.6 * liftScale;
-    leftFoot.x = 18 - humanStride * strideLen;
-    rightFoot.x = 34 + humanStride * strideLen;
+    const swingWave = Math.sin(gaitPhase);
+    let strideCurve, strideLen, leftLift, rightLift, kneeBend, kneeYDrop, kneeXBias, kneeLiftPull;
+    if (backpedal) {
+      // BACKPEDAL_GAIT_PATCH: a distinct backward-walk, not the forward
+      // cycle scaled down. Short choppy steps (eased stride curve so the
+      // foot plants quickly and dwells), knees carried higher and bent
+      // harder (the cautious can't-see-where-I'm-stepping gait), and the
+      // swing foot travels toward -x, the direction of travel - so the
+      // lift phase here is the mirror of the forward path's.
+      strideCurve = Math.sign(walkStride) * Math.pow(Math.abs(walkStride), 0.72);
+      strideLen = 5.5;
+      leftLift = Math.max(0, swingWave) * 4.4;
+      rightLift = Math.max(0, -swingWave) * 4.4;
+      kneeBend = 6.6 + Math.abs(swingWave) * 2.2;
+      kneeYDrop = 6.2;
+      kneeXBias = -1.6;
+      kneeLiftPull = 0.55;
+    } else {
+      // Forward walk. The lifted (swing) foot must be the one traveling
+      // toward +x relative to the body while the planted foot slides back.
+      // NO_LEG_CROSS_PATCH: stride stays under 8 (half the 16px hip gap)
+      // so the rear leg never overtakes the front leg - crossing made the
+      // flat 2D legs visually swap and the arm pairing read wrong.
+      strideCurve = Math.max(-1, Math.min(1, walkStride));
+      strideLen = gojoWalk ? 7 : 7.5;
+      leftLift = Math.max(0, -swingWave) * 2.6;
+      rightLift = Math.max(0, swingWave) * 2.6;
+      kneeBend = 4.4 + Math.abs(swingWave) * 1.1;
+      kneeYDrop = 8.5;
+      kneeXBias = 0;
+      kneeLiftPull = 0.25;
+    }
+    leftFoot.x = 18 - strideCurve * strideLen;
+    rightFoot.x = 34 + strideCurve * strideLen;
     leftFoot.y = footY - leftLift;
     rightFoot.y = footY - rightLift;
 
     const leftKneeDir = leftFoot.x >= leftHip.x ? 1 : -1;
     const rightKneeDir = rightFoot.x >= rightHip.x ? 1 : -1;
-    const kneeBend = (4.4 + Math.abs(Math.sin(shrineWalkCycle)) * 1.1) * (backpedal ? 1.35 : 1);
     leftKnee.x = Math.max(
       Math.min(leftHip.x, leftFoot.x) - 5,
-      Math.min(Math.max(leftHip.x, leftFoot.x) + 5, (leftHip.x + leftFoot.x) * 0.5 + leftKneeDir * kneeBend)
+      Math.min(Math.max(leftHip.x, leftFoot.x) + 5, (leftHip.x + leftFoot.x) * 0.5 + leftKneeDir * kneeBend + kneeXBias)
     );
     rightKnee.x = Math.max(
       Math.min(rightHip.x, rightFoot.x) - 5,
-      Math.min(Math.max(rightHip.x, rightFoot.x) + 5, (rightHip.x + rightFoot.x) * 0.5 + rightKneeDir * kneeBend)
+      Math.min(Math.max(rightHip.x, rightFoot.x) + 5, (rightHip.x + rightFoot.x) * 0.5 + rightKneeDir * kneeBend + kneeXBias)
     );
-    leftKnee.y = (leftHip.y + leftFoot.y) * 0.5 + 8.5 - leftLift * 0.25;
-    rightKnee.y = (rightHip.y + rightFoot.y) * 0.5 + 8.5 - rightLift * 0.25;
+    leftKnee.y = (leftHip.y + leftFoot.y) * 0.5 + kneeYDrop - leftLift * kneeLiftPull;
+    rightKnee.y = (rightHip.y + rightFoot.y) * 0.5 + kneeYDrop - rightLift * kneeLiftPull;
   }
   if (!jumpPose && !running) {
     leftFoot.x -= f.technique === "shrine" ? 5 : 3;
@@ -11994,10 +12124,12 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   ctx.lineTo(rightFoot.x + 10, rightFoot.y + 1);
   ctx.stroke();
 
-  const lean = f.attacking ? -7 : f.blocking ? 4 : jumpRetreating ? 4 : jumpPose ? -2 : retreating ? 3 : gojoWalk ? -3 + runPose * 0.4 : running ? -5 : f.technique === "shrine" ? -4 : -2;
+  // BACKPEDAL torso: shifted and rotated slightly BACK (positive), the
+  // opposite of the forward walk's forward lean.
+  const lean = f.attacking ? -7 : f.blocking ? 4 : jumpRetreating ? 4 : jumpPose ? -2 : backpedal ? 4.5 : gojoWalk ? -3 + runPose * 0.4 : running ? -5 : f.technique === "shrine" ? -4 : -2;
   ctx.save();
   ctx.translate(lean, 0);
-  ctx.rotate((f.technique === "shrine" ? -0.04 : -0.025) + idle * 0.01);
+  ctx.rotate((f.technique === "shrine" ? -0.04 : -0.025) + idle * 0.01 + (backpedal ? 0.06 : 0));
 
   ctx.fillStyle = "#020617";
   ctx.beginPath();
@@ -12129,6 +12261,29 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.moveTo(15, 71);
     ctx.quadraticCurveTo(27, 75, 40, 71);
     ctx.stroke();
+  } else if (f.technique === "brawler") {
+    // THRAGG_LOOK_PATCH: Viltrumite uniform - red collar V over the
+    // chest, faint shoulder seams, and a red belt with a steel buckle.
+    ctx.strokeStyle = skin.accent;
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(17, 39);
+    ctx.lineTo(26, 52);
+    ctx.lineTo(36, 39);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(255,255,255,0.10)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(14, 44);
+    ctx.lineTo(19, 62);
+    ctx.moveTo(39, 44);
+    ctx.lineTo(35, 62);
+    ctx.stroke();
+    ctx.fillStyle = skin.accent;
+    ctx.fillRect(12, 68, 31, 5.5);
+    ctx.fillStyle = "#c7ced6";
+    ctx.fillRect(24, 67.4, 6, 6.6);
   } else if (isPracticeDummy(f)) {
     ctx.strokeStyle = "#111827";
     ctx.lineWidth = 3;
@@ -12300,6 +12455,55 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.lineTo(31, 25);
     ctx.stroke();
 
+  } else if (f.technique === "brawler") {
+    // THRAGG_LOOK_PATCH: slicked-back black hair hugging the skull, a
+    // heavy brow ridge, and the signature walrus mustache draped over the
+    // jaw. Hair silhouettes only - no eyes/mouth/nose.
+    ctx.fillStyle = skin.hair;
+    ctx.beginPath();
+    ctx.moveTo(12, 20);
+    ctx.quadraticCurveTo(11, 8, 26, 6.5);
+    ctx.quadraticCurveTo(41, 8, 40, 20);
+    ctx.lineTo(37, 15.5);
+    ctx.quadraticCurveTo(26, 11.5, 15, 15.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(2,6,23,0.6)";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(18, 9.5);
+    ctx.quadraticCurveTo(20, 12, 19, 15);
+    ctx.moveTo(26, 8);
+    ctx.quadraticCurveTo(27, 11, 26.5, 13.5);
+    ctx.moveTo(34, 9.5);
+    ctx.quadraticCurveTo(33, 12, 33.5, 15);
+    ctx.stroke();
+    // heavy brow ridge
+    ctx.fillStyle = skin.hair;
+    ctx.beginPath();
+    ctx.moveTo(16, 19.5);
+    ctx.lineTo(24, 19);
+    ctx.lineTo(23.5, 21.6);
+    ctx.lineTo(16.5, 22.4);
+    ctx.closePath();
+    ctx.moveTo(36, 19.5);
+    ctx.lineTo(28, 19);
+    ctx.lineTo(28.5, 21.6);
+    ctx.lineTo(35.5, 22.4);
+    ctx.closePath();
+    ctx.fill();
+    // the walrus mustache
+    ctx.beginPath();
+    ctx.moveTo(15.5, 28);
+    ctx.quadraticCurveTo(26, 24.5, 36.5, 28);
+    ctx.lineTo(38, 35.5);
+    ctx.quadraticCurveTo(35.5, 33.5, 33.5, 34.5);
+    ctx.lineTo(32, 31.5);
+    ctx.quadraticCurveTo(26, 30, 20, 31.5);
+    ctx.lineTo(18.5, 34.5);
+    ctx.quadraticCurveTo(16.5, 33.5, 14, 35.5);
+    ctx.closePath();
+    ctx.fill();
   }
   ctx.restore();
 
@@ -12383,7 +12587,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   }
   if (f.technique === "shrine" && !f.attacking && !jumpPose && !f.blocking) {
     const lowerBreath = running ? runCenterLift * 0.12 : idle * 2;
-    const lowerSwing = running ? armSwing * 8 : idle * 1.2;
+    const lowerSwing = running ? armSwing * (backpedal ? 1.1 : 8) : idle * 1.2; // EQUAL_ARM_PATCH: same backpedal sway as the upper pair
     drawArmRig(
       { x: 43, y: 63 + lowerBreath },
       { x: 50 - lowerSwing * 0.48, y: 76 + lowerBreath },
@@ -12626,6 +12830,24 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
         drawArmRig({ x: 12, y: 48 }, { x: -6, y: 50 }, { x: -15, y: 64 - armWave });
       }
     }
+  } else if (f.thraggGrabState && f.thraggGrabState !== "idle") {
+    // GRAB_FEEL_PATCH: both arms lunge out through the windup and clamp
+    // shut around the victim during the hold - the grab used to play no
+    // animation at all, which is a big part of why it felt broken.
+    const reach = f.thraggGrabState === "startup"
+      ? 1 - Math.max(0, f.thraggGrabTimer) / THRAGG_GRAB_STARTUP_TICKS
+      : 1;
+    const clampIn = f.thraggGrabState === "techWindow" ? 1 : 0;
+    drawArmRig(
+      { x: 42, y: 50 },
+      { x: 50 + reach * 8, y: 52 - clampIn * 2 },
+      { x: 52 + reach * 16, y: 54 - clampIn * 4 }
+    );
+    drawArmRig(
+      { x: 11, y: 52 },
+      { x: 24 + reach * 8, y: 58 },
+      { x: 34 + reach * 18, y: 58 - clampIn * 2 }
+    );
   } else if (f.stun > 0 && !f.blocking) {
     // HIT_REACTION_PATCH: a brief recoil pose while in hitstun instead of
     // playing the flat idle sway, so getting hit actually reads as a hit.
@@ -12645,7 +12867,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   } else if (!f.blocking) {
     if (f.technique === "shrine") {
       const upperBreath = running ? runCenterLift * 0.08 : idle * 2;
-      const upperSwing = running ? armSwing * 2.4 : idle * 0.45;
+      const upperSwing = running ? armSwing * (backpedal ? 1.1 : 2.4) : idle * 0.45; // EQUAL_ARM_PATCH: same backpedal sway as the lower pair
       drawArmRig(
         { x: 44, y: 48 + upperBreath },
         { x: 55 - upperSwing * 0.4, y: 57 + upperBreath },
@@ -12658,19 +12880,42 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
         { x: -6 + upperSwing, y: 68 + upperBreath * 0.3 },
         skinColor
       );
-    } else {
-      const runArmSwing = running ? armSwing * 8 : idle * 1.2;
-      const runArmLift = running ? Math.max(0, armSwing) * 7 : 0;
-      const runArmDrop = running ? Math.max(0, -armSwing) * 5 : 0;
+    } else if (backpedal) {
+      // BACKPEDAL arm carriage: elbows bent and held near the ribs, hands
+      // riding at waist height with a small guarded sway - not the full
+      // contralateral pump of the forward walk. The sway still reads off
+      // armSwing so the (reduced) pairing stays in phase with the feet.
+      const guardSway = armSwing * 2.6;
       drawArmRig(
         { x: 42, y: 52 },
-        { x: 49 - runArmSwing * 0.5, y: 68 - runArmDrop * 0.5 },
-        { x: 46 - runArmSwing * 1.3, y: 81 - runArmDrop }
+        { x: 47 - guardSway * 0.3, y: 63 },
+        { x: 44 - guardSway, y: 74 }
       );
       drawArmRig(
         { x: 11, y: 52 },
-        { x: 4 + runArmSwing * 0.5, y: 68 - runArmLift * 0.5 },
-        { x: 7 + runArmSwing * 1.3, y: 81 - runArmLift }
+        { x: 6 + guardSway * 0.3, y: 63 },
+        { x: 9 + guardSway, y: 74 }
+      );
+    } else {
+      // Forward walk. ARM_ANATOMY_PATCH: asymmetric amplitude - each arm
+      // swings at full length AWAY from the body (front arm forward past
+      // the chest, rear arm back past the hips) but only tucks a little
+      // on its inward half, so no hand ever slides across the torso.
+      // That inward-crossing swing was reading as "the arm sways into
+      // the body". Both arms share effSwing so the contralateral phase
+      // with the feet is untouched.
+      const effSwing = running ? (armSwing < 0 ? armSwing : armSwing * 0.42) * 8 : idle * 1.2;
+      const openRaiseFront = running ? Math.max(0, -armSwing) * 6 : 0;
+      const openRaiseRear = running ? Math.max(0, -armSwing) * 3 : 0;
+      drawArmRig(
+        { x: 42, y: 52 },
+        { x: 49 - effSwing * 0.5, y: 68 - openRaiseFront * 0.5 },
+        { x: 46 - effSwing * 1.3, y: 81 - openRaiseFront }
+      );
+      drawArmRig(
+        { x: 11, y: 52 },
+        { x: 4 + effSwing * 0.5, y: 68 - openRaiseRear * 0.5 },
+        { x: 7 + effSwing * 1.3, y: 81 - openRaiseRear }
       );
     }
   }
@@ -12818,8 +13063,8 @@ function installThraggTechniqueOption() {
     button.innerHTML = `
       <canvas id="brawlerPreview" width="320" height="180" aria-hidden="true"></canvas>
       <strong>Thragg</strong>
-      <span>Slow, tanky brawler/grappler</span>
-      <small>Teched grapple grab · flying dash · ground break</small>
+      <span>Viltrumite conqueror - grabs, flight, raw power</span>
+      <small>Teched grapple grab · sustained flight · war stomp</small>
     `;
     const holder = sample?.parentNode || techniqueScreen;
     holder.appendChild(button);
