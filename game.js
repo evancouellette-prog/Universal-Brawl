@@ -663,7 +663,14 @@ function makeControlKbd(label) {
 
 function updateControlsPanelKeybindLabels() {
   if (!controlsGrid) return;
-
+  // CONTROLS_PANEL_UNIFY_PATCH: this used to render a static JJK ability
+  // list (Blue/Red/Dismantle/Domain Expansion/Infinity/RCT) that clobbered
+  // the technique-aware panel whenever it ran (page load, keybind edits) -
+  // which is how Thragg ended up displaying domains and "Dismantle".
+  // Both entry points now render the same technique-aware content; only
+  // the movement/attack/defend rows honor rebound keys.
+  const technique = getControlledTechniqueForControls();
+  const extraHtml = getExtraBattleControlHtml(technique);
   controlsGrid.innerHTML = `
     <p><strong>Move</strong>
       <span>${makeControlKbd(controlKeyLabel("moveLeft"))}${makeControlKbd(controlKeyLabel("moveRight"))} walk</span>
@@ -678,16 +685,8 @@ function updateControlsPanelKeybindLabels() {
       <span>${makeControlKbd(controlKeyLabel("block"))} block</span>
       <span>${makeControlKbd(controlKeyLabel("dodge"))} dodge</span>
     </p>
-    <p><strong>Abilities</strong>
-      <span><kbd>Left Click</kbd> Blue</span>
-      <span><kbd>Right Click</kbd> Red / Dismantle</span>
-      <span>${makeControlKbd(controlKeyLabel("specialAim"))} Teleport / Fuga aim</span>
-      <span>${makeControlKbd(controlKeyLabel("ultimate"))} Ultimate aim</span>
-      <span><kbd>X</kbd> Domain Expansion</span>
-      <span>${makeControlKbd(controlKeyLabel("infinity"))} Infinity</span>
-      <span>${makeControlKbd(controlKeyLabel("bluePunch"))} Blue Amp</span>
-      <span>${makeControlKbd(controlKeyLabel("rct"))} hold RCT</span>
-    </p>
+    <p><strong>Abilities</strong>${getTechniqueControlHtml(technique)}</p>
+    ${extraHtml ? `<p><strong>Domains / Vows</strong>${extraHtml}</p>` : ""}
   `;
 }
 
@@ -3604,15 +3603,7 @@ function getExtraBattleControlHtml(technique) {
 }
 
 function updateControlsPanel() {
-  if (!controlsGrid) return;
-  const technique = getControlledTechniqueForControls();
-  controlsGrid.innerHTML = `
-    <p><strong>Move</strong><span><kbd>A</kbd><kbd>D</kbd> walk</span><span><kbd>Space</kbd> jump / double jump</span></p>
-    <p><strong>Attack</strong><span><kbd>W</kbd> light punch</span><span><kbd>E</kbd> heavy punch</span><span><kbd>Toward</kbd><kbd>Tab</kbd> throw</span></p>
-    <p><strong>Defend</strong><span><kbd>Q</kbd> block</span><span><kbd>Shift</kbd> dodge</span></p>
-    <p><strong>Abilities</strong>${getTechniqueControlHtml(technique)}</p>
-    <p><strong>Domains / Vows</strong>${getExtraBattleControlHtml(technique)}</p>
-  `;
+  updateControlsPanelKeybindLabels();
 }
 
 function broadcastFullBattleRestart() {
@@ -12508,30 +12499,31 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.moveTo(34, 9.5);
     ctx.quadraticCurveTo(33, 12, 33.5, 15);
     ctx.stroke();
-    // heavy brow ridge
+    // brow ridge - slimmer so it reads as brows, not a visor
     ctx.fillStyle = skin.hair;
     ctx.beginPath();
-    ctx.moveTo(16, 19.5);
-    ctx.lineTo(24, 19);
-    ctx.lineTo(23.5, 21.6);
-    ctx.lineTo(16.5, 22.4);
+    ctx.moveTo(16.5, 19.8);
+    ctx.lineTo(23.8, 19.4);
+    ctx.lineTo(23.5, 21.4);
+    ctx.lineTo(17, 21.9);
     ctx.closePath();
-    ctx.moveTo(36, 19.5);
-    ctx.lineTo(28, 19);
-    ctx.lineTo(28.5, 21.6);
-    ctx.lineTo(35.5, 22.4);
+    ctx.moveTo(35.5, 19.8);
+    ctx.lineTo(28.2, 19.4);
+    ctx.lineTo(28.5, 21.4);
+    ctx.lineTo(35, 21.9);
     ctx.closePath();
     ctx.fill();
-    // the walrus mustache
+    // the walrus mustache - tight under the nose line with drooping
+    // tips, kept well inside the face so it can't read as a neck ruff
     ctx.beginPath();
-    ctx.moveTo(15.5, 28);
-    ctx.quadraticCurveTo(26, 24.5, 36.5, 28);
-    ctx.lineTo(38, 35.5);
-    ctx.quadraticCurveTo(35.5, 33.5, 33.5, 34.5);
-    ctx.lineTo(32, 31.5);
-    ctx.quadraticCurveTo(26, 30, 20, 31.5);
-    ctx.lineTo(18.5, 34.5);
-    ctx.quadraticCurveTo(16.5, 33.5, 14, 35.5);
+    ctx.moveTo(17.5, 27);
+    ctx.quadraticCurveTo(26, 24.8, 34.5, 27);
+    ctx.lineTo(35.5, 33.5);
+    ctx.quadraticCurveTo(33.8, 31.8, 32.4, 32.4);
+    ctx.lineTo(31.6, 29.8);
+    ctx.quadraticCurveTo(26, 28.4, 20.4, 29.8);
+    ctx.lineTo(19.6, 32.4);
+    ctx.quadraticCurveTo(18.2, 31.8, 16.5, 33.5);
     ctx.closePath();
     ctx.fill();
   }
