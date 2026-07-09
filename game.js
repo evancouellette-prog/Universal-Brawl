@@ -3962,7 +3962,8 @@ function applyJoinerFighterStateOnHost(remoteFighter) {
     "teleportAiming", "teleportCooldown", "fugaAiming", "fugaChargeTicks", "fugaCooldown", "fugaCooldownMax", "ultimateAiming", "ultimateAimPoint",
     "ce", "maxCe", "ultimateMeter", "domainStartup", "domainAttemptType", "simpleDomainTicks", "simpleDomainFlash", "simpleDomainCooldown",
     "bindingVowType", "bindingVowTicks", "bindingVowCooldown", "bindingVowChoiceTicks", "bindingVowQuote", "bindingVowQuoteTicks", "bindingVowFlash", "sukunaThrowComboCooldown",
-    "informationMeter", "identityProgress", "lightSummonStage", "lightSummonType", "lightSummonHealth", "lightSummonMaxHealth", "lightSummonTicks", "lightSummonHitFlash", "lightSummonAnchorX", "lightSummonAnchorY", "lightSummonAnchorDir", "potatoCooldown", "potatoFocusTicks", "potatoVulnerableTicks", "lightRyukCooldown", "lightRyukCooldownMax", "lightInvestigationCooldown", "lightInvestigationCooldownMax", "eyeDealUsed", "eyeDealGlowTicks", "deathNoteSlowTicks", "deathNoteFearTicks", "ctLockTimer"
+    "informationMeter", "identityProgress", "lightSummonStage", "lightSummonType", "lightSummonHealth", "lightSummonMaxHealth", "lightSummonTicks", "lightSummonHitFlash", "lightSummonAnchorX", "lightSummonAnchorY", "lightSummonAnchorDir", "potatoCooldown", "potatoFocusTicks", "potatoVulnerableTicks", "lightRyukCooldown", "lightRyukCooldownMax", "lightInvestigationCooldown", "lightInvestigationCooldownMax", "eyeDealUsed", "eyeDealGlowTicks", "deathNoteSlowTicks", "deathNoteFearTicks", "ctLockTimer",
+    "thraggGrabState", "thraggGrabTimer", "thraggGrabCooldown", "thraggFlightTicks", "thraggDashCooldown", "grabHeldTimer", "grabHeldBy", "grabLockY", "grabTechable"
   ];
 
   fields.forEach((field) => {
@@ -9667,6 +9668,24 @@ function updateEnemyAi() {
   } else if (enemy.thraggTechRolled) {
     enemy.thraggTechRolled = false;
     enemy.thraggWillTech = false;
+  }
+
+  // THRAGG_FLIGHT_PATCH: the CPU takes flight too - to chase an airborne
+  // opponent or to close a big gap - and steers with the same input paths
+  // a player uses (thraggFlightWantsRise handles the CPU rise decision).
+  if (
+    enemy.technique === "brawler" &&
+    !pacifistBot &&
+    (enemy.thraggFlightTicks || 0) <= 0 &&
+    (enemy.thraggDashCooldown || 0) <= 0 &&
+    enemy.stun <= 0 &&
+    !enemy.knockdown
+  ) {
+    const gap = Math.abs((player.x + player.w / 2) - (enemy.x + enemy.w / 2));
+    const playerAirborne = player.y + player.h < enemy.y + enemy.h - 60;
+    if ((playerAirborne || gap > 380) && Math.random() < getCpuDecisionChance(0.006, 0.014, 0.03)) {
+      startFlyingDash(enemy);
+    }
   }
 
   if (gameOver || isSpecialLocked(enemy) || enemy.stun > 0 || enemy.knockdown) return;
