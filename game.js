@@ -3585,6 +3585,10 @@ function getTechniqueControlHtml(technique) {
   if (technique === "deathnote") {
     return '<span><kbd>Left Click</kbd> Shinigami Strike</span><span><kbd>Right Click</kbd> Name Investigation</span><span><kbd>S</kbd> Potato Chip</span><span><kbd>C</kbd> Death Note</span>';
   }
+  if (technique === "brawler") {
+    // THRAGG_NO_JJK_PATCH: his own controls - no domains, no RCT.
+    return '<span><kbd>Left/Right Click</kbd> Ground Break</span><span><kbd>S</kbd> Flight</span><span><kbd>Hold Space</kbd> rise while flying</span><span><kbd>Tab</kbd> Grab</span><span><kbd>C</kbd> War Stomp</span>';
+  }
   return '<span><kbd>Left Click</kbd> Blue</span><span><kbd>Right Click</kbd> Red</span><span><kbd>Hold S</kbd> Teleport</span><span><kbd>Hold T</kbd> Blue Punch</span><span><kbd>F</kbd> Infinity</span><span><kbd>Hold C</kbd> Aim Ultimate</span><span><kbd>R</kbd> hold RCT</span>';
 }
 
@@ -3595,6 +3599,7 @@ function getExtraBattleControlHtml(technique) {
   if (technique === "deathnote") {
     return '<span><kbd>Identity 100%</kbd> unlocks Death Note</span><span><kbd>Eye Deal</kbd> after Misa and Soichiro are gone</span>';
   }
+  if (technique === "brawler") return ''; // THRAGG_NO_JJK_PATCH: nothing JJK down here
   return '<span><kbd>X</kbd> Domain Expansion</span><span><kbd>Z</kbd> Simple Domain</span>';
 }
 
@@ -4925,6 +4930,16 @@ function getExtraCooldownItems(f) {
     return items;
   }
 
+  // THRAGG_NO_JJK_PATCH: no Simple Domain or RCT rows for a Viltrumite -
+  // only his own kit shows.
+  if (f.technique === "brawler") {
+    items.push({ name: "GRAPPLE", current: f.thraggGrabCooldown || 0, max: THRAGG_GRAB_LANDED_COOLDOWN_TICKS });
+    if ((f.thraggFlightTicks || 0) > 0) {
+      items.push({ name: "FLIGHT", current: f.thraggFlightTicks, max: THRAGG_FLIGHT_TICKS, mode: "active" });
+    }
+    return items;
+  }
+
   if ((f.simpleDomainTicks || 0) > 0) {
     items.push({ name: "SIMPLE DOMAIN", current: f.simpleDomainTicks || 0, max: SIMPLE_DOMAIN_TICKS });
   } else {
@@ -4945,10 +4960,6 @@ function getExtraCooldownItems(f) {
 
   const rctMax = RCT_COOLDOWN_TICKS[f.technique] || 180;
   items.push({ name: "RCT", current: f.rctCooldown || 0, max: rctMax });
-
-  if (f.technique === "brawler") {
-    items.push({ name: "GRAPPLE", current: f.thraggGrabCooldown || 0, max: THRAGG_GRAB_LANDED_COOLDOWN_TICKS });
-  }
 
   if (f.technique === "limitless") {
     const bluePunchMax = GOJO_BLUE_PUNCH_COOLDOWN_TICKS || 600;
@@ -10730,11 +10741,11 @@ function getTechniqueSkin(f, flash) {
   // Viltrumite uniform with blood-red trim and grey boots.
   if (f.technique === "brawler") {
     return {
-      body: "#23262d",
+      body: "#eceef2",
       skin: "#efc9a8",
       accent: "#dc2626",
-      pants: "#171a20",
-      shoe: "#9ca3af",
+      pants: "#dfe3e9",
+      shoe: "#b91c1c",
       hair: "#101114",
       eye: "#0b0705",
       mark: "#dc2626"
@@ -13031,8 +13042,8 @@ function drawTechniquePreview(canvasEl, technique) {
     w: technique === "shrine" ? 52 : technique === "brawler" ? 54 : 50,
     h: 128,
     dir: 1,
-    color: technique === "shrine" ? "#dc2626" : technique === "deathnote" ? "#111827" : technique === "brawler" ? "#4b3524" : "#2563eb",
-    accent: technique === "shrine" ? "#991b1b" : technique === "deathnote" ? "#b91c1c" : technique === "brawler" ? "#9a3412" : "#1d4ed8"
+    color: technique === "shrine" ? "#dc2626" : technique === "deathnote" ? "#111827" : technique === "brawler" ? "#eceef2" : "#2563eb",
+    accent: technique === "shrine" ? "#991b1b" : technique === "deathnote" ? "#b91c1c" : technique === "brawler" ? "#dc2626" : "#1d4ed8"
   });
   previewFighter.technique = technique;
   previewFighter.y = GROUND - previewFighter.h;
@@ -13041,7 +13052,7 @@ function drawTechniquePreview(canvasEl, technique) {
   ctx = previewCtx;
   ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
   const backdrop = ctx.createLinearGradient(0, 0, 0, canvasEl.height);
-  backdrop.addColorStop(0, technique === "shrine" ? "#2b1420" : technique === "deathnote" ? "#180b12" : technique === "brawler" ? "#1c140c" : "#142033");
+  backdrop.addColorStop(0, technique === "shrine" ? "#2b1420" : technique === "deathnote" ? "#180b12" : technique === "brawler" ? "#141822" : "#142033");
   backdrop.addColorStop(1, "#050814");
   ctx.fillStyle = backdrop;
   ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
