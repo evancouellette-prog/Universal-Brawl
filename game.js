@@ -11563,15 +11563,18 @@ function drawDeathNoteCharacterModel(kind, x, footY, scale = 1, options = {}) {
     { x: -16 - armSway + punchDrive * 14, y: -42 + punchDrive * 2 }
   );
 
-  // legs: fighter-identical (outline 17 / color 11), idle stance offsets
+  // legs: fighter-identical (outline 17 / color 11), idle stance offsets.
+  // LEG_BOOT_PATCH: legs stop at the ankle and outlined boots wrap it,
+  // matching the fighters - the leg cap used to poke through the flat
+  // shoe stroke.
   const legPath = () => {
     ctx.beginPath();
     ctx.moveTo(-8, -50);
     ctx.lineTo(-11, -23);
-    ctx.lineTo(-15, 0);
+    ctx.lineTo(-15, -6);
     ctx.moveTo(8, -50);
     ctx.lineTo(11, -23);
-    ctx.lineTo(17, 0);
+    ctx.lineTo(17, -6);
   };
   ctx.strokeStyle = "#020617";
   ctx.lineWidth = 17;
@@ -11581,22 +11584,18 @@ function drawDeathNoteCharacterModel(kind, x, footY, scale = 1, options = {}) {
   ctx.lineWidth = 11;
   legPath();
   ctx.stroke();
-  ctx.strokeStyle = "#020617";
-  ctx.lineWidth = 8;
-  ctx.beginPath();
-  ctx.moveTo(-22, 1);
-  ctx.lineTo(-3, 1);
-  ctx.moveTo(10, 1);
-  ctx.lineTo(29, 1);
-  ctx.stroke();
-  ctx.strokeStyle = palette.shoe;
-  ctx.lineWidth = 5;
-  ctx.beginPath();
-  ctx.moveTo(-20, 1);
-  ctx.lineTo(-5, 1);
-  ctx.moveTo(12, 1);
-  ctx.lineTo(27, 1);
-  ctx.stroke();
+  const summonBoot = (footX) => {
+    ctx.fillStyle = "#020617";
+    ctx.beginPath();
+    ctx.roundRect(footX - 10, -9, 24, 13, 5);
+    ctx.fill();
+    ctx.fillStyle = palette.shoe;
+    ctx.beginPath();
+    ctx.roundRect(footX - 7.5, -6.5, 19, 8.5, 3.5);
+    ctx.fill();
+  };
+  summonBoot(-15);
+  summonBoot(17);
 
   // torso: fighter-identical black base + colored inset
   ctx.fillStyle = "#020617";
@@ -12262,6 +12261,11 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     rightKnee.x += f.technique === "shrine" ? 3 : 1;
   }
 
+  // LEG_BOOT_PATCH: legs stop at the ankle instead of running to the
+  // sole - the 17px round leg cap used to stab straight through the
+  // flat shoe stroke and touch the ground beside it.
+  const leftAnkle = { x: leftFoot.x, y: leftFoot.y - 6 };
+  const rightAnkle = { x: rightFoot.x, y: rightFoot.y - 6 };
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   ctx.strokeStyle = "#020617";
@@ -12269,10 +12273,10 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   ctx.beginPath();
   ctx.moveTo(leftHip.x, leftHip.y);
   ctx.lineTo(leftKnee.x, leftKnee.y);
-  ctx.lineTo(leftFoot.x, leftFoot.y);
+  ctx.lineTo(leftAnkle.x, leftAnkle.y);
   ctx.moveTo(rightHip.x, rightHip.y);
   ctx.lineTo(rightKnee.x, rightKnee.y);
-  ctx.lineTo(rightFoot.x, rightFoot.y);
+  ctx.lineTo(rightAnkle.x, rightAnkle.y);
   ctx.stroke();
 
   ctx.strokeStyle = pantsColor;
@@ -12280,28 +12284,27 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   ctx.beginPath();
   ctx.moveTo(leftHip.x, leftHip.y);
   ctx.lineTo(leftKnee.x, leftKnee.y);
-  ctx.lineTo(leftFoot.x, leftFoot.y);
+  ctx.lineTo(leftAnkle.x, leftAnkle.y);
   ctx.moveTo(rightHip.x, rightHip.y);
   ctx.lineTo(rightKnee.x, rightKnee.y);
-  ctx.lineTo(rightFoot.x, rightFoot.y);
+  ctx.lineTo(rightAnkle.x, rightAnkle.y);
   ctx.stroke();
 
-  ctx.strokeStyle = "#020617";
-  ctx.lineWidth = 8;
-  ctx.beginPath();
-  ctx.moveTo(leftFoot.x - 7, leftFoot.y + 1);
-  ctx.lineTo(leftFoot.x + 12, leftFoot.y + 1);
-  ctx.moveTo(rightFoot.x - 7, rightFoot.y + 1);
-  ctx.lineTo(rightFoot.x + 12, rightFoot.y + 1);
-  ctx.stroke();
-  ctx.strokeStyle = shoeColor;
-  ctx.lineWidth = 5;
-  ctx.beginPath();
-  ctx.moveTo(leftFoot.x - 5, leftFoot.y + 1);
-  ctx.lineTo(leftFoot.x + 10, leftFoot.y + 1);
-  ctx.moveTo(rightFoot.x - 5, rightFoot.y + 1);
-  ctx.lineTo(rightFoot.x + 10, rightFoot.y + 1);
-  ctx.stroke();
+  // LEG_BOOT_PATCH: proper outlined boots that wrap the ankle (toe
+  // toward +x, the facing direction) instead of a flat line the leg
+  // could poke through.
+  const drawBoot = (foot) => {
+    ctx.fillStyle = "#020617";
+    ctx.beginPath();
+    ctx.roundRect(foot.x - 10, foot.y - 9, 24, 13, 5);
+    ctx.fill();
+    ctx.fillStyle = shoeColor;
+    ctx.beginPath();
+    ctx.roundRect(foot.x - 7.5, foot.y - 6.5, 19, 8.5, 3.5);
+    ctx.fill();
+  };
+  drawBoot(leftFoot);
+  drawBoot(rightFoot);
 
   // BACKPEDAL torso: shifted and rotated slightly BACK (positive), the
   // opposite of the forward walk's forward lean.
@@ -12775,26 +12778,17 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       });
       ctx.stroke();
     }
-    // LIGHT_ARM_JOINT_PATCH: on the dark-armed brawlers these black joint
-    // dots blend into the arm, but on Light's tan arms they read as stark
-    // black rings segmenting the limb. The round line-join already keeps
-    // his elbow smooth, so skip the interior joint dots for Light - only
-    // the hand cap stays (it sits under the skin-colored hand anyway).
+    // ARM_JOINT_PATCH: no interior joint dots for anyone - they were
+    // wider than the arm's color fill, so on light arms (Thragg, the
+    // dummy, Light) they read as black rings segmenting the limb into
+    // balloons. The round line-join already keeps the elbow smooth;
+    // only the hand cap stays (it sits under the colored hand anyway).
     if (useOutline) {
       ctx.fillStyle = "#020617";
       ctx.beginPath();
-      if (f.technique !== "deathnote") {
-        ctx.arc(shoulder.x, shoulder.y, 5.5, 0, Math.PI * 2);
-        ctx.arc(elbow.x, elbow.y, 5, 0, Math.PI * 2);
-      }
       ctx.ellipse(hand.x, hand.y, 7, 5.5, 0, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(shoulder.x, shoulder.y, 3.8, 0, Math.PI * 2);
-    ctx.arc(elbow.x, elbow.y, 3.5, 0, Math.PI * 2);
-    ctx.fill();
     ctx.fillStyle = handColor;
     ctx.beginPath();
     ctx.ellipse(hand.x - 1, hand.y - 1, 4.8, 3.8, 0, 0, Math.PI * 2);
