@@ -3164,6 +3164,7 @@ function updateTechniqueCooldownHud(f, slots) {
     hud.slot.classList.toggle("gojo-cooldown", f.technique === "limitless");
     hud.slot.classList.toggle("sukuna-cooldown", f.technique === "shrine");
     hud.slot.classList.toggle("light-cooldown", f.technique === "deathnote");
+    hud.slot.classList.toggle("thragg-cooldown", f.technique === "brawler");
   });
 }
 
@@ -3506,6 +3507,63 @@ function installLightBrownHudStyle() {
 
 window.addEventListener("DOMContentLoaded", installLightBrownHudStyle);
 window.setTimeout(installLightBrownHudStyle, 0);
+
+// THRAGG_THEME_PATCH: Thragg's cooldown HUD is white, matching his suit.
+function installThraggWhiteHudStyle() {
+  if (document.getElementById("thraggWhiteEffectsStyle")) return;
+  const style = document.createElement("style");
+  style.id = "thraggWhiteEffectsStyle";
+  // Selectors are deliberately high-specificity: styles.css has a
+  // same-colors-for-everyone block that paints every .ct-slot state fill
+  // blue with !important at (0,3,0), so each state combo is overridden
+  // here explicitly.
+  style.textContent = `
+    .ct-slot.thragg-cooldown,
+    .extra-cooldown.thragg-cooldown,
+    .ct-slot.thragg-cooldown.ready,
+    .ct-slot.thragg-cooldown.cooling,
+    .extra-cooldown.thragg-cooldown.ready,
+    .extra-cooldown.thragg-cooldown.cooling {
+      background: linear-gradient(180deg, rgba(51, 57, 66, 0.92), rgba(18, 21, 26, 0.95)) !important;
+      border: 3px solid #f8fafc !important;
+      box-shadow: 0 3px 0 #334155, 0 0 14px rgba(226, 232, 240, 0.4) !important;
+    }
+    .ct-slot.thragg-cooldown .ct-label,
+    .ct-slot.thragg-cooldown .ct-status,
+    .extra-cooldown.thragg-cooldown .ct-label,
+    .extra-cooldown.thragg-cooldown .ct-status,
+    .extra-cooldown.thragg-cooldown .extra-cooldown-label,
+    .extra-cooldown.thragg-cooldown .extra-cooldown-status {
+      color: #f8fafc !important;
+      text-shadow: 0 0 6px rgba(226, 232, 240, 0.7) !important;
+    }
+    .ct-slot.thragg-cooldown .ct-meter,
+    .extra-cooldown.thragg-cooldown .ct-meter {
+      background: rgba(30, 34, 40, 0.75) !important;
+      border-color: rgba(226, 232, 240, 0.4) !important;
+    }
+    .ct-slot.thragg-cooldown .ct-fill,
+    .ct-slot.thragg-cooldown.ready .ct-fill,
+    .ct-slot.thragg-cooldown.low-ce .ct-fill,
+    .ct-slot.thragg-cooldown.blocked .ct-fill,
+    .extra-cooldown.thragg-cooldown .ct-fill,
+    .extra-cooldown.thragg-cooldown.ready .ct-fill,
+    .extra-cooldown.thragg-cooldown .extra-cooldown-fill {
+      background: linear-gradient(90deg, #9ca3af, #e2e8f0, #ffffff) !important;
+      box-shadow: 0 0 12px rgba(226, 232, 240, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.35) !important;
+    }
+    .ct-slot.thragg-cooldown.cooling .ct-fill,
+    .ct-slot.thragg-cooldown.charging .ct-fill,
+    .extra-cooldown.thragg-cooldown.cooling .ct-fill,
+    .extra-cooldown.thragg-cooldown.cooling .extra-cooldown-fill {
+      background: linear-gradient(90deg, #374151, #6b7280, #9ca3af) !important;
+      opacity: 0.92 !important;
+    }
+  `;
+  document.head.appendChild(style);
+}
+window.addEventListener("DOMContentLoaded", installThraggWhiteHudStyle);
+window.setTimeout(installThraggWhiteHudStyle, 0);
 
 
 function installLightTechniqueOption() {
@@ -4986,7 +5044,7 @@ function updateExtraCooldownHud(container, f) {
       : ready ? 100 : Math.max(4, ratio * 100);
 
     const row = document.createElement("div");
-    row.className = `extra-cooldown ct-slot ${ready ? "ready" : "cooling"} ${f.technique === "shrine" ? "sukuna-cooldown" : f.technique === "deathnote" ? "light-cooldown" : "gojo-cooldown"} ${item.style || ""}`;
+    row.className = `extra-cooldown ct-slot ${ready ? "ready" : "cooling"} ${f.technique === "shrine" ? "sukuna-cooldown" : f.technique === "deathnote" ? "light-cooldown" : f.technique === "brawler" ? "thragg-cooldown" : "gojo-cooldown"} ${item.style || ""}`;
 
     const label = document.createElement("span");
     label.className = "extra-cooldown-label ct-label";
@@ -12012,15 +12070,20 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
 
   drawFighterShadow(f);
 
+  // THRAGG_THEME_PATCH: Thragg draws ~16% wider and ~10% taller, scaled
+  // about his feet so he stays planted - reads as the towering Viltrumite
+  // he is without touching hitboxes.
+  const bulkX = f.technique === "brawler" ? 1.16 : 1;
+  const bulkY = f.technique === "brawler" ? 1.1 : 1;
   if (f.ko || f.lying) {
     ctx.translate(f.x + f.w / 2, f.y + f.h);
     ctx.rotate(f.koFallDir * f.koRotation);
-    ctx.scale(f.dir, 1);
+    ctx.scale(f.dir * bulkX, bulkY);
     ctx.translate(-f.w / 2, -f.h);
   } else {
-    ctx.translate(f.x + f.w / 2, f.y - bob + idle * 0.7);
-    ctx.scale(f.dir, 1);
-    ctx.translate(-f.w / 2, 0);
+    ctx.translate(f.x + f.w / 2, f.y - bob + idle * 0.7 + f.h);
+    ctx.scale(f.dir * bulkX, bulkY);
+    ctx.translate(-f.w / 2, -f.h);
   }
 
   const hipY = 74;
@@ -12305,6 +12368,54 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.fillRect(12, 68, 31, 5.5);
     ctx.fillStyle = "#c7ced6";
     ctx.fillRect(24, 67.4, 6, 6.6);
+    // THRAGG_THEME_PATCH: the fur pelt draped over his shoulders (the
+    // Battle Beast trophy) - tawny tufts on each shoulder with a collar
+    // bridging behind the neck, jagged fur edges and darker strand lines.
+    ctx.fillStyle = "#7c552f";
+    ctx.beginPath();
+    ctx.moveTo(15, 36.5);
+    ctx.quadraticCurveTo(26, 32.5, 39, 36.5);
+    ctx.lineTo(38, 40.5);
+    ctx.quadraticCurveTo(26, 37, 16, 40.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(6.5, 37.5);
+    ctx.quadraticCurveTo(12, 33.5, 19, 36);
+    ctx.lineTo(20, 47.5);
+    ctx.lineTo(16.5, 43.5);
+    ctx.lineTo(15, 50.5);
+    ctx.lineTo(11.5, 45);
+    ctx.lineTo(9, 51.5);
+    ctx.lineTo(6, 44.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(47.5, 37.5);
+    ctx.quadraticCurveTo(42, 33.5, 35, 36);
+    ctx.lineTo(34, 47.5);
+    ctx.lineTo(37.5, 43.5);
+    ctx.lineTo(39, 50.5);
+    ctx.lineTo(42.5, 45);
+    ctx.lineTo(45, 51.5);
+    ctx.lineTo(48, 44.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(59, 42, 20, 0.85)";
+    ctx.lineWidth = 1.3;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(10, 38.5);
+    ctx.lineTo(11, 46.5);
+    ctx.moveTo(14, 37.5);
+    ctx.lineTo(15.5, 45.5);
+    ctx.moveTo(44, 38.5);
+    ctx.lineTo(43, 46.5);
+    ctx.moveTo(40, 37.5);
+    ctx.lineTo(38.5, 45.5);
+    ctx.moveTo(20, 35);
+    ctx.quadraticCurveTo(26, 33.5, 34, 35);
+    ctx.stroke();
   } else if (isPracticeDummy(f)) {
     ctx.strokeStyle = "#111827";
     ctx.lineWidth = 3;
@@ -12949,17 +13060,25 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     const bubbleScale = (0.74 + shieldPower * 0.28) * bubblePulse;
     const shrineShield = f.technique === "shrine";
     const lightShield = f.technique === "deathnote";
-    const fillColor = lightShield
+    // THRAGG_THEME_PATCH: white shield bubble to match his suit.
+    const thraggShield = f.technique === "brawler";
+    const fillColor = thraggShield
+      ? `rgba(226, 232, 240, ${0.06 + shieldPower * 0.14 + hitFlash * 0.08})`
+      : lightShield
       ? `rgba(120, 72, 35, ${0.07 + shieldPower * 0.16 + hitFlash * 0.08})`
       : shrineShield
       ? `rgba(127, 29, 29, ${0.05 + shieldPower * 0.14 + hitFlash * 0.08})`
       : `rgba(14, 165, 233, ${0.04 + shieldPower * 0.12 + hitFlash * 0.08})`;
-    const strokeColor = lightShield
+    const strokeColor = thraggShield
+      ? `rgba(248, 250, 252, ${0.3 + shieldPower * 0.55 + hitFlash * 0.16})`
+      : lightShield
       ? `rgba(202, 138, 74, ${0.34 + shieldPower * 0.52 + hitFlash * 0.16})`
       : shrineShield
       ? `rgba(248, 113, 113, ${0.26 + shieldPower * 0.55 + hitFlash * 0.16})`
       : `rgba(196, 241, 255, ${0.24 + shieldPower * 0.58 + hitFlash * 0.16})`;
-    const innerColor = lightShield
+    const innerColor = thraggShield
+      ? `rgba(148, 163, 184, ${0.22 + shieldPower * 0.32})`
+      : lightShield
       ? `rgba(92, 54, 26, ${0.24 + shieldPower * 0.34})`
       : shrineShield
       ? `rgba(2, 6, 23, ${0.26 + shieldPower * 0.32})`
@@ -12986,7 +13105,9 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.setLineDash([]);
 
     if (shieldPower < 0.34 || hitFlash > 0) {
-      ctx.strokeStyle = lightShield
+      ctx.strokeStyle = thraggShield
+        ? `rgba(255, 255, 255, ${0.32 + hitFlash * 0.5})`
+        : lightShield
         ? `rgba(253, 230, 138, ${0.28 + hitFlash * 0.5})`
         : shrineShield
         ? `rgba(254, 202, 202, ${0.28 + hitFlash * 0.5})`
@@ -14345,6 +14466,38 @@ function drawProjectiles() {
       ctx.moveTo(-p.radius * 1.2, p.radius * 0.45);
       ctx.lineTo(p.radius * 1.45, -p.radius * 0.72);
       ctx.stroke();
+    } else if (p.move === "groundBreak") {
+      // THRAGG_THEME_PATCH: Ground Break had no draw case and fell into
+      // the generic fallback, which renders the red Sukuna-style slash -
+      // that's why it kept reading as "Dismantle". It's now a white
+      // Viltrumite shockwave: dust ring + jagged white spikes.
+      ctx.scale(p.dir, 1);
+      const gt = Math.max(0.3, p.life / Math.max(1, p.maxLife || 46));
+      ctx.fillStyle = `rgba(148, 163, 184, ${0.3 * gt})`;
+      ctx.beginPath();
+      ctx.ellipse(0, p.radius * 0.35, p.radius * 1.5, p.radius * 0.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = `rgba(248, 250, 252, ${0.95 * gt})`;
+      ctx.beginPath();
+      ctx.moveTo(-p.radius * 1.2, p.radius * 0.5);
+      ctx.lineTo(-p.radius * 0.7, -p.radius * 0.6);
+      ctx.lineTo(-p.radius * 0.35, p.radius * 0.05);
+      ctx.lineTo(0, -p.radius * 1.05);
+      ctx.lineTo(p.radius * 0.35, 0);
+      ctx.lineTo(p.radius * 0.75, -p.radius * 0.7);
+      ctx.lineTo(p.radius * 1.25, p.radius * 0.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = "rgba(2, 6, 23, 0.9)";
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      ctx.fillStyle = `rgba(220, 38, 38, ${0.5 * gt})`;
+      ctx.beginPath();
+      ctx.moveTo(-p.radius * 0.3, p.radius * 0.3);
+      ctx.lineTo(0, -p.radius * 0.55);
+      ctx.lineTo(p.radius * 0.3, p.radius * 0.3);
+      ctx.closePath();
+      ctx.fill();
     } else {
       if (hasProjectileAngle) ctx.rotate(projectileAngle);
       else ctx.scale(p.dir, 1);
