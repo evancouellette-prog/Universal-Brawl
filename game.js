@@ -12021,6 +12021,26 @@ function drawRyukPunchAssist(f, attack, active) {
 }
 
 
+// THRAGG_FLIGHT_POSE_PATCH: white speed-line trail while Thragg flies.
+function drawThraggFlightEffect(f) {
+  if ((f?.thraggFlightTicks || 0) <= 0) return;
+  const c = getFighterCenter(f);
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  const speed = Math.min(1, Math.abs(f.vx) / THRAGG_FLIGHT_SPEED + 0.25);
+  for (let i = 0; i < 4; i += 1) {
+    const off = (i - 1.5) * 14;
+    ctx.strokeStyle = `rgba(248, 250, 252, ${Math.max(0, 0.16 + 0.1 * speed - i * 0.02)})`;
+    ctx.lineWidth = 2.5 - i * 0.4;
+    ctx.beginPath();
+    const back = -f.dir * (30 + i * 12 + speed * 20);
+    ctx.moveTo(c.x - f.dir * 18, c.y + off * 0.4);
+    ctx.lineTo(c.x + back, c.y + off * 0.4 + Math.sin(frame * 0.3 + i) * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   const flash = f.hurt > 0 && Math.floor(frame / 3) % 2 === 0;
   const dodgeAlpha = f.dodging > 0 ? 0.48 : 1;
@@ -12065,6 +12085,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   drawGojoBluePunchEffect(f);
   drawGojoPushPullEffect(f);
   drawSukunaFugaChargeEffect(f);
+  drawThraggFlightEffect(f);
   ctx.save();
   ctx.globalAlpha = dodgeAlpha;
 
@@ -12159,6 +12180,18 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     );
     leftKnee.y = (leftHip.y + leftFoot.y) * 0.5 + kneeYDrop - leftLift * kneeLiftPull;
     rightKnee.y = (rightHip.y + rightFoot.y) * 0.5 + kneeYDrop - rightLift * kneeLiftPull;
+  }
+  if ((f.thraggFlightTicks || 0) > 0 && jumpPose) {
+    // THRAGG_FLIGHT_POSE_PATCH: superman carriage - both legs sweep back
+    // and trail behind him instead of the generic jump tuck.
+    leftKnee.x = 10;
+    leftKnee.y = 96 + jumpCycle * 1.5;
+    leftFoot.x = -8;
+    leftFoot.y = 110 + jumpCycle * 2;
+    rightKnee.x = 24;
+    rightKnee.y = 99 - jumpCycle * 1.5;
+    rightFoot.x = 8;
+    rightFoot.y = 114 - jumpCycle * 2;
   }
   if (!jumpPose && !running) {
     leftFoot.x -= f.technique === "shrine" ? 5 : 3;
@@ -12922,6 +12955,19 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     }
     }
     }
+  } else if ((f.thraggFlightTicks || 0) > 0 && jumpPose) {
+    // THRAGG_FLIGHT_POSE_PATCH: lead fist punched out ahead, rear arm
+    // tucked back along the flank.
+    drawArmRig(
+      { x: 42, y: 50 },
+      { x: 58, y: 46 + jumpCycle },
+      { x: 74, y: 44 + jumpCycle * 1.5 }
+    );
+    drawArmRig(
+      { x: 12, y: 52 },
+      { x: 2, y: 62 },
+      { x: -8, y: 72 - jumpCycle }
+    );
   } else if (jumpPose) {
     if (f.technique === "shrine") {
       const airSwing = jumpCycle * 2;
