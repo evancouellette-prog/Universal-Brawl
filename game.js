@@ -1754,6 +1754,7 @@ const THRAGG_GRAB_WHIFF_COOLDOWN_TICKS = 40;
 const THRAGG_GRAB_TECHED_COOLDOWN_TICKS = 70;
 const THRAGG_GRAB_LANDED_COOLDOWN_TICKS = 90;
 const THRAGG_GRAB_SLAM_TICKS = 16; // GRAB_SLAM_ANIM_PATCH: hoist-and-smash duration
+const LIGHT_SUMMON_MAX_RANGE = 240; // SUMMON_GRAVITY_RANGE_PATCH: max aim distance from Light
 const THRAGG_GRAB_SLAM_DAMAGE = 22;
 const THRAGG_GRAB_SLAM_KNOCKBACK = 34;
 // THRAGG_FLIGHT_PATCH: real sustained Viltrumite flight, replacing the old
@@ -2117,16 +2118,38 @@ function setLightSummonAnchor(f, aimPoint = null) {
 
   // LIGHT_INVESTIGATION_AIM_PATCH:
   // Investigation summons should appear where the player aimed, not follow Light.
+  // SUMMON_GRAVITY_RANGE_PATCH: the aim point can no longer place a summon
+  // across the whole stage - it is clamped to the summon range around Light.
   if (aim) {
+    const rangedX = Math.max(center.x - LIGHT_SUMMON_MAX_RANGE, Math.min(center.x + LIGHT_SUMMON_MAX_RANGE, aim.x));
     f.lightSummonAnchorDir = aim.x >= center.x ? 1 : -1;
-    f.lightSummonAnchorX = Math.max(36, Math.min(STAGE_W - 36, aim.x));
+    f.lightSummonAnchorX = Math.max(36, Math.min(STAGE_W - 36, rangedX));
     f.lightSummonAnchorY = Math.max(84, Math.min(GROUND, aim.y));
+    f.lightSummonFallVy = 0;
     return;
   }
 
   f.lightSummonAnchorDir = side;
   f.lightSummonAnchorX = center.x - side * 102;
   f.lightSummonAnchorY = f.y + f.h;
+  f.lightSummonFallVy = 0;
+}
+
+// SUMMON_GRAVITY_RANGE_PATCH: nearest standable surface below a summon's
+// feet - platform tops count, same casting rule as fighter shadows.
+function getLightSummonSurfaceY(centerX, footY) {
+  let best = GROUND;
+  let bestDistance = GROUND - footY;
+  for (const platform of getActivePlatforms()) {
+    if (centerX < platform.x - 18 || centerX > platform.x + platform.w + 18) continue;
+    const distance = platform.y - footY;
+    if (distance < -8) continue;
+    if (distance <= bestDistance) {
+      best = platform.y;
+      bestDistance = distance;
+    }
+  }
+  return best;
 }
 
 function clearLightSummonAnchor(f) {
@@ -2337,6 +2360,18 @@ function updateLightSystems(f, opponent) {
   if (f.lightSummonType && f.lightSummonTicks > 0) {
     if (!Number.isFinite(f.lightSummonAnchorX) || !Number.isFinite(f.lightSummonAnchorY)) setLightSummonAnchor(f);
     f.lightSummonTicks -= 1;
+
+    // SUMMON_GRAVITY_RANGE_PATCH: a summon placed in the air falls like
+    // anything else instead of hovering at the aim point - it drops until
+    // its feet reach the ground or a platform top.
+    const summonSurfaceY = getLightSummonSurfaceY(f.lightSummonAnchorX, f.lightSummonAnchorY);
+    if (f.lightSummonAnchorY < summonSurfaceY) {
+      f.lightSummonFallVy = (f.lightSummonFallVy || 0) + GRAVITY;
+      f.lightSummonAnchorY = Math.min(summonSurfaceY, f.lightSummonAnchorY + f.lightSummonFallVy);
+    } else {
+      f.lightSummonFallVy = 0;
+    }
+
     const nearby = opponent ? Math.abs((f.x + f.w / 2) - (opponent.x + opponent.w / 2)) < 360 : false;
     // Name is filled by Investigation only.
     // Misa is faster; Soichiro is slower but tougher.
@@ -11477,11 +11512,15 @@ function drawDeathNoteCharacterModel(kind, x, footY, scale = 1, options = {}) {
   const effScale = scale * (isRyuk ? 1.3 : 1);
   const idleSway = Math.sin(frame * 0.08);
 
+  // SUMMON_DUMMY_BODY_PATCH: Misa and Soichiro are the practice dummy's
+  // body exactly - plain torso, no collar/tie - recolored per character
+  // (Misa: black outfit, blonde twin tails; Soichiro: grey trench suit,
+  // grey hair and mustache). Only hair distinguishes them above the neck.
   const palette = isRyuk
-    ? { body: "#111318", skin: "#c7ced6", pants: "#0b0d12", shoe: "#374151", hair: "#080808", trim: null, accent: null }
+    ? { body: "#111318", skin: "#c7ced6", pants: "#0b0d12", shoe: "#374151", hair: "#080808" }
     : isMisa
-      ? { body: "#141217", skin: "#f4cfb0", pants: "#09090b", shoe: "#f8fafc", hair: "#dbc06c", hairDark: "#a88b48", trim: "#f8fafc", accent: "#8b1e22" }
-      : { body: "#2c313a", skin: "#d9b394", pants: "#1f2937", shoe: "#e5e7eb", hair: "#8b929e", hairDark: "#4b5563", trim: "#eef2f7", accent: "#8b1e22" };
+      ? { body: "#17121d", skin: "#f4cfb0", pants: "#100c14", shoe: "#111827", hair: "#e7c86e", hairDark: "#b3924a" }
+      : { body: "#3a414d", skin: "#d9b394", pants: "#262c36", shoe: "#1f2937", hair: "#9aa1ab", hairDark: "#6b7280" };
 
   ctx.save();
   ctx.translate(x, footY);
@@ -11536,16 +11575,11 @@ function drawDeathNoteCharacterModel(kind, x, footY, scale = 1, options = {}) {
     };
     strokeArm("#020617", 13);
     strokeArm(palette.body, 8);
+    // ARM_JOINT_PATCH: same as the fighters - no interior joint dots,
+    // just the outlined hand cap under the skin-colored hand.
     ctx.fillStyle = "#020617";
     ctx.beginPath();
-    ctx.arc(shoulder.x, shoulder.y, 5.5, 0, Math.PI * 2);
-    ctx.arc(elbow.x, elbow.y, 5, 0, Math.PI * 2);
     ctx.ellipse(hand.x, hand.y, 7, 5.5, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = palette.body;
-    ctx.beginPath();
-    ctx.arc(shoulder.x, shoulder.y, 3.8, 0, Math.PI * 2);
-    ctx.arc(elbow.x, elbow.y, 3.5, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = palette.skin;
     ctx.beginPath();
@@ -11619,31 +11653,12 @@ function drawDeathNoteCharacterModel(kind, x, footY, scale = 1, options = {}) {
   ctx.closePath();
   ctx.fill();
 
-  // clothing accent: white collar V + red tie, same construction as
-  // Light's shirt (skipped for Ryuk, who gets a subtle coat highlight)
+  // SUMMON_DUMMY_BODY_PATCH: no collar/tie - Misa and Soichiro wear the
+  // dummy's plain torso in their own colors. Ryuk keeps his subtle coat
+  // highlight.
   if (isRyuk) {
     ctx.fillStyle = "rgba(255,255,255,0.07)";
     ctx.fillRect(-4, -80, 8, 34);
-  } else {
-    ctx.fillStyle = palette.trim;
-    ctx.beginPath();
-    ctx.moveTo(-5, -87);
-    ctx.lineTo(7, -86);
-    ctx.lineTo(9, -48);
-    ctx.lineTo(1, -42);
-    ctx.lineTo(-8, -48);
-    ctx.lineTo(-8, -81);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = palette.accent;
-    ctx.beginPath();
-    ctx.moveTo(0, -85);
-    ctx.lineTo(5, -76);
-    ctx.lineTo(3, -48);
-    ctx.lineTo(-2, -46);
-    ctx.lineTo(-4, -76);
-    ctx.closePath();
-    ctx.fill();
   }
 
   // head: fighter-identical skin ellipse with black outline, no face
@@ -11714,6 +11729,15 @@ function drawDeathNoteCharacterModel(kind, x, footY, scale = 1, options = {}) {
     ctx.strokeStyle = palette.hairDark;
     ctx.lineWidth = 1.3;
     ctx.stroke();
+    // SUMMON_DUMMY_BODY_PATCH: Soichiro's mustache (facial hair is
+    // allowed - same rule as Thragg's), a dark grey bar low on the head.
+    ctx.fillStyle = palette.hairDark;
+    ctx.beginPath();
+    ctx.moveTo(-6.5, -94 + headBob);
+    ctx.quadraticCurveTo(0, -98 + headBob, 6.5, -94 + headBob);
+    ctx.quadraticCurveTo(0, -90 + headBob, -6.5, -94 + headBob);
+    ctx.closePath();
+    ctx.fill();
   }
 
   // front (right) arm on top - drives the Ryuk punch
