@@ -1753,6 +1753,7 @@ const THRAGG_GRAB_TECH_RECOVERY_TICKS = 18;
 const THRAGG_GRAB_WHIFF_COOLDOWN_TICKS = 40;
 const THRAGG_GRAB_TECHED_COOLDOWN_TICKS = 70;
 const THRAGG_GRAB_LANDED_COOLDOWN_TICKS = 90;
+const THRAGG_GRAB_SLAM_TICKS = 16; // GRAB_SLAM_ANIM_PATCH: hoist-and-smash duration
 const THRAGG_GRAB_SLAM_DAMAGE = 22;
 const THRAGG_GRAB_SLAM_KNOCKBACK = 34;
 // THRAGG_FLIGHT_PATCH: real sustained Viltrumite flight, replacing the old
@@ -3240,6 +3241,9 @@ function resetPracticeDamage() {
 
 function pinStationaryPracticeDummy(f = enemy) {
   if (!isPracticeDummy(f) || !practiceSettings.stationaryDummy) return;
+  // GRAB_SLAM_ANIM_PATCH: while held/slammed by Thragg the dummy must be
+  // allowed to travel the throw arc instead of snapping back home.
+  if ((f.grabHeldTimer || 0) > 0) return;
   const homeX = Number.isFinite(f.practiceHomeX) ? f.practiceHomeX : STAGE_W / 2 - f.w / 2;
   f.x = homeX;
   f.y = GROUND - f.h;
@@ -5833,8 +5837,8 @@ function resolveThraggGrabSlam(attacker, defender) {
   applyFighterDamage(defender, damage);
   cancelRct(defender, false);
   resetCombo(defender);
-  defender.vx = attacker.dir * getTakenKnockback(defender, THRAGG_GRAB_SLAM_KNOCKBACK) * 0.4;
-  defender.vy = -6.5;
+  defender.vx = attacker.dir * getTakenKnockback(defender, THRAGG_GRAB_SLAM_KNOCKBACK) * 0.35;
+  defender.vy = -4.5;
   defender.grounded = false;
   defender.onPlatform = false;
   defender.knockdown = true;
@@ -5843,8 +5847,9 @@ function resolveThraggGrabSlam(attacker, defender) {
   defender.stun = Math.max(defender.stun, 20);
   attacker.thraggGrabCooldown = THRAGG_GRAB_LANDED_COOLDOWN_TICKS;
   hitStopTicks = Math.max(hitStopTicks, HITSTOP_HEAVY);
-  shake = Math.max(shake, 12);
-  spawnHitSpark(defender.x + defender.w / 2, defender.y + 42, attacker.dir, "heavy");
+  shake = Math.max(shake, 15);
+  spawnHitSpark(defender.x + defender.w / 2, defender.y + defender.h - 12, attacker.dir, "heavy");
+  spawnHitSpark(defender.x + defender.w / 2 + attacker.dir * 18, defender.y + defender.h - 8, -attacker.dir, "heavy");
   if (!pacifistBot && defender.health <= 0) startKnockout(attacker, defender);
   updateHud();
 }
@@ -5905,6 +5910,52 @@ function updateThraggGrab(f) {
     opponent.vx = 0;
     f.vx *= 0.5;
     f.thraggGrabTimer -= 1;
+    if (f.thraggGrabTimer <= 0) {
+      // GRAB_SLAM_ANIM_PATCH: the tech window survived - now the actual
+      // throw plays out instead of resolving in a single invisible tick.
+      f.thraggGrabState = "slam";
+      f.thraggGrabTimer = THRAGG_GRAB_SLAM_TICKS;
+      opponent.grabTechable = false;
+      opponent.grabHeldTimer = THRAGG_GRAB_SLAM_TICKS + 2;
+      opponent.stun = Math.max(opponent.stun, THRAGG_GRAB_SLAM_TICKS + 12);
+    }
+    return;
+  }
+  if (f.thraggGrabState === "slam") {
+    // GRAB_SLAM_ANIM_PATCH: two-phase throw arc - the victim is hoisted
+    // up over Thragg's head, then driven down into the ground in front
+    // of him. Positions are set directly each tick so the arc is exact.
+    f.thraggGrabTimer -= 1;
+    const p = 1 - Math.max(0, f.thraggGrabTimer) / THRAGG_GRAB_SLAM_TICKS;
+    const holdX = f.x + f.dir * (f.w * 0.5 + 18);
+    const holdY = f.y;
+    const apexX = f.x + f.w * 0.5 - opponent.w * 0.5 - f.dir * 4;
+    const apexY = f.y - opponent.h * 0.72;
+    const smashX = f.x + f.dir * (f.w * 0.5 + 30);
+    const smashY = GROUND - opponent.h;
+    let ox;
+    let oy;
+    if (p < 0.45) {
+      const t = easeOutQuad(p / 0.45);
+      ox = lerp(holdX, apexX, t);
+      oy = lerp(holdY, apexY, t);
+    } else {
+      const t = easeInQuad((p - 0.45) / 0.55);
+      ox = lerp(apexX, smashX, t);
+      oy = lerp(apexY, smashY, t);
+    }
+    opponent.x = ox;
+    opponent.y = Math.min(oy, GROUND - opponent.h);
+    // The held-victim physics block pins y back to grabLockY every tick,
+    // so the lock has to ride the arc with them.
+    opponent.grabLockY = opponent.y;
+    opponent.vx = 0;
+    opponent.vy = 0;
+    opponent.grounded = false;
+    opponent.hurt = Math.max(opponent.hurt, 6);
+    opponent.grabHeldTimer = Math.max(opponent.grabHeldTimer, 3);
+    opponent.stun = Math.max(opponent.stun, 8);
+    f.vx = 0;
     if (f.thraggGrabTimer <= 0) {
       resolveThraggGrabSlam(f, opponent);
       f.thraggGrabState = "idle";
@@ -9915,7 +9966,14 @@ function updateFighter(f, opponent) {
   updateSukunaThrowComboCooldown(f);
   updateLightSystems(f, opponent);
 
-  if (!f.ko) f.dir = f.x + f.w / 2 < opponent.x + opponent.w / 2 ? 1 : -1;
+  // GRAB_SLAM_ANIM_PATCH: facing is locked while a grab hold/slam is in
+  // progress - the victim swings over the attacker's head mid-throw and
+  // auto-facing would mirror-flip the whole animation halfway through.
+  const grabFacingLocked =
+    f.thraggGrabState === "techWindow" ||
+    f.thraggGrabState === "slam" ||
+    (f.grabHeldTimer || 0) > 0;
+  if (!f.ko && !grabFacingLocked) f.dir = f.x + f.w / 2 < opponent.x + opponent.w / 2 ? 1 : -1;
   if ((f.deathNoteSlowTicks || 0) > 0) f.vx *= 0.82;
   if ((f.deathNoteFearTicks || 0) > 0) {
     f.deathNoteFearTicks -= 1;
@@ -10122,6 +10180,10 @@ function updateFighter(f, opponent) {
 }
 
 function keepFightersApart() {
+  // GRAB_SLAM_ANIM_PATCH: a grab hold intentionally overlaps the pair;
+  // shoving them apart here made the attacker slide backwards all
+  // through the hold and throw.
+  if ((player.grabHeldTimer || 0) > 0 || (enemy.grabHeldTimer || 0) > 0) return;
   if (!rectsOverlap(player, enemy)) return;
   const playerCenter = player.x + player.w / 2;
   const enemyCenter = enemy.x + enemy.w / 2;
@@ -13010,23 +13072,55 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       }
     }
   } else if (f.thraggGrabState && f.thraggGrabState !== "idle") {
-    // GRAB_FEEL_PATCH: both arms lunge out through the windup and clamp
-    // shut around the victim during the hold - the grab used to play no
-    // animation at all, which is a big part of why it felt broken.
-    const reach = f.thraggGrabState === "startup"
-      ? 1 - Math.max(0, f.thraggGrabTimer) / THRAGG_GRAB_STARTUP_TICKS
-      : 1;
-    const clampIn = f.thraggGrabState === "techWindow" ? 1 : 0;
-    drawArmRig(
-      { x: 42, y: 50 },
-      { x: 50 + reach * 8, y: 52 - clampIn * 2 },
-      { x: 52 + reach * 16, y: 54 - clampIn * 4 }
-    );
-    drawArmRig(
-      { x: 11, y: 52 },
-      { x: 24 + reach * 8, y: 58 },
-      { x: 34 + reach * 18, y: 58 - clampIn * 2 }
-    );
+    if (f.thraggGrabState === "slam") {
+      // GRAB_SLAM_ANIM_PATCH: arms track the throw - hoisted straight up
+      // over his head during the lift, then hammered down in front on
+      // the smash, matching the victim's arc.
+      const sp = 1 - Math.max(0, f.thraggGrabTimer) / THRAGG_GRAB_SLAM_TICKS;
+      if (sp < 0.45) {
+        const t = easeOutQuad(sp / 0.45);
+        drawArmRig(
+          { x: 42, y: 50 },
+          { x: lerp(56, 46, t), y: lerp(48, 22, t) },
+          { x: lerp(64, 36, t), y: lerp(52, 4, t) }
+        );
+        drawArmRig(
+          { x: 12, y: 52 },
+          { x: lerp(26, 10, t), y: lerp(56, 24, t) },
+          { x: lerp(40, 18, t), y: lerp(58, 6, t) }
+        );
+      } else {
+        const t = easeInQuad((sp - 0.45) / 0.55);
+        drawArmRig(
+          { x: 42, y: 50 },
+          { x: lerp(46, 58, t), y: lerp(22, 52, t) },
+          { x: lerp(36, 72, t), y: lerp(4, 78, t) }
+        );
+        drawArmRig(
+          { x: 12, y: 52 },
+          { x: lerp(10, 30, t), y: lerp(24, 60, t) },
+          { x: lerp(18, 48, t), y: lerp(6, 80, t) }
+        );
+      }
+    } else {
+      // GRAB_FEEL_PATCH: both arms lunge out through the windup and clamp
+      // shut around the victim during the hold - the grab used to play no
+      // animation at all, which is a big part of why it felt broken.
+      const reach = f.thraggGrabState === "startup"
+        ? 1 - Math.max(0, f.thraggGrabTimer) / THRAGG_GRAB_STARTUP_TICKS
+        : 1;
+      const clampIn = f.thraggGrabState === "techWindow" ? 1 : 0;
+      drawArmRig(
+        { x: 42, y: 50 },
+        { x: 50 + reach * 8, y: 52 - clampIn * 2 },
+        { x: 52 + reach * 16, y: 54 - clampIn * 4 }
+      );
+      drawArmRig(
+        { x: 11, y: 52 },
+        { x: 24 + reach * 8, y: 58 },
+        { x: 34 + reach * 18, y: 58 - clampIn * 2 }
+      );
+    }
   } else if (f.stun > 0 && !f.blocking) {
     // HIT_REACTION_PATCH: a brief recoil pose while in hitstun instead of
     // playing the flat idle sway, so getting hit actually reads as a hit.
