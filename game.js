@@ -11516,11 +11516,13 @@ function drawDeathNoteCharacterModel(kind, x, footY, scale = 1, options = {}) {
   // body exactly - plain torso, no collar/tie - recolored per character
   // (Misa: black outfit, blonde twin tails; Soichiro: grey trench suit,
   // grey hair and mustache). Only hair distinguishes them above the neck.
+  // SUMMON_OUTFIT_PATCH: Misa gets her black dress (flared skirt over
+  // the rig), Soichiro a brown suit with an off-white shirt and black tie.
   const palette = isRyuk
     ? { body: "#111318", skin: "#c7ced6", pants: "#0b0d12", shoe: "#374151", hair: "#080808" }
     : isMisa
       ? { body: "#17121d", skin: "#f4cfb0", pants: "#100c14", shoe: "#111827", hair: "#e7c86e", hairDark: "#b3924a" }
-      : { body: "#3a414d", skin: "#d9b394", pants: "#262c36", shoe: "#1f2937", hair: "#9aa1ab", hairDark: "#6b7280" };
+      : { body: "#6b4f37", skin: "#d9b394", pants: "#57402c", shoe: "#2b2119", hair: "#9aa1ab", hairDark: "#6b7280", shirt: "#e9e2d2", tie: "#0d0d12" };
 
   ctx.save();
   ctx.translate(x, footY);
@@ -11653,12 +11655,58 @@ function drawDeathNoteCharacterModel(kind, x, footY, scale = 1, options = {}) {
   ctx.closePath();
   ctx.fill();
 
-  // SUMMON_DUMMY_BODY_PATCH: no collar/tie - Misa and Soichiro wear the
-  // dummy's plain torso in their own colors. Ryuk keeps his subtle coat
-  // highlight.
+  // SUMMON_OUTFIT_PATCH: per-character clothing over the shared rig.
   if (isRyuk) {
     ctx.fillStyle = "rgba(255,255,255,0.07)";
     ctx.fillRect(-4, -80, 8, 34);
+  } else if (isMisa) {
+    // Misa's black dress: a flared skirt from the waist over the upper
+    // legs, outlined like everything else, with a scalloped hem line.
+    ctx.fillStyle = "#020617";
+    ctx.beginPath();
+    ctx.moveTo(-17, -52);
+    ctx.lineTo(19, -52);
+    ctx.lineTo(27, -22);
+    ctx.lineTo(-25, -22);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = palette.body;
+    ctx.beginPath();
+    ctx.moveTo(-14, -50);
+    ctx.lineTo(16, -50);
+    ctx.lineTo(23, -25);
+    ctx.lineTo(-21, -25);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(231, 200, 110, 0.5)";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(-19, -27);
+    ctx.quadraticCurveTo(-14, -31, -9, -27);
+    ctx.quadraticCurveTo(-4, -31, 1, -27);
+    ctx.quadraticCurveTo(6, -31, 11, -27);
+    ctx.quadraticCurveTo(16, -31, 21, -27);
+    ctx.stroke();
+  } else {
+    // Soichiro's suit front: off-white shirt wedge with a black tie.
+    ctx.fillStyle = palette.shirt;
+    ctx.beginPath();
+    ctx.moveTo(-6, -87);
+    ctx.lineTo(8, -86);
+    ctx.lineTo(5, -58);
+    ctx.lineTo(1, -50);
+    ctx.lineTo(-3, -58);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = palette.tie;
+    ctx.beginPath();
+    ctx.moveTo(-1, -86);
+    ctx.lineTo(4, -85);
+    ctx.lineTo(3, -56);
+    ctx.lineTo(0, -50);
+    ctx.lineTo(-2, -56);
+    ctx.closePath();
+    ctx.fill();
   }
 
   // head: fighter-identical skin ellipse with black outline, no face
