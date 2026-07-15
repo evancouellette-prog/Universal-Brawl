@@ -1793,6 +1793,39 @@ const SANJI_ULT_FINISHER_WINDOW_TICKS = 5 * 60;
 const SANJI_BOEUF_DAMAGE = 55;
 const SANJI_BOEUF_KNOCKBACK = 46;
 
+// VECNA_PATCH: Vecna - summoner/controller. Hive Mind corruption passive,
+// Demobat Swarm, Demodog Hunt, Upside Down Slip, Bone Snap, and The
+// Upside Down ultimate. Maroon theme, no JJK mechanics.
+const VECNA_MOVE_MULTIPLIER = 0.92;
+const VECNA_CORRUPTION_MAX = 100;
+const VECNA_BAT_COOLDOWN_TICKS = 12 * 60;
+const VECNA_BAT_COUNT = 3;
+const VECNA_BAT_COUNT_EMPOWERED = 5;
+const VECNA_BAT_HP = 6;
+const VECNA_BAT_LIFE = 8 * 60;
+const VECNA_BAT_BITE_DAMAGE = 2;
+const VECNA_BAT_BITE_INTERVAL = 26;
+const VECNA_DOG_COOLDOWN_TICKS = 16 * 60;
+const VECNA_DOG_HP = 30;
+const VECNA_DOG_HP_EMPOWERED = 48;
+const VECNA_DOG_LIFE = 5 * 60;
+const VECNA_DOG_PIN_TICKS = 60;
+const VECNA_DOG_PIN_DAMAGE = 10;
+const VECNA_SLIP_COOLDOWN_TICKS = 14 * 60;
+const VECNA_SLIP_TICKS = 150; // up to 2.5s underground
+const VECNA_SLIP_ERUPT_DAMAGE = 18;
+const VECNA_SLIP_ERUPT_RADIUS = 84;
+const VECNA_SLIP_ROOT_TICKS = 50;
+const VECNA_BONESNAP_COOLDOWN_TICKS = 14 * 60;
+const VECNA_BONESNAP_RANGE = 130;
+const VECNA_BONESNAP_DAMAGE = 20;
+const VECNA_ULT_TICKS = 12 * 60;
+const VECNA_SPIDER_SLAM_INTERVAL = 102; // ~1.7s between slams
+const VECNA_SPIDER_WARN_TICKS = 34;
+const VECNA_SPIDER_SLAM_RADIUS = 62;
+const VECNA_SPIDER_SLAM_DAMAGE = 10;
+const VECNA_SPIDER_PIN_TICKS = 60;
+
 const TECHNIQUE_STATS = {
   limitless: {
     maxHealth: 540,
@@ -1839,6 +1872,16 @@ const TECHNIQUE_STATS = {
     maxCe: 100,
     damageTakenMultiplier: 1.05,
     knockbackTakenMultiplier: 1,
+    ceRegenRate: CE_REGEN_RATE,
+    ceLowRegenBonus: CE_LOW_REGEN_BONUS
+  },
+  // VECNA_PATCH: 7 bars - tougher than Gojo, softer than Thragg.
+  hivemind: {
+    maxHealth: 650,
+    healthBars: 7,
+    maxCe: 100,
+    damageTakenMultiplier: 0.98,
+    knockbackTakenMultiplier: 0.96,
     ceRegenRate: CE_REGEN_RATE,
     ceLowRegenBonus: CE_LOW_REGEN_BONUS
   }
@@ -2504,6 +2547,7 @@ function getTechniqueCharacterName(technique) {
   if (technique === "deathnote") return "Light";
   if (technique === "brawler") return "Thragg";
   if (technique === "blackleg") return "Sanji"; // SANJI_PATCH
+  if (technique === "hivemind") return "Vecna"; // VECNA_PATCH
   return "Gojo";
 }
 
@@ -2751,7 +2795,10 @@ const techniqueMoves = {
   // SANJI_PATCH: both are melee specials handled in startTechnique, not
   // projectiles - the specs exist so the cost/HUD plumbing has entries.
   diableJambe: { cost: 0, damage: SANJI_DIABLE_DAMAGE, speed: 0, radius: 1, knockback: SANJI_DIABLE_KNOCKBACK, life: 1 },
-  muttonShot: { cost: 0, damage: 0, speed: 0, radius: 1, knockback: 0, life: 1 }
+  muttonShot: { cost: 0, damage: 0, speed: 0, radius: 1, knockback: 0, life: 1 },
+  // VECNA_PATCH: melee-spawned summons, handled in startTechnique.
+  demobatSwarm: { cost: 0, damage: 0, speed: 0, radius: 1, knockback: 0, life: 1 },
+  demodogHunt: { cost: 0, damage: 0, speed: 0, radius: 1, knockback: 0, life: 1 }
 };
 
 function getTechniqueMoveKey(f, slot) {
@@ -2761,6 +2808,7 @@ function getTechniqueMoveKey(f, slot) {
   // THRAGG_BRAWLER_PATCH: only one ranged tool, mapped to both mouse buttons.
   if (f.technique === "brawler") return "groundBreak";
   if (f.technique === "blackleg") return slot === 2 ? "muttonShot" : "diableJambe"; // SANJI_PATCH
+  if (f.technique === "hivemind") return slot === 2 ? "demodogHunt" : "demobatSwarm"; // VECNA_PATCH
   return "blue";
 }
 
@@ -2774,6 +2822,9 @@ function getTechniqueDisplayName(move) {
   if (move === "diableJambe") return "DIABLE JAMBE"; // SANJI_PATCH
   if (move === "muttonShot") return "MUTTON SHOT"; // SANJI_PATCH
   if (move === "skyWalk") return "SKY WALK"; // SANJI_PATCH
+  if (move === "demobatSwarm") return "DEMOBATS"; // VECNA_PATCH
+  if (move === "demodogHunt") return "DEMODOG"; // VECNA_PATCH
+  if (move === "upsideDownSlip") return "SLIP"; // VECNA_PATCH
   return move.toUpperCase();
 }
 
@@ -2790,6 +2841,10 @@ function getTechniqueCooldownTicks(move, f = null) {
   if (move === "diableJambe") return SANJI_DIABLE_COOLDOWN_TICKS;
   if (move === "muttonShot") return SANJI_MUTTON_COOLDOWN_TICKS;
   if (move === "skyWalk") return SANJI_SKYWALK_COOLDOWN_TICKS;
+  // VECNA_PATCH:
+  if (move === "demobatSwarm") return VECNA_BAT_COOLDOWN_TICKS;
+  if (move === "demodogHunt") return VECNA_DOG_COOLDOWN_TICKS;
+  if (move === "upsideDownSlip") return VECNA_SLIP_COOLDOWN_TICKS;
   let base = move === "red" || move === "cleave" ? TECHNIQUE_HEAVY_COOLDOWN : TECHNIQUE_FAST_COOLDOWN;
   if (move === "cleave" && hasBindingVow(f, "cleave")) base = Math.max(10, Math.ceil(base * 0.55));
   return base;
@@ -2831,15 +2886,16 @@ function getAffordableChargeRatio(f, move, chargeRatio) {
 
 function pickRandomTechnique() {
   const roll = Math.random();
-  if (roll < 0.26) return "limitless";
-  if (roll < 0.52) return "shrine";
-  if (roll < 0.72) return "deathnote";
-  if (roll < 0.87) return "brawler";
-  return "blackleg"; // SANJI_PATCH
+  if (roll < 0.22) return "limitless";
+  if (roll < 0.44) return "shrine";
+  if (roll < 0.62) return "deathnote";
+  if (roll < 0.76) return "brawler";
+  if (roll < 0.89) return "blackleg"; // SANJI_PATCH
+  return "hivemind"; // VECNA_PATCH
 }
 
 function isValidTechnique(technique) {
-  return technique === "limitless" || technique === "shrine" || technique === "deathnote" || technique === "brawler" || technique === "blackleg"; // SANJI_PATCH
+  return technique === "limitless" || technique === "shrine" || technique === "deathnote" || technique === "brawler" || technique === "blackleg" || technique === "hivemind"; // SANJI_PATCH + VECNA_PATCH
 }
 
 function rollCpuOpponentTechnique(reason = "") {
@@ -2922,6 +2978,9 @@ function updateCamera(snap = false) {
 }
 
 let projectiles = [];
+// VECNA_PATCH: live summons (demobats/demodogs) and the ultimate arena state.
+let vecnaMinions = [];
+let upsideDown = null;
 let hitSparks = [];
 let projectileDisperses = [];
 let teleportEffects = [];
@@ -3073,6 +3132,14 @@ function makeFighter(config) {
     sanjiBoeufUsed: false,
     burnTicks: 0,
     burnTickCounter: 0,
+    // VECNA_PATCH: Hive Mind kit state + the shared root debuff.
+    vecnaCorruption: 0,
+    vecnaBatCooldown: 0,
+    vecnaDogCooldown: 0,
+    vecnaSlipCooldown: 0,
+    vecnaSlipTicks: 0,
+    vecnaBoneSnapCooldown: 0,
+    rootedTicks: 0,
     blocking: false,
     shieldTicks: SHIELD_MAX_TICKS,
     shieldCooldown: 0,
@@ -3125,7 +3192,7 @@ function applyTechniqueStats(f, preserveMeters = false) {
   const stats = TECHNIQUE_STATS[f.technique] || TECHNIQUE_STATS.limitless;
   const healthRatio = f.maxHealth > 0 ? f.health / f.maxHealth : 1;
   const ceRatio = f.maxCe > 0 ? f.ce / f.maxCe : 1;
-  f.speed = BASE_MOVE_SPEED * (f.technique === "limitless" ? LIMITLESS_MOVE_MULTIPLIER : f.technique === "deathnote" ? 0.94 : f.technique === "brawler" ? THRAGG_MOVE_MULTIPLIER : f.technique === "blackleg" ? SANJI_MOVE_MULTIPLIER : 1); // SANJI_PATCH
+  f.speed = BASE_MOVE_SPEED * (f.technique === "limitless" ? LIMITLESS_MOVE_MULTIPLIER : f.technique === "deathnote" ? 0.94 : f.technique === "brawler" ? THRAGG_MOVE_MULTIPLIER : f.technique === "blackleg" ? SANJI_MOVE_MULTIPLIER : f.technique === "hivemind" ? VECNA_MOVE_MULTIPLIER : 1); // SANJI_PATCH + VECNA_PATCH
   f.maxHealth = stats.maxHealth;
   f.healthBars = stats.healthBars || 3;
   f.maxCe = stats.maxCe;
@@ -3161,6 +3228,15 @@ function applyTechniqueStats(f, preserveMeters = false) {
     f.lightInvestigationCooldown = 0;
     f.lightInvestigationCooldownMax = 0;
     f.eyeDealUsed = false;
+  }
+  // VECNA_PATCH: clear the Hive Mind kit when switching off Vecna.
+  if (f.technique !== "hivemind") {
+    f.vecnaCorruption = 0;
+    f.vecnaBatCooldown = 0;
+    f.vecnaDogCooldown = 0;
+    f.vecnaSlipCooldown = 0;
+    f.vecnaSlipTicks = 0;
+    f.vecnaBoneSnapCooldown = 0;
   }
   // SANJI_PATCH: clear the Black Leg kit when switching off Sanji.
   if (f.technique !== "blackleg") {
@@ -3207,6 +3283,7 @@ function getTechniqueHudMoves(f) {
   if (f.technique === "deathnote") return ["ryukStrike", "nameInvestigation"];
   if (f.technique === "brawler") return ["groundBreak", "flyingDash"];
   if (f.technique === "blackleg") return ["diableJambe", "muttonShot", "skyWalk"]; // SANJI_PATCH
+  if (f.technique === "hivemind") return ["demobatSwarm", "demodogHunt", "upsideDownSlip"]; // VECNA_PATCH
   return ["blue", "red", "teleport"];
 }
 
@@ -3263,11 +3340,14 @@ function getTechniqueHudState(f, move) {
       blocked
     };
   }
-  // SANJI_PATCH: all of Sanji's specials are free - pure cooldown gates.
-  if (move === "diableJambe" || move === "muttonShot" || move === "skyWalk") {
+  // SANJI_PATCH + VECNA_PATCH: these specials are free - pure cooldown gates.
+  if (move === "diableJambe" || move === "muttonShot" || move === "skyWalk" || move === "demobatSwarm" || move === "demodogHunt" || move === "upsideDownSlip") {
     const cooldown = move === "diableJambe" ? (f.sanjiDiableCooldown || 0)
       : move === "muttonShot" ? (f.sanjiMuttonCooldown || 0)
-      : (f.sanjiSkyWalkCooldown || 0);
+      : move === "skyWalk" ? (f.sanjiSkyWalkCooldown || 0)
+      : move === "demobatSwarm" ? (f.vecnaBatCooldown || 0)
+      : move === "demodogHunt" ? (f.vecnaDogCooldown || 0)
+      : (f.vecnaSlipCooldown || 0);
     return {
       cost: 0,
       cooling: cooldown > 0,
@@ -3325,6 +3405,7 @@ function updateTechniqueCooldownHud(f, slots) {
     hud.slot.classList.toggle("light-cooldown", f.technique === "deathnote");
     hud.slot.classList.toggle("thragg-cooldown", f.technique === "brawler");
     hud.slot.classList.toggle("sanji-cooldown", f.technique === "blackleg"); // SANJI_PATCH
+    hud.slot.classList.toggle("vecna-cooldown", f.technique === "hivemind"); // VECNA_PATCH
   });
 }
 
@@ -3422,6 +3503,9 @@ function pinStationaryPracticeDummy(f = enemy) {
   f.thraggGrabState = "idle";
   f.thraggGrabTimer = 0;
   f.thraggFlightTicks = 0;
+  // VECNA_PATCH: clear mid-move Hive Mind state.
+  f.vecnaSlipTicks = 0;
+  f.rootedTicks = 0;
   // SANJI_PATCH: clear mid-move Black Leg state.
   f.sanjiDiableTicks = 0;
   f.sanjiDiveKickTicks = 0;
@@ -3787,6 +3871,59 @@ function installSanjiFlameHudStyle() {
 window.addEventListener("DOMContentLoaded", installSanjiFlameHudStyle);
 window.setTimeout(installSanjiFlameHudStyle, 0);
 
+// VECNA_PATCH: Vecna's cooldown HUD in deep maroon.
+function installVecnaMaroonHudStyle() {
+  if (document.getElementById("vecnaMaroonEffectsStyle")) return;
+  const style = document.createElement("style");
+  style.id = "vecnaMaroonEffectsStyle";
+  style.textContent = `
+    .ct-slot.vecna-cooldown,
+    .extra-cooldown.vecna-cooldown,
+    .ct-slot.vecna-cooldown.ready,
+    .ct-slot.vecna-cooldown.cooling,
+    .extra-cooldown.vecna-cooldown.ready,
+    .extra-cooldown.vecna-cooldown.cooling {
+      background: linear-gradient(180deg, rgba(38, 12, 16, 0.92), rgba(16, 5, 8, 0.95)) !important;
+      border: 3px solid #7f1d1d !important;
+      box-shadow: 0 3px 0 #3f0d12, 0 0 14px rgba(153, 27, 27, 0.4) !important;
+    }
+    .ct-slot.vecna-cooldown .ct-label,
+    .ct-slot.vecna-cooldown .ct-status,
+    .extra-cooldown.vecna-cooldown .ct-label,
+    .extra-cooldown.vecna-cooldown .ct-status,
+    .extra-cooldown.vecna-cooldown .extra-cooldown-label,
+    .extra-cooldown.vecna-cooldown .extra-cooldown-status {
+      color: #fca5a5 !important;
+      text-shadow: 0 0 6px rgba(153, 27, 27, 0.75) !important;
+    }
+    .ct-slot.vecna-cooldown .ct-meter,
+    .extra-cooldown.vecna-cooldown .ct-meter {
+      background: rgba(28, 9, 12, 0.75) !important;
+      border-color: rgba(153, 27, 27, 0.4) !important;
+    }
+    .ct-slot.vecna-cooldown .ct-fill,
+    .ct-slot.vecna-cooldown.ready .ct-fill,
+    .ct-slot.vecna-cooldown.low-ce .ct-fill,
+    .ct-slot.vecna-cooldown.blocked .ct-fill,
+    .extra-cooldown.vecna-cooldown .ct-fill,
+    .extra-cooldown.vecna-cooldown.ready .ct-fill,
+    .extra-cooldown.vecna-cooldown .extra-cooldown-fill {
+      background: linear-gradient(90deg, #5b1116, #7f1d1d, #b91c1c) !important;
+      box-shadow: 0 0 12px rgba(153, 27, 27, 0.5), inset 0 1px 0 rgba(252, 165, 165, 0.25) !important;
+    }
+    .ct-slot.vecna-cooldown.cooling .ct-fill,
+    .ct-slot.vecna-cooldown.charging .ct-fill,
+    .extra-cooldown.vecna-cooldown.cooling .ct-fill,
+    .extra-cooldown.vecna-cooldown.cooling .extra-cooldown-fill {
+      background: linear-gradient(90deg, #240608, #45090e, #5b1116) !important;
+      opacity: 0.92 !important;
+    }
+  `;
+  document.head.appendChild(style);
+}
+window.addEventListener("DOMContentLoaded", installVecnaMaroonHudStyle);
+window.setTimeout(installVecnaMaroonHudStyle, 0);
+
 
 function installLightTechniqueOption() {
   installUniversalBrawlRename();
@@ -3872,6 +4009,10 @@ function getTechniqueControlHtml(technique) {
     // SANJI_PATCH: kick-only kit, no JJK controls.
     return '<span><kbd>Left Click</kbd> Diable Jambe</span><span><kbd>Right Click</kbd> Mutton Shot</span><span><kbd>S</kbd> Sky Walk (air)</span><span><kbd>Attack in Sky Walk</kbd> Dive Kick</span><span><kbd>C</kbd> Ifrit Jambe / Boeuf Burst</span>';
   }
+  if (technique === "hivemind") {
+    // VECNA_PATCH: summoner kit, no JJK controls.
+    return '<span><kbd>Left Click</kbd> Demobat Swarm</span><span><kbd>Right Click</kbd> Demodog Hunt</span><span><kbd>S</kbd> Upside Down Slip (recast to erupt)</span><span><kbd>Tab</kbd> Bone Snap</span><span><kbd>C</kbd> The Upside Down</span>';
+  }
   return '<span><kbd>Left Click</kbd> Blue</span><span><kbd>Right Click</kbd> Red</span><span><kbd>Hold S</kbd> Teleport</span><span><kbd>Hold T</kbd> Blue Punch</span><span><kbd>F</kbd> Infinity</span><span><kbd>Hold C</kbd> Aim Ultimate</span><span><kbd>R</kbd> hold RCT</span>';
 }
 
@@ -3884,6 +4025,7 @@ function getExtraBattleControlHtml(technique) {
   }
   if (technique === "brawler") return ''; // THRAGG_NO_JJK_PATCH: nothing JJK down here
   if (technique === "blackleg") return '<span><kbd>Heat 100%</kbd> next fire kick +15% and burns</span>'; // SANJI_PATCH
+  if (technique === "hivemind") return '<span><kbd>Corruption 100%</kbd> next summon/ability is enhanced</span>'; // VECNA_PATCH
   return '<span><kbd>X</kbd> Domain Expansion</span><span><kbd>Z</kbd> Simple Domain</span>';
 }
 
@@ -4246,7 +4388,9 @@ function applyJoinerFighterStateOnHost(remoteFighter) {
     "informationMeter", "identityProgress", "lightSummonStage", "lightSummonType", "lightSummonHealth", "lightSummonMaxHealth", "lightSummonTicks", "lightSummonHitFlash", "lightSummonAnchorX", "lightSummonAnchorY", "lightSummonAnchorDir", "potatoCooldown", "potatoFocusTicks", "potatoVulnerableTicks", "lightRyukCooldown", "lightRyukCooldownMax", "lightInvestigationCooldown", "lightInvestigationCooldownMax", "eyeDealUsed", "eyeDealGlowTicks", "deathNoteSlowTicks", "deathNoteFearTicks", "ctLockTimer",
     "thraggGrabState", "thraggGrabTimer", "thraggGrabCooldown", "thraggFlightTicks", "thraggDashCooldown", "grabHeldTimer", "grabHeldBy", "grabLockY", "grabTechable",
     // SANJI_PATCH
-    "sanjiHeat", "sanjiDiableTicks", "sanjiDiableAir", "sanjiDiableCooldown", "sanjiSkyWalkJumps", "sanjiSkyWalkCooldown", "sanjiDiveKickTicks", "sanjiMuttonTicks", "sanjiMuttonCooldown", "sanjiUltTicks", "sanjiBoeufUsed", "burnTicks"
+    "sanjiHeat", "sanjiDiableTicks", "sanjiDiableAir", "sanjiDiableCooldown", "sanjiSkyWalkJumps", "sanjiSkyWalkCooldown", "sanjiDiveKickTicks", "sanjiMuttonTicks", "sanjiMuttonCooldown", "sanjiUltTicks", "sanjiBoeufUsed", "burnTicks",
+    // VECNA_PATCH
+    "vecnaCorruption", "vecnaBatCooldown", "vecnaDogCooldown", "vecnaSlipCooldown", "vecnaSlipTicks", "vecnaBoneSnapCooldown", "rootedTicks"
   ];
 
   fields.forEach((field) => {
@@ -4341,6 +4485,7 @@ if (data.type === "role") {
       if (data.action === "backThrow") handleThrowInput(enemy, false);
       if (data.action === "flying-dash") startFlyingDash(enemy);
       if (data.action === "sky-walk") startSkyWalk(enemy); // SANJI_PATCH
+      if (data.action === "upside-slip") startUpsideDownSlip(enemy); // VECNA_PATCH
       if (data.action === "dodge") startDodge(enemy, getVectorFromInput(remoteInput));
       if (data.action === "jump") jumpFighterWithMove(enemy, (remoteInput.right ? 1 : 0) - (remoteInput.left ? 1 : 0));
       if (data.action === "infinity" && !hasCtLock(enemy)) toggleInfinity(enemy);
@@ -4860,6 +5005,8 @@ function resetRoundActors() {
   player = makeFighter({ x: 170, w: 50, h: 128, dir: 1, color: "#2563eb", accent: "#1d4ed8" });
   enemy = makeFighter({ x: STAGE_W - 230, w: 52, h: 128, dir: -1, color: "#dc2626", accent: "#991b1b" });
   projectiles = [];
+  vecnaMinions = []; // VECNA_PATCH
+  endUpsideDown(); // VECNA_PATCH
   hitSparks = [];
   projectileDisperses = [];
   teleportEffects = [];
@@ -5219,6 +5366,16 @@ function getExtraCooldownItems(f) {
     return items;
   }
 
+  // VECNA_PATCH: Corruption meter + ultimate timer, nothing JJK.
+  if (f.technique === "hivemind") {
+    items.push({ name: "CORRUPTION", current: f.vecnaCorruption || 0, max: VECNA_CORRUPTION_MAX, mode: "resource" });
+    items.push({ name: "BONE SNAP", current: f.vecnaBoneSnapCooldown || 0, max: VECNA_BONESNAP_COOLDOWN_TICKS });
+    if (upsideDown && upsideDown.owner === getFighterOwner(f)) {
+      items.push({ name: "UPSIDE DOWN", current: upsideDown.ticks, max: VECNA_ULT_TICKS, mode: "active" });
+    }
+    return items;
+  }
+
   // SANJI_PATCH: Heat Meter + Ifrit timer, nothing JJK.
   if (f.technique === "blackleg") {
     items.push({ name: "HEAT", current: f.sanjiHeat || 0, max: SANJI_HEAT_MAX, mode: "resource" });
@@ -5283,7 +5440,7 @@ function updateExtraCooldownHud(container, f) {
       : ready ? 100 : Math.max(4, ratio * 100);
 
     const row = document.createElement("div");
-    row.className = `extra-cooldown ct-slot ${ready ? "ready" : "cooling"} ${f.technique === "shrine" ? "sukuna-cooldown" : f.technique === "deathnote" ? "light-cooldown" : f.technique === "brawler" ? "thragg-cooldown" : f.technique === "blackleg" ? "sanji-cooldown" : "gojo-cooldown"} ${item.style || ""}`;
+    row.className = `extra-cooldown ct-slot ${ready ? "ready" : "cooling"} ${f.technique === "shrine" ? "sukuna-cooldown" : f.technique === "deathnote" ? "light-cooldown" : f.technique === "brawler" ? "thragg-cooldown" : f.technique === "blackleg" ? "sanji-cooldown" : f.technique === "hivemind" ? "vecna-cooldown" : "gojo-cooldown"} ${item.style || ""}`;
 
     const label = document.createElement("span");
     label.className = "extra-cooldown-label ct-label";
@@ -5346,7 +5503,7 @@ function updateResourceBarLabels() {
   const playerUltFrame = playerUltimateEl ? playerUltimateEl.closest(".ultimate-frame") : null;
   const enemyUltFrame = enemyUltimateEl ? enemyUltimateEl.closest(".ultimate-frame") : null;
 
-  ensureResourceBarLabel(playerCeFrame, isLight(player) ? "Information" : player?.technique === "brawler" || player?.technique === "blackleg" ? "" : "Cursed Energy", "ce"); // SANJI_PATCH
+  ensureResourceBarLabel(playerCeFrame, isLight(player) ? "Information" : player?.technique === "brawler" || player?.technique === "blackleg" || player?.technique === "hivemind" ? "" : "Cursed Energy", "ce"); // SANJI_PATCH + VECNA_PATCH
   ensureResourceBarLabel(playerUltFrame, isLight(player) ? "Name" : "Ultimate", "ultimate");
 
   // DUMMY_HUD_NO_WORDS_PATCH:
@@ -5357,7 +5514,7 @@ function updateResourceBarLabels() {
     return;
   }
 
-  ensureResourceBarLabel(enemyCeFrame, isLight(enemy) ? "Information" : enemy?.technique === "brawler" || enemy?.technique === "blackleg" ? "" : "Cursed Energy", "ce"); // SANJI_PATCH
+  ensureResourceBarLabel(enemyCeFrame, isLight(enemy) ? "Information" : enemy?.technique === "brawler" || enemy?.technique === "blackleg" || enemy?.technique === "hivemind" ? "" : "Cursed Energy", "ce"); // SANJI_PATCH + VECNA_PATCH
   ensureResourceBarLabel(enemyUltFrame, isLight(enemy) ? "Name" : "Ultimate", "ultimate");
 }
 
@@ -5398,11 +5555,11 @@ function updateLightHudVisibility() {
   // Light uses the CE slot as INFO and the Ultimate slot as NAME.
   // THRAGG_NO_JJK_PATCH: Thragg has no Cursed Energy at all - his CE bar
   // is hidden outright (abilities are cooldown-gated).
-  setHudElementHidden(playerCeFrame, player?.technique === "brawler" || player?.technique === "blackleg"); // SANJI_PATCH
+  setHudElementHidden(playerCeFrame, player?.technique === "brawler" || player?.technique === "blackleg" || player?.technique === "hivemind"); // SANJI_PATCH + VECNA_PATCH
   setHudElementHidden(playerUltFrame, false);
 
   if (gameMode !== "practice") {
-    setHudElementHidden(enemyCeFrame, enemy?.technique === "brawler" || enemy?.technique === "blackleg"); // SANJI_PATCH
+    setHudElementHidden(enemyCeFrame, enemy?.technique === "brawler" || enemy?.technique === "blackleg" || enemy?.technique === "hivemind"); // SANJI_PATCH + VECNA_PATCH
     setHudElementHidden(enemyUltFrame, false);
   } else {
     setHudElementHidden(enemyCeFrame, true);
@@ -5839,7 +5996,7 @@ function isSanjiCommitted(f) {
 function isSpecialLocked(f) {
   const owner = getFighterOwner(f);
   const clashing = Boolean(owner && domainClash?.attempts?.[owner]);
-  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || isSanjiCommitted(f) || (f?.domainStartup || 0) > 0 || clashing || (f?.potatoVulnerableTicks || 0) > 0;
+  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || isSanjiCommitted(f) || (f?.vecnaSlipTicks || 0) > 0 || (f?.domainStartup || 0) > 0 || clashing || (f?.potatoVulnerableTicks || 0) > 0; // VECNA_PATCH: no attacking from underground
 }
 
 // DOMAIN_MOVEMENT_FIX
@@ -5960,6 +6117,7 @@ function handleThrowInput(f, requireButtons = true) {
     return true;
   }
   if (f.technique === "brawler") return startThraggGrab(f);
+  if (f.technique === "hivemind") return startBoneSnap(f); // VECNA_PATCH
   return startBackThrow(f, requireButtons);
 }
 
@@ -6115,7 +6273,7 @@ function updateThraggGrab(f) {
     const oppCenter = getFighterCenter(opponent);
     const dx = oppCenter.x - fCenter.x;
     const inRange = Math.abs(dx) <= THRAGG_GRAB_RANGE && Math.abs(oppCenter.y - fCenter.y) <= 60;
-    const canBeGrabbed = !opponent.ko && opponent.dodging <= 0 && (opponent.grabHeldTimer || 0) <= 0 && !(opponent.knockdown && opponent.grounded);
+    const canBeGrabbed = !opponent.ko && opponent.dodging <= 0 && !isUntargetable(opponent) && (opponent.grabHeldTimer || 0) <= 0 && !(opponent.knockdown && opponent.grounded); // VECNA_PATCH
     if (inRange && canBeGrabbed) {
       f.dir = Math.sign(dx) || f.dir;
       f.thraggGrabState = "techWindow";
@@ -6390,7 +6548,7 @@ function updateSanjiDiable(f, opponent) {
   }
   // keepFightersApart un-overlaps the pair every tick, so the contact
   // test needs a margin or the dash can never "touch" its target.
-  if (!f.sanjiDiableHit && opponent && !opponent.ko && opponent.dodging <= 0 && rectsOverlap(expandRect(f, 10), opponent)) {
+  if (!f.sanjiDiableHit && opponent && !opponent.ko && opponent.dodging <= 0 && !isUntargetable(opponent) && rectsOverlap(expandRect(f, 10), opponent)) {
     f.sanjiDiableHit = true;
     const empowered = consumeSanjiHeatForFire(f);
     const raw = SANJI_DIABLE_DAMAGE * (empowered ? 1.15 : 1) * (ult ? 1.12 : 1);
@@ -6473,7 +6631,7 @@ function updateSanjiDiveKick(f, opponent) {
   }
   f.sanjiDiveKickTicks -= 1;
   f.vy = Math.max(f.vy, 8);
-  if (!f.sanjiDiveKickHit && opponent && !opponent.ko && opponent.dodging <= 0 && rectsOverlap(expandRect(f, 10), opponent)) {
+  if (!f.sanjiDiveKickHit && opponent && !opponent.ko && opponent.dodging <= 0 && !isUntargetable(opponent) && rectsOverlap(expandRect(f, 10), opponent)) {
     f.sanjiDiveKickHit = true;
     const blocked = isBlockingAttack(opponent, f.dir);
     const damage = blocked ? 0 : getTakenDamage(opponent, Math.ceil(SANJI_DIVE_KICK_DAMAGE * getOutgoingDamageMultiplier(f)));
@@ -6503,7 +6661,7 @@ function startMuttonShot(f) {
   if (!isSanji(f) || !canStartSanjiSpecial(f)) return false;
   if ((f.sanjiMuttonCooldown || 0) > 0) return false;
   const opponent = getOpponent(f);
-  const inRange = opponent && !opponent.ko && opponent.dodging <= 0 && !isHeldBySpecial(opponent) &&
+  const inRange = opponent && !opponent.ko && opponent.dodging <= 0 && !isUntargetable(opponent) && !isHeldBySpecial(opponent) &&
     Math.abs(getFighterCenter(opponent).x - getFighterCenter(f).x) <= SANJI_MUTTON_RANGE &&
     Math.abs(getFighterCenter(opponent).y - getFighterCenter(f).y) <= 64;
   if (!inRange) {
@@ -6664,6 +6822,464 @@ function updateSanjiSystems(f, opponent) {
   updateSanjiDiable(f, opponent);
   updateSanjiDiveKick(f, opponent);
   updateSanjiMutton(f, opponent);
+}
+
+// ==========================================================================
+// VECNA_PATCH: Hive Mind kit. Corruption passive, Demobat Swarm, Demodog
+// Hunt, Upside Down Slip, Bone Snap, and The Upside Down ultimate with the
+// spider leg slams.
+// ==========================================================================
+
+function isVecna(f) {
+  return Boolean(f && f.technique === "hivemind");
+}
+
+// Untargetable while melted into the ground.
+function isUntargetable(f) {
+  return Boolean(f && (f.vecnaSlipTicks || 0) > 0);
+}
+
+function gainVecnaCorruption(f, amount) {
+  if (!isVecna(f) || f.ko) return;
+  f.vecnaCorruption = Math.max(0, Math.min(VECNA_CORRUPTION_MAX, (f.vecnaCorruption || 0) + amount));
+}
+
+// At full Corruption the next ability is enhanced and spends the meter.
+function consumeVecnaCorruption(f) {
+  if ((f.vecnaCorruption || 0) < VECNA_CORRUPTION_MAX) return false;
+  f.vecnaCorruption = 0;
+  return true;
+}
+
+function vecnaUltActiveFor(f) {
+  return Boolean(upsideDown && upsideDown.owner === getFighterOwner(f));
+}
+
+function canStartVecnaSpecial(f) {
+  return Boolean(
+    f &&
+    !gameOver &&
+    !paused &&
+    !isSpecialLocked(f) &&
+    !f.ko &&
+    f.stun <= 0 &&
+    f.dodging <= 0 &&
+    !f.knockdown &&
+    !f.attacking
+  );
+}
+
+function vecnaMinionDamageScale(ownerFighter) {
+  return vecnaUltActiveFor(ownerFighter) ? 1.5 : 1;
+}
+
+function startDemobatSwarm(f) {
+  if (!isVecna(f) || !canStartVecnaSpecial(f) || (f.vecnaSlipTicks || 0) > 0) return false;
+  if ((f.vecnaBatCooldown || 0) > 0) return false;
+  f.vecnaBatCooldown = VECNA_BAT_COOLDOWN_TICKS;
+  const empowered = consumeVecnaCorruption(f);
+  const count = empowered ? VECNA_BAT_COUNT_EMPOWERED : VECNA_BAT_COUNT;
+  const center = getFighterCenter(f);
+  for (let i = 0; i < count; i += 1) {
+    vecnaMinions.push({
+      kind: "bat",
+      owner: getFighterOwner(f),
+      x: center.x - f.dir * 10 + (Math.random() - 0.5) * 30,
+      y: center.y - 30 - Math.random() * 26,
+      vx: 0,
+      vy: 0,
+      hp: VECNA_BAT_HP,
+      life: VECNA_BAT_LIFE,
+      biteCooldown: 20 + i * 6,
+      hitCooldown: 0,
+      wob: Math.random() * Math.PI * 2
+    });
+  }
+  spawnHitSpark(center.x - f.dir * 8, center.y - 30, f.dir, "brown");
+  updateHud();
+  return true;
+}
+
+function startDemodogHunt(f) {
+  if (!isVecna(f) || !canStartVecnaSpecial(f) || (f.vecnaSlipTicks || 0) > 0) return false;
+  if ((f.vecnaDogCooldown || 0) > 0) return false;
+  f.vecnaDogCooldown = VECNA_DOG_COOLDOWN_TICKS;
+  const empowered = consumeVecnaCorruption(f);
+  const center = getFighterCenter(f);
+  vecnaMinions.push({
+    kind: "dog",
+    owner: getFighterOwner(f),
+    x: center.x + f.dir * 26,
+    y: GROUND - 30,
+    vx: 0,
+    vy: 0,
+    hp: empowered ? VECNA_DOG_HP_EMPOWERED : VECNA_DOG_HP,
+    life: VECNA_DOG_LIFE,
+    empowered,
+    state: "hunt",
+    stateTicks: 0,
+    hitCooldown: 0
+  });
+  spawnHitSpark(center.x + f.dir * 26, GROUND - 20, f.dir, "brown");
+  updateHud();
+  return true;
+}
+
+function getVecnaMinionRect(m) {
+  if (m.kind === "bat") return { x: m.x - 9, y: m.y - 6, w: 18, h: 12 };
+  return { x: m.x - 20, y: m.y - 12, w: 40, h: 30 };
+}
+
+function damageVecnaMinion(m, amount, dir = 1) {
+  m.hp -= amount;
+  const rect = getVecnaMinionRect(m);
+  spawnHitSpark(rect.x + rect.w / 2, rect.y + rect.h / 2, dir, "light");
+}
+
+function updateVecnaMinions() {
+  if (!vecnaMinions.length) return;
+  for (const m of vecnaMinions) {
+    m.life -= 1;
+    if (m.hitCooldown > 0) m.hitCooldown -= 1;
+    const ownerFighter = m.owner === "player" ? player : enemy;
+    const target = m.owner === "player" ? enemy : player;
+    if (!target || target.ko || !ownerFighter || ownerFighter.ko || !isVecna(ownerFighter)) {
+      m.life = Math.min(m.life, 0);
+      continue;
+    }
+    const tCenter = getFighterCenter(target);
+    const targetable = target.dodging <= 0 && !isUntargetable(target) && (target.grabHeldTimer || 0) <= 0;
+
+    if (m.kind === "bat") {
+      // wobbling seek toward the target
+      m.wob += 0.22;
+      const dx = tCenter.x - m.x;
+      const dy = tCenter.y - 8 - m.y;
+      const dist = Math.max(1, Math.hypot(dx, dy));
+      m.vx = m.vx * 0.9 + (dx / dist) * 0.55;
+      m.vy = m.vy * 0.9 + (dy / dist) * 0.5 + Math.sin(m.wob) * 0.24;
+      m.vx = Math.max(-3.4, Math.min(3.4, m.vx));
+      m.vy = Math.max(-3, Math.min(3, m.vy));
+      m.x += m.vx;
+      m.y += m.vy;
+      m.y = Math.min(m.y, GROUND - 10);
+      if (m.biteCooldown > 0) m.biteCooldown -= 1;
+      if (m.biteCooldown <= 0 && targetable && rectsOverlap(getVecnaMinionRect(m), target)) {
+        m.biteCooldown = VECNA_BAT_BITE_INTERVAL;
+        const dir = Math.sign(tCenter.x - m.x) || 1;
+        const raw = Math.ceil(VECNA_BAT_BITE_DAMAGE * vecnaMinionDamageScale(ownerFighter));
+        if (isBlockingAttack(target, dir)) {
+          damageShield(target, raw);
+        } else {
+          applyFighterDamage(target, getTakenDamage(target, raw));
+          target.hurt = Math.max(target.hurt, 4);
+          gainVecnaCorruption(ownerFighter, 7);
+          gainUltimate(ownerFighter, 0.6);
+        }
+        spawnHitSpark(tCenter.x + (Math.random() - 0.5) * 16, tCenter.y + (Math.random() - 0.5) * 24, dir, "light");
+        updateHud();
+      }
+    } else {
+      // demodog: gravity + ground charge
+      m.vy += GRAVITY;
+      m.y += m.vy;
+      if (m.y >= GROUND - 15) {
+        m.y = GROUND - 15;
+        m.vy = 0;
+      }
+      if (m.state === "hunt") {
+        const dir = Math.sign(tCenter.x - m.x) || 1;
+        const speed = m.empowered ? 7.4 : 6.2;
+        m.vx = dir * speed;
+        m.x += m.vx;
+        if (targetable && m.hitCooldown <= 0 && rectsOverlap(getVecnaMinionRect(m), target)) {
+          // pounce: pin + bite
+          m.state = "maul";
+          m.stateTicks = m.empowered ? 46 : 34;
+          const raw = Math.ceil(VECNA_DOG_PIN_DAMAGE * vecnaMinionDamageScale(ownerFighter));
+          if (isBlockingAttack(target, dir)) {
+            damageShield(target, raw);
+            m.stateTicks = 12;
+          } else {
+            applyFighterDamage(target, getTakenDamage(target, raw));
+            const pin = m.empowered ? VECNA_DOG_PIN_TICKS + 30 : VECNA_DOG_PIN_TICKS;
+            target.stun = Math.max(target.stun, pin);
+            target.rootedTicks = Math.max(target.rootedTicks || 0, pin);
+            target.hurt = Math.max(target.hurt, 12);
+            target.vx = 0;
+            gainVecnaCorruption(ownerFighter, 25);
+            gainUltimate(ownerFighter, 3);
+            shake = Math.max(shake, 6);
+          }
+          spawnHitSpark(tCenter.x, tCenter.y, dir, "heavy");
+          updateHud();
+        }
+      } else if (m.state === "maul") {
+        m.stateTicks -= 1;
+        m.vx = 0;
+        m.x = tCenter.x - (Math.sign(tCenter.x - m.x) || 1) * 30;
+        if (m.stateTicks % 9 === 0 && targetable) {
+          spawnHitSpark(tCenter.x + (Math.random() - 0.5) * 12, tCenter.y, 1, "light");
+        }
+        if (m.stateTicks <= 0) m.life = 0; // job done, vanishes
+      }
+    }
+
+    // summons can be destroyed: the target's melee and projectiles hurt them
+    if (m.hp > 0 && m.hitCooldown <= 0 && target.attacking && !target.ko) {
+      const attack = getAttackSpec(target);
+      if (attack) {
+        const activeStart = attack.windup;
+        const activeEnd = attack.windup + attack.active;
+        if (target.attackFrame >= activeStart && target.attackFrame <= activeEnd && rectsOverlap(getHitbox(target), getVecnaMinionRect(m))) {
+          m.hitCooldown = 16;
+          damageVecnaMinion(m, attack.damage, target.dir);
+        }
+      }
+    }
+    if (m.hp > 0) {
+      for (const p of projectiles) {
+        if (p.hit || p.visualOnly || (p.startup || 0) > 0) continue;
+        if (p.owner !== (m.owner === "player" ? "enemy" : "player")) continue;
+        if (projectileOverlapsTarget(p, getVecnaMinionRect(m))) {
+          damageVecnaMinion(m, p.damage || 8, p.dir || 1);
+          p.hit = true;
+          break;
+        }
+      }
+    }
+  }
+  // sweep dead minions with a poof
+  vecnaMinions = vecnaMinions.filter((m) => {
+    if (m.hp <= 0 || m.life <= 0) {
+      const rect = getVecnaMinionRect(m);
+      spawnHitSpark(rect.x + rect.w / 2, rect.y + rect.h / 2, 1, "brown");
+      return false;
+    }
+    return true;
+  });
+}
+
+function startUpsideDownSlip(f) {
+  if (!isVecna(f) || gameOver || paused || f.ko || f.knockdown) return false;
+  // recast while underground = erupt now
+  if ((f.vecnaSlipTicks || 0) > 0) return eruptFromSlip(f);
+  if (!canStartVecnaSpecial(f)) return false;
+  if ((f.vecnaSlipCooldown || 0) > 0) return false;
+  f.vecnaSlipTicks = VECNA_SLIP_TICKS;
+  f.blocking = false;
+  f.attacking = null;
+  f.vy = 0;
+  const center = getFighterCenter(f);
+  spawnHitSpark(center.x, GROUND - 8, f.dir, "brown");
+  return true;
+}
+
+function eruptFromSlip(f) {
+  if ((f.vecnaSlipTicks || 0) <= 0) return false;
+  f.vecnaSlipTicks = 0;
+  f.vecnaSlipCooldown = VECNA_SLIP_COOLDOWN_TICKS;
+  const empowered = consumeVecnaCorruption(f);
+  const radius = VECNA_SLIP_ERUPT_RADIUS * (empowered ? 1.35 : 1);
+  const damage = Math.ceil((VECNA_SLIP_ERUPT_DAMAGE + (empowered ? 8 : 0)) * getOutgoingDamageMultiplier(f));
+  const center = getFighterCenter(f);
+  const opponent = getOpponent(f);
+  if (opponent && !opponent.ko && opponent.dodging <= 0 && !isUntargetable(opponent)) {
+    const oCenter = getFighterCenter(opponent);
+    const dx = oCenter.x - center.x;
+    if (Math.abs(dx) <= radius && oCenter.y > center.y - 140) {
+      const blocked = isBlockingAttack(opponent, Math.sign(dx) || f.dir);
+      if (blocked) {
+        damageShield(opponent, damage);
+      } else {
+        applyFighterDamage(opponent, getTakenDamage(opponent, damage));
+        opponent.vy = -9.5;
+        opponent.grounded = false;
+        opponent.hurt = 14;
+        opponent.stun = Math.max(opponent.stun, 18);
+        // emerging directly beneath someone briefly roots them
+        if (Math.abs(dx) < 34) {
+          opponent.rootedTicks = Math.max(opponent.rootedTicks || 0, VECNA_SLIP_ROOT_TICKS);
+          opponent.stun = Math.max(opponent.stun, VECNA_SLIP_ROOT_TICKS);
+          opponent.vy = -4;
+        }
+        gainUltimate(f, damage * ULT_DAMAGE_GAIN_SCALE);
+      }
+    }
+  }
+  spawnHitSpark(center.x - 20, GROUND - 12, -1, "heavy");
+  spawnHitSpark(center.x + 20, GROUND - 12, 1, "heavy");
+  shake = Math.max(shake, empowered ? 12 : 8);
+  hitStopTicks = Math.max(hitStopTicks, HITSTOP_LIGHT);
+  updateHud();
+  return true;
+}
+
+// Bone Snap: short-range psychic lift + crack. Bound to the throw key.
+function startBoneSnap(f) {
+  if (!isVecna(f) || !canStartVecnaSpecial(f) || (f.vecnaSlipTicks || 0) > 0) return false;
+  if ((f.vecnaBoneSnapCooldown || 0) > 0) return false;
+  const opponent = getOpponent(f);
+  if (!opponent || opponent.ko || opponent.dodging > 0 || isUntargetable(opponent)) return false;
+  const gap = Math.abs(getFighterCenter(opponent).x - getFighterCenter(f).x);
+  if (gap > VECNA_BONESNAP_RANGE) return false;
+  f.vecnaBoneSnapCooldown = VECNA_BONESNAP_COOLDOWN_TICKS;
+  f.dir = getFighterCenter(opponent).x >= getFighterCenter(f).x ? 1 : -1;
+  const blocked = isBlockingAttack(opponent, f.dir);
+  const damage = Math.ceil(VECNA_BONESNAP_DAMAGE * getOutgoingDamageMultiplier(f));
+  if (blocked) {
+    damageShield(opponent, damage);
+  } else {
+    applyFighterDamage(opponent, getTakenDamage(opponent, damage));
+    opponent.stun = Math.max(opponent.stun, 40);
+    opponent.hurt = 16;
+    opponent.vx = 0;
+    opponent.vy = -5;
+    opponent.grounded = false;
+    gainUltimate(f, damage * ULT_DAMAGE_GAIN_SCALE);
+  }
+  const oCenter = getFighterCenter(opponent);
+  spawnHitSpark(oCenter.x, oCenter.y - 10, f.dir, "heavy");
+  spawnHitSpark(oCenter.x, oCenter.y + 12, -f.dir, "light");
+  shake = Math.max(shake, 7);
+  hitStopTicks = Math.max(hitStopTicks, HITSTOP_HEAVY);
+  updateHud();
+  return true;
+}
+
+function startVecnaUltimate(f) {
+  if (upsideDown) return false;
+  if (!canStartUltimate(f)) {
+    const warning = getUltimateFailureMessage(f);
+    if (warning) showActionWarning(warning);
+    return false;
+  }
+  f.ultimateMeter = 0;
+  const victim = getOpponent(f);
+  upsideDown = {
+    owner: getFighterOwner(f),
+    ticks: VECNA_ULT_TICKS,
+    nextSlam: Math.round(VECNA_SPIDER_SLAM_INTERVAL * 0.6),
+    warnX: null,
+    warnTicks: 0,
+    slamFlash: 0
+  };
+  // the vines grab the victim as both are dragged under
+  if (victim && !victim.ko) {
+    victim.stun = Math.max(victim.stun, 34);
+    victim.rootedTicks = Math.max(victim.rootedTicks || 0, 26);
+    victim.hurt = Math.max(victim.hurt, 10);
+    const vc = getFighterCenter(victim);
+    spawnHitSpark(vc.x, vc.y + 30, 1, "brown");
+    spawnHitSpark(vc.x, vc.y + 44, -1, "brown");
+  }
+  shake = Math.max(shake, 14);
+  hitStopTicks = Math.max(hitStopTicks, HITSTOP_HEAVY);
+  showActionWarning("THE UPSIDE DOWN");
+  updateHud();
+  return true;
+}
+
+function updateUpsideDown() {
+  if (!upsideDown) return;
+  const owner = upsideDown.owner === "player" ? player : enemy;
+  const victim = upsideDown.owner === "player" ? enemy : player;
+  if (!owner || owner.ko || !victim || gameOver) {
+    endUpsideDown();
+    return;
+  }
+  upsideDown.ticks -= 1;
+  if (upsideDown.slamFlash > 0) upsideDown.slamFlash -= 1;
+  // the victim is constantly slowed
+  if (!victim.ko) victim.vx *= 0.9;
+
+  // spider leg slam cycle: telegraph over the victim, then slam
+  if (upsideDown.warnTicks > 0) {
+    upsideDown.warnTicks -= 1;
+    if (upsideDown.warnTicks <= 0) {
+      upsideDown.slamFlash = 10;
+      upsideDown.slamX = upsideDown.warnX;
+      const vc = getFighterCenter(victim);
+      const grounded = victim.y + victim.h > GROUND - 40;
+      if (!victim.ko && victim.dodging <= 0 && !isUntargetable(victim) && grounded && Math.abs(vc.x - upsideDown.warnX) <= VECNA_SPIDER_SLAM_RADIUS) {
+        const blocked = isBlockingAttack(victim, Math.sign(vc.x - upsideDown.warnX) || 1);
+        const damage = Math.ceil(VECNA_SPIDER_SLAM_DAMAGE * getOutgoingDamageMultiplier(owner));
+        if (blocked) {
+          damageShield(victim, damage);
+        } else {
+          applyFighterDamage(victim, getTakenDamage(victim, damage));
+          victim.stun = Math.max(victim.stun, VECNA_SPIDER_PIN_TICKS);
+          victim.rootedTicks = Math.max(victim.rootedTicks || 0, VECNA_SPIDER_PIN_TICKS);
+          victim.hurt = Math.max(victim.hurt, 14);
+          victim.vx = 0;
+          gainUltimate(owner, 2);
+        }
+        spawnHitSpark(vc.x, vc.y, 1, "heavy");
+      }
+      spawnHitSpark(upsideDown.warnX, GROUND - 10, 1, "heavy");
+      shake = Math.max(shake, 10);
+      upsideDown.warnX = null;
+      upsideDown.nextSlam = VECNA_SPIDER_SLAM_INTERVAL;
+    }
+  } else {
+    upsideDown.nextSlam -= 1;
+    if (upsideDown.nextSlam <= 0 && !victim.ko) {
+      upsideDown.warnX = getFighterCenter(victim).x;
+      upsideDown.warnTicks = VECNA_SPIDER_WARN_TICKS;
+    }
+  }
+  if (upsideDown.ticks <= 0) endUpsideDown();
+}
+
+function endUpsideDown() {
+  upsideDown = null;
+  if (player?.vecnaUltSpeedBoosted) {
+    player.speed /= 1.15;
+    player.vecnaUltSpeedBoosted = false;
+  }
+  if (enemy?.vecnaUltSpeedBoosted) {
+    enemy.speed /= 1.15;
+    enemy.vecnaUltSpeedBoosted = false;
+  }
+  updateHud();
+}
+
+// Per-tick driver, called from updateFighter beside the other systems.
+function updateVecnaSystems(f) {
+  // rooted is a shared debuff: no walking, no jumping away
+  if ((f.rootedTicks || 0) > 0) {
+    f.rootedTicks -= 1;
+    if (f.grounded) f.vx = 0;
+  }
+  if (!isVecna(f)) return;
+  const ultBoost = vecnaUltActiveFor(f);
+  // Vecna gains faster cooldowns inside the Upside Down
+  const step = ultBoost ? 2 : 1;
+  if ((f.vecnaBatCooldown || 0) > 0) f.vecnaBatCooldown = Math.max(0, f.vecnaBatCooldown - step);
+  if ((f.vecnaDogCooldown || 0) > 0) f.vecnaDogCooldown = Math.max(0, f.vecnaDogCooldown - step);
+  if ((f.vecnaSlipCooldown || 0) > 0) f.vecnaSlipCooldown = Math.max(0, f.vecnaSlipCooldown - step);
+  if ((f.vecnaBoneSnapCooldown || 0) > 0) f.vecnaBoneSnapCooldown = Math.max(0, f.vecnaBoneSnapCooldown - step);
+  // +15% movement speed inside the Upside Down, reversible
+  if (ultBoost && !f.vecnaUltSpeedBoosted) {
+    f.speed *= 1.15;
+    f.vecnaUltSpeedBoosted = true;
+  } else if (!ultBoost && f.vecnaUltSpeedBoosted) {
+    f.speed /= 1.15;
+    f.vecnaUltSpeedBoosted = false;
+  }
+  // underground: glued to the ground line, untargetable, timer ticks down
+  if ((f.vecnaSlipTicks || 0) > 0) {
+    f.vecnaSlipTicks -= 1;
+    f.y = GROUND - f.h;
+    f.vy = 0;
+    f.grounded = true;
+    f.onPlatform = false;
+    f.blocking = false;
+    if (f.vecnaSlipTicks <= 0) {
+      f.vecnaSlipTicks = 1; // hold one tick so eruptFromSlip sees it active
+      eruptFromSlip(f);
+    }
+  }
 }
 
 function startKnockout(attacker, defender) {
@@ -6946,6 +7562,13 @@ function startTechnique(f, slot, chargeRatio = 0, aimPoint = null, releasingChar
     return;
   }
 
+  // VECNA_PATCH: summons, not projectiles.
+  if (f.technique === "hivemind") {
+    if (move === "demobatSwarm") startDemobatSwarm(f);
+    if (move === "demodogHunt") startDemodogHunt(f);
+    return;
+  }
+
   if (f.technique === "deathnote") {
     if (move === "ryukStrike") {
       if ((f.lightRyukCooldown || 0) > 0) return;
@@ -7217,7 +7840,7 @@ function getRctHealPerTick(f) {
 }
 
 function canStartRct(f) {
-  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg") return false; // THRAGG_NO_JJK_PATCH + SANJI_PATCH
+  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind") return false; // THRAGG_NO_JJK_PATCH + SANJI_PATCH + VECNA_PATCH
   if (!f || gameOver || paused || isSpecialLocked(f) || f.ko || f.knockdown || f.dodging > 0) return false;
   if (f.health >= getCurrentHealthBarCeiling(f) || f.rctCooldown > 0) return false;
   return f.ce >= f.maxCe * RCT_MIN_CE_RATIO;
@@ -7239,7 +7862,7 @@ function cancelRct(f, startCooldown = true) {
 }
 
 function setRctHealing(f, wantsRct) {
-  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg") { // THRAGG_NO_JJK_PATCH + SANJI_PATCH
+  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind") { // THRAGG_NO_JJK_PATCH + SANJI_PATCH + VECNA_PATCH
     cancelRct(f, false);
     return;
   }
@@ -7487,6 +8110,7 @@ function startUltimate(f, aimPoint = null) {
   if (isLight(f)) return startDeathNoteUltimate(f);
   if (f.technique === "brawler") return startThraggUltimate(f); // THRAGG_NO_JJK_PATCH
   if (f.technique === "blackleg") return startSanjiUltimate(f); // SANJI_PATCH
+  if (f.technique === "hivemind") return startVecnaUltimate(f); // VECNA_PATCH
   return beginUltimateAim(f, aimPoint);
 }
 
@@ -7495,6 +8119,7 @@ function beginUltimateAim(f, aimPoint = null) {
   if (isLight(f)) return startDeathNoteUltimate(f);
   if (f.technique === "brawler") return startThraggUltimate(f); // THRAGG_NO_JJK_PATCH
   if (f.technique === "blackleg") return startSanjiUltimate(f); // SANJI_PATCH
+  if (f.technique === "hivemind") return startVecnaUltimate(f); // VECNA_PATCH
   if (!canStartUltimate(f)) {
     const warning = getUltimateFailureMessage(f);
     if (warning) showActionWarning(warning);
@@ -7910,7 +8535,7 @@ function canStartSimpleDomain(f) {
 }
 
 function startSimpleDomain(f) {
-  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg") return false; // THRAGG_NO_JJK_PATCH + SANJI_PATCH
+  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind") return false; // THRAGG_NO_JJK_PATCH + SANJI_PATCH + VECNA_PATCH
   if (!canStartSimpleDomain(f)) {
     showActionWarning(f && f.ce < Math.ceil(f.maxCe * SIMPLE_DOMAIN_CE_COST_RATIO) ? "Not Enough Cursed Energy" : "Can't Use Simple Domain");
     return false;
@@ -8005,7 +8630,7 @@ function getDomainAttemptForFighter(f) {
 }
 
 function canStartDomain(f) {
-  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg") return false; // THRAGG_NO_JJK_PATCH + SANJI_PATCH
+  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind") return false; // THRAGG_NO_JJK_PATCH + SANJI_PATCH + VECNA_PATCH
   if (!f || gameState !== "playing" || gameOver || paused || f.ko || f.knockdown || f.stun > 0) return false;
   if (isSpecialLocked(f) || f.attacking || f.dodging > 0 || f.rctHealing || hasCtLock(f)) return false;
   if (activeDomain || domainClash) return false;
@@ -8918,6 +9543,7 @@ function applyHit(attacker, defender) {
   const activeEnd = attack.windup + attack.active;
   if (attacker.attackFrame < activeStart || attacker.attackFrame > activeEnd) return;
   if (defender.dodging > 0) return;
+  if (isUntargetable(defender)) return; // VECNA_PATCH: melted into the ground
   if (!rectsOverlap(getHitbox(attacker), defender)) return;
 
   if (attacker.attacking === "backThrow") {
@@ -9320,6 +9946,7 @@ function applyFugaExplosionDamage(projectile, defender) {
 
 function shouldResolveProjectileHit(projectile, target) {
   if (projectile.visualOnly) return false;
+  if (isUntargetable(target)) return false; // VECNA_PATCH
   if (gameMode === "online" && onlineRole === "p1" && projectile.owner === "enemy" && target === player) {
     return false;
   }
@@ -10440,6 +11067,24 @@ function updateEnemyAi() {
     }
   }
 
+  // VECNA_PATCH: CPU Vecna plays summoner - keeps bats/dogs on the field,
+  // slips away when pressured and erupts underneath the player.
+  if (enemy.technique === "hivemind" && !pacifistBot && enemy.stun <= 0 && !enemy.knockdown && !gameOver) {
+    const vGap = Math.abs((player.x + player.w / 2) - (enemy.x + enemy.w / 2));
+    if ((enemy.vecnaSlipTicks || 0) > 0) {
+      // underground: erupt when under the player, or when time is short
+      if (vGap < 34 || enemy.vecnaSlipTicks < 12) eruptFromSlip(enemy);
+    } else if ((enemy.vecnaBatCooldown || 0) <= 0 && Math.random() < getCpuDecisionChance(0.008, 0.02, 0.04)) {
+      startDemobatSwarm(enemy);
+    } else if ((enemy.vecnaDogCooldown || 0) <= 0 && vGap > 160 && Math.random() < getCpuDecisionChance(0.006, 0.016, 0.035)) {
+      startDemodogHunt(enemy);
+    } else if ((enemy.vecnaSlipCooldown || 0) <= 0 && vGap < 150 && Math.random() < getCpuDecisionChance(0.005, 0.014, 0.03)) {
+      startUpsideDownSlip(enemy);
+    } else if ((enemy.vecnaBoneSnapCooldown || 0) <= 0 && vGap < VECNA_BONESNAP_RANGE - 10 && Math.random() < getCpuDecisionChance(0.008, 0.02, 0.04)) {
+      startBoneSnap(enemy);
+    }
+  }
+
   // SANJI_PATCH: CPU Sanji plays rushdown - Diable Jambe to close space,
   // Mutton Shot up close, Sky Walk to chase in the air, Boeuf on cue.
   if (enemy.technique === "blackleg" && !pacifistBot && enemy.stun <= 0 && !enemy.knockdown && !gameOver) {
@@ -10493,7 +11138,7 @@ function updateEnemyAi() {
 
   if (enemy.ultimateMeter >= MAX_ULTIMATE && enemy.aiCooldown <= 0) {
     const ultimateChance = cpuDifficulty === "hard" ? 0.18 : cpuDifficulty === "medium" ? 0.08 : 0.025;
-    const goodRange = enemy.technique === "blackleg" ? true : enemy.technique === "shrine" ? distance > 120 : distance > 260; // SANJI_PATCH: Ifrit is a self-buff, any range works
+    const goodRange = enemy.technique === "blackleg" || enemy.technique === "hivemind" ? true : enemy.technique === "shrine" ? distance > 120 : distance > 260; // SANJI_PATCH + VECNA_PATCH: self-buff ults work anywhere
     if (goodRange && Math.random() < ultimateChance && startUltimate(enemy)) {
       enemy.aiGoal = "ultimate";
       enemy.aiCooldown = cpu.attackCooldown + 48;
@@ -10642,6 +11287,8 @@ function updateFighter(f, opponent) {
   updateFlyingDash(f);
   // SANJI_PATCH
   updateSanjiSystems(f, opponent);
+  // VECNA_PATCH
+  updateVecnaSystems(f);
 
   if (f.ko) {
     f.attacking = null;
@@ -11518,6 +12165,20 @@ function getTechniqueSkin(f, flash) {
       hair: "#101114",
       eye: "#0b0705",
       mark: "#dc2626"
+    };
+  }
+
+  // VECNA_PATCH: decayed grey-red flesh laced with vines, maroon theme.
+  if (f.technique === "hivemind") {
+    return {
+      body: "#54322c",
+      skin: "#8a5a50",
+      accent: "#7f1d1d",
+      pants: "#241412",
+      shoe: "#1a0e0c",
+      hair: "#54322c",
+      eye: "#0b0705",
+      mark: "#7f1d1d"
     };
   }
 
@@ -12812,6 +13473,40 @@ function drawThraggFlightEffect(f) {
 }
 
 function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
+  // VECNA_PATCH: melted into the Upside Down - no body, just a dark pool
+  // rippling along the ground where he's moving.
+  if ((f.vecnaSlipTicks || 0) > 0) {
+    const cx = f.x + f.w / 2;
+    const pulse = 1 + Math.sin(frame * 0.3) * 0.12;
+    ctx.save();
+    ctx.fillStyle = "rgba(10, 4, 8, 0.85)";
+    ctx.beginPath();
+    ctx.ellipse(cx, GROUND - 4, 34 * pulse, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(127, 29, 29, 0.75)";
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.ellipse(cx, GROUND - 4, 34 * pulse, 8, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(127, 29, 29, 0.4)";
+    ctx.beginPath();
+    ctx.ellipse(cx, GROUND - 4, (46 + Math.sin(frame * 0.22) * 6), 11, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    // a few grasping tendrils poking out of the pool
+    ctx.strokeStyle = "rgba(60, 18, 22, 0.9)";
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    for (let i = -1; i <= 1; i += 1) {
+      const tx = cx + i * 16;
+      const sway = Math.sin(frame * 0.2 + i * 2) * 4;
+      ctx.moveTo(tx, GROUND - 4);
+      ctx.quadraticCurveTo(tx + sway, GROUND - 16, tx + sway * 1.6, GROUND - 22 - Math.abs(sway));
+    }
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
   const flash = f.hurt > 0 && Math.floor(frame / 3) % 2 === 0;
   const dodgeAlpha = f.dodging > 0 ? 0.48 : 1;
   const running = !f.ko && f.grounded && Math.abs(f.vx) > 0.65 && !f.blocking && f.stun <= 0 && f.dodging <= 0;
@@ -13356,6 +14051,34 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.arc(21.5, 70, 1.1, 0, Math.PI * 2);
     ctx.arc(32.5, 70, 1.1, 0, Math.PI * 2);
     ctx.fill();
+  } else if (f.technique === "hivemind") {
+    // VECNA_PATCH: exposed decayed flesh with dark vines winding around
+    // the torso, and a sunken maroon chest hollow.
+    ctx.strokeStyle = "#2a1210";
+    ctx.lineWidth = 2.6;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(14, 40);
+    ctx.quadraticCurveTo(24, 48, 18, 58);
+    ctx.quadraticCurveTo(13, 66, 21, 74);
+    ctx.moveTo(40, 41);
+    ctx.quadraticCurveTo(30, 50, 36, 60);
+    ctx.quadraticCurveTo(41, 68, 33, 76);
+    ctx.moveTo(20, 38);
+    ctx.quadraticCurveTo(28, 44, 34, 39);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(127, 29, 29, 0.5)";
+    ctx.beginPath();
+    ctx.ellipse(27, 52, 6.5, 8.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(20, 8, 8, 0.8)";
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(24, 46);
+    ctx.lineTo(27, 58);
+    ctx.moveTo(30, 46);
+    ctx.lineTo(28, 58);
+    ctx.stroke();
   } else if (isPracticeDummy(f)) {
     ctx.strokeStyle = "#111827";
     ctx.lineWidth = 3;
@@ -13615,6 +14338,24 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.moveTo(28.5, 34.6);
     ctx.lineTo(30, 36.2);
     ctx.stroke();
+  } else if (f.technique === "hivemind") {
+    // VECNA_PATCH: bald, with dark tendrils creeping up the neck and
+    // over the scalp. No facial features.
+    ctx.strokeStyle = "#2a1210";
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(17, 33);
+    ctx.quadraticCurveTo(14, 24, 18, 15);
+    ctx.moveTo(35, 33);
+    ctx.quadraticCurveTo(38, 25, 34, 16);
+    ctx.moveTo(22, 10);
+    ctx.quadraticCurveTo(26, 7.5, 30, 10);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(127, 29, 29, 0.35)";
+    ctx.beginPath();
+    ctx.ellipse(26, 12, 6, 3.4, 0, 0, Math.PI * 2);
+    ctx.fill();
   }
   ctx.restore();
 
@@ -14093,7 +14834,11 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     const thraggShield = f.technique === "brawler";
     // SANJI_PATCH: flame-orange shield bubble.
     const sanjiShield = f.technique === "blackleg";
-    const fillColor = sanjiShield
+    // VECNA_PATCH: maroon shield bubble.
+    const vecnaShield = f.technique === "hivemind";
+    const fillColor = vecnaShield
+      ? `rgba(127, 29, 29, ${0.07 + shieldPower * 0.15 + hitFlash * 0.08})`
+      : sanjiShield
       ? `rgba(250, 204, 21, ${0.05 + shieldPower * 0.13 + hitFlash * 0.08})`
       : thraggShield
       ? `rgba(226, 232, 240, ${0.06 + shieldPower * 0.14 + hitFlash * 0.08})`
@@ -14102,7 +14847,9 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       : shrineShield
       ? `rgba(127, 29, 29, ${0.05 + shieldPower * 0.14 + hitFlash * 0.08})`
       : `rgba(14, 165, 233, ${0.04 + shieldPower * 0.12 + hitFlash * 0.08})`;
-    const strokeColor = sanjiShield
+    const strokeColor = vecnaShield
+      ? `rgba(190, 60, 60, ${0.32 + shieldPower * 0.55 + hitFlash * 0.16})`
+      : sanjiShield
       ? `rgba(253, 224, 71, ${0.3 + shieldPower * 0.55 + hitFlash * 0.16})`
       : thraggShield
       ? `rgba(248, 250, 252, ${0.3 + shieldPower * 0.55 + hitFlash * 0.16})`
@@ -14111,7 +14858,9 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       : shrineShield
       ? `rgba(248, 113, 113, ${0.26 + shieldPower * 0.55 + hitFlash * 0.16})`
       : `rgba(196, 241, 255, ${0.24 + shieldPower * 0.58 + hitFlash * 0.16})`;
-    const innerColor = sanjiShield
+    const innerColor = vecnaShield
+      ? `rgba(80, 16, 20, ${0.24 + shieldPower * 0.32})`
+      : sanjiShield
       ? `rgba(202, 138, 4, ${0.22 + shieldPower * 0.32})`
       : thraggShield
       ? `rgba(148, 163, 184, ${0.22 + shieldPower * 0.32})`
@@ -14142,7 +14891,9 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.setLineDash([]);
 
     if (shieldPower < 0.34 || hitFlash > 0) {
-      ctx.strokeStyle = sanjiShield
+      ctx.strokeStyle = vecnaShield
+        ? `rgba(230, 130, 130, ${0.3 + hitFlash * 0.5})`
+        : sanjiShield
         ? `rgba(254, 240, 138, ${0.3 + hitFlash * 0.5})`
         : thraggShield
         ? `rgba(255, 255, 255, ${0.32 + hitFlash * 0.5})`
@@ -14194,8 +14945,8 @@ function drawTechniquePreview(canvasEl, technique) {
     w: technique === "shrine" ? 52 : technique === "brawler" ? 54 : 50,
     h: 128,
     dir: 1,
-    color: technique === "shrine" ? "#dc2626" : technique === "deathnote" ? "#111827" : technique === "brawler" ? "#eceef2" : technique === "blackleg" ? "#16181f" : "#2563eb",
-    accent: technique === "shrine" ? "#991b1b" : technique === "deathnote" ? "#b91c1c" : technique === "brawler" ? "#dc2626" : technique === "blackleg" ? "#facc15" : "#1d4ed8"
+    color: technique === "shrine" ? "#dc2626" : technique === "deathnote" ? "#111827" : technique === "brawler" ? "#eceef2" : technique === "blackleg" ? "#16181f" : technique === "hivemind" ? "#54322c" : "#2563eb",
+    accent: technique === "shrine" ? "#991b1b" : technique === "deathnote" ? "#b91c1c" : technique === "brawler" ? "#dc2626" : technique === "blackleg" ? "#facc15" : technique === "hivemind" ? "#7f1d1d" : "#1d4ed8"
   });
   previewFighter.technique = technique;
   previewFighter.y = GROUND - previewFighter.h;
@@ -14204,7 +14955,7 @@ function drawTechniquePreview(canvasEl, technique) {
   ctx = previewCtx;
   ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
   const backdrop = ctx.createLinearGradient(0, 0, 0, canvasEl.height);
-  backdrop.addColorStop(0, technique === "shrine" ? "#2b1420" : technique === "deathnote" ? "#180b12" : technique === "brawler" ? "#141822" : technique === "blackleg" ? "#221208" : "#142033");
+  backdrop.addColorStop(0, technique === "shrine" ? "#2b1420" : technique === "deathnote" ? "#180b12" : technique === "brawler" ? "#141822" : technique === "blackleg" ? "#221208" : technique === "hivemind" ? "#1c0a10" : "#142033");
   backdrop.addColorStop(1, "#050814");
   ctx.fillStyle = backdrop;
   ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
@@ -14229,6 +14980,7 @@ function renderTechniquePreviews() {
   drawTechniquePreview(techniquePreviewCanvases.deathnote, "deathnote");
   drawTechniquePreview(techniquePreviewCanvases.brawler, "brawler");
   drawTechniquePreview(techniquePreviewCanvases.blackleg, "blackleg"); // SANJI_PATCH
+  drawTechniquePreview(techniquePreviewCanvases.hivemind, "hivemind"); // VECNA_PATCH
 }
 
 // THRAGG_BRAWLER_PATCH: install his character-select card the same way
@@ -14303,6 +15055,41 @@ function installSanjiTechniqueOption() {
 }
 
 window.addEventListener("DOMContentLoaded", installSanjiTechniqueOption);
+
+// VECNA_PATCH: Vecna's character-select card, cloned at runtime.
+function installVecnaTechniqueOption() {
+  if (!techniqueScreen) return;
+  const existing = techniqueScreen.querySelector('[data-technique="hivemind"]');
+  if (!existing) {
+    const sample = techniqueScreen.querySelector(".technique-button");
+    const button = sample ? sample.cloneNode(true) : document.createElement("button");
+    button.type = "button";
+    button.className = sample ? sample.className : "technique-button";
+    button.dataset.technique = "hivemind";
+    button.innerHTML = `
+      <canvas id="hivemindPreview" width="320" height="180" aria-hidden="true"></canvas>
+      <strong>Vecna</strong>
+      <span>Hive Mind summoner - swarms, control, the Upside Down</span>
+      <small>Demobats · Demodog · Upside Down Slip · Bone Snap</small>
+    `;
+    const holder = sample?.parentNode || techniqueScreen;
+    holder.appendChild(button);
+  }
+
+  const canvas = document.getElementById("hivemindPreview");
+  if (canvas) techniquePreviewCanvases.hivemind = canvas;
+
+  techniqueButtons = Array.from(document.querySelectorAll(".technique-button"));
+  techniqueButtons.forEach((button) => {
+    if (button.dataset.vecnaBound === "1") return;
+    button.dataset.vecnaBound = "1";
+    button.addEventListener("click", () => finishTechniqueSelect(button.dataset.technique));
+  });
+
+  renderTechniquePreviews();
+}
+
+window.addEventListener("DOMContentLoaded", installVecnaTechniqueOption);
 
 
 function drawSukunaModelCleanup(f) {
@@ -14408,7 +15195,207 @@ function drawSukunaModelCleanup(f) {
   ctx.restore();
 }
 
+// VECNA_PATCH: demobats and demodogs - brawler art style, black outlines,
+// no faces (the demodog's petal head stays closed).
+function drawVecnaMinions() {
+  for (const m of vecnaMinions) {
+    const flash = m.hitCooldown > 12;
+    ctx.save();
+    if (m.kind === "bat") {
+      const flap = Math.sin(frame * 0.55 + m.wob) * 7;
+      const dir = Math.sign(m.vx) || 1;
+      ctx.translate(m.x, m.y);
+      ctx.scale(dir, 1);
+      // wings
+      ctx.fillStyle = flash ? "#7f5a5a" : "#241418";
+      ctx.strokeStyle = "#020617";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-3, 0);
+      ctx.quadraticCurveTo(-13, -6 - flap, -19, 2 - flap);
+      ctx.quadraticCurveTo(-12, 3, -4, 4);
+      ctx.closePath();
+      ctx.moveTo(3, 0);
+      ctx.quadraticCurveTo(13, -6 + flap, 19, 2 + flap);
+      ctx.quadraticCurveTo(12, 3, 4, 4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      // body
+      ctx.fillStyle = flash ? "#9c6b6b" : "#33191f";
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 6.5, 4.6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = "#7f1d1d";
+      ctx.beginPath();
+      ctx.ellipse(2, -1, 2, 1.4, 0, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      const dir = Math.sign(m.vx) || 1;
+      const lope = m.state === "hunt" ? Math.sin(frame * 0.5) * 4 : 0;
+      ctx.translate(m.x, m.y);
+      ctx.scale(dir, 1);
+      // legs
+      ctx.strokeStyle = "#020617";
+      ctx.lineWidth = 7;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(-12, 4);
+      ctx.lineTo(-15 - lope * 0.5, 15);
+      ctx.moveTo(-4, 5);
+      ctx.lineTo(-5 + lope * 0.5, 15);
+      ctx.moveTo(5, 5);
+      ctx.lineTo(4 - lope * 0.5, 15);
+      ctx.moveTo(12, 4);
+      ctx.lineTo(15 + lope * 0.5, 15);
+      ctx.stroke();
+      ctx.strokeStyle = flash ? "#9c6b6b" : "#3b2026";
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(-12, 4);
+      ctx.lineTo(-15 - lope * 0.5, 14);
+      ctx.moveTo(-4, 5);
+      ctx.lineTo(-5 + lope * 0.5, 14);
+      ctx.moveTo(5, 5);
+      ctx.lineTo(4 - lope * 0.5, 14);
+      ctx.moveTo(12, 4);
+      ctx.lineTo(15 + lope * 0.5, 14);
+      ctx.stroke();
+      // body
+      ctx.fillStyle = flash ? "#9c6b6b" : "#3b2026";
+      ctx.strokeStyle = "#020617";
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 19, 9, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      // closed petal head - jagged bud, no face
+      ctx.fillStyle = flash ? "#b98484" : "#4d262d";
+      ctx.beginPath();
+      ctx.moveTo(14, -5);
+      ctx.lineTo(24, -8);
+      ctx.lineTo(27, -2);
+      ctx.lineTo(28, 4);
+      ctx.lineTo(22, 7);
+      ctx.lineTo(15, 5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(127, 29, 29, 0.85)";
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(24, -7);
+      ctx.lineTo(23, 6);
+      ctx.moveTo(20, -6);
+      ctx.lineTo(19, 6);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+// VECNA_PATCH: giant spider leg slams during The Upside Down. Drawn over
+// the fighters; the warning shadow telegraphs the strike point.
+function drawUpsideDownSpider() {
+  if (!upsideDown) return;
+  if (upsideDown.warnTicks > 0 && upsideDown.warnX !== null) {
+    const t = 1 - upsideDown.warnTicks / VECNA_SPIDER_WARN_TICKS;
+    ctx.save();
+    ctx.globalAlpha = 0.35 + t * 0.4;
+    ctx.fillStyle = "rgba(60, 10, 16, 0.6)";
+    ctx.beginPath();
+    ctx.ellipse(upsideDown.warnX, GROUND - 3, VECNA_SPIDER_SLAM_RADIUS * (0.5 + t * 0.5), 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(220, 80, 80, 0.85)";
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    // the leg descending during the telegraph
+    const legDrop = t * t;
+    const kneeX = upsideDown.warnX + 130;
+    const kneeY = -80 + legDrop * 150;
+    const tipY = -40 + legDrop * (GROUND + 36);
+    ctx.globalAlpha = 0.9;
+    ctx.strokeStyle = "#020617";
+    ctx.lineWidth = 20;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(kneeX + 130, -60);
+    ctx.lineTo(kneeX, kneeY);
+    ctx.lineTo(upsideDown.warnX, Math.min(tipY, GROUND - 4));
+    ctx.stroke();
+    ctx.strokeStyle = "#1d0e14";
+    ctx.lineWidth = 13;
+    ctx.beginPath();
+    ctx.moveTo(kneeX + 130, -60);
+    ctx.lineTo(kneeX, kneeY);
+    ctx.lineTo(upsideDown.warnX, Math.min(tipY, GROUND - 4));
+    ctx.stroke();
+    ctx.restore();
+  } else if (upsideDown.slamFlash > 0 && Number.isFinite(upsideDown.slamX)) {
+    // impact frame: leg planted in the ground + dust
+    ctx.save();
+    const kneeX = upsideDown.slamX + 130;
+    ctx.strokeStyle = "#020617";
+    ctx.lineWidth = 20;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(kneeX + 130, -60);
+    ctx.lineTo(kneeX, 70);
+    ctx.lineTo(upsideDown.slamX, GROUND - 2);
+    ctx.stroke();
+    ctx.strokeStyle = "#1d0e14";
+    ctx.lineWidth = 13;
+    ctx.beginPath();
+    ctx.moveTo(kneeX + 130, -60);
+    ctx.lineTo(kneeX, 70);
+    ctx.lineTo(upsideDown.slamX, GROUND - 2);
+    ctx.stroke();
+    ctx.globalAlpha = upsideDown.slamFlash / 10;
+    ctx.fillStyle = "rgba(120, 60, 60, 0.5)";
+    ctx.beginPath();
+    ctx.ellipse(upsideDown.slamX, GROUND - 4, 54, 14, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// VECNA_PATCH: the arena tint + drifting spores while The Upside Down is
+// active - drawn right after the city so it sits behind the fighters.
+function drawUpsideDownBackdrop() {
+  if (!upsideDown) return;
+  const fade = Math.min(1, (VECNA_ULT_TICKS - upsideDown.ticks) / 30, upsideDown.ticks / 40);
+  ctx.save();
+  ctx.globalAlpha = 0.5 * fade;
+  ctx.fillStyle = "#12040c";
+  ctx.fillRect(0, 0, STAGE_W, H);
+  ctx.globalAlpha = 0.85 * fade;
+  // drifting spores
+  for (let i = 0; i < 26; i += 1) {
+    const seed = i * 137.5;
+    const sx = (seed * 7 + frame * (0.2 + (i % 5) * 0.08)) % STAGE_W;
+    const sy = (seed * 3.7 + frame * 0.12 + Math.sin(frame * 0.02 + i) * 20) % H;
+    ctx.fillStyle = i % 3 === 0 ? "rgba(190, 120, 120, 0.5)" : "rgba(140, 140, 150, 0.35)";
+    ctx.beginPath();
+    ctx.arc(sx, sy, i % 4 === 0 ? 2.2 : 1.3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // vines creeping along the ground line
+  ctx.strokeStyle = "rgba(70, 20, 26, 0.9)";
+  ctx.lineWidth = 4;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  for (let x = 0; x < STAGE_W; x += 90) {
+    const sway = Math.sin(frame * 0.05 + x) * 6;
+    ctx.moveTo(x, GROUND + 2);
+    ctx.quadraticCurveTo(x + 24, GROUND - 26 + sway, x + 12 + sway, GROUND - 44);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawEffects() {
+  drawVecnaMinions(); // VECNA_PATCH
   drawGroundEraseEffects();
   drawWorldSlashEffects();
   drawUltimateChargeEffects();
@@ -15667,6 +16654,7 @@ function draw() {
   ctx.scale(cameraZoom, cameraZoom);
   ctx.translate(-cameraX, 0);
   drawCity();
+  drawUpsideDownBackdrop(); // VECNA_PATCH
   drawActiveDomainBackdrop();
 
   // DOMAIN_PLATFORM_VISIBILITY_PATCH
@@ -15679,6 +16667,7 @@ function draw() {
   drawEffects();
   drawFighter(player, getPlayerLabel(), getPlayerLabelColor());
   drawFighter(enemy, getEnemyLabel(), getEnemyLabelColor());
+  drawUpsideDownSpider(); // VECNA_PATCH
   drawTechniqueAimSizePreview();
   drawShieldBreakEffects();
   ctx.restore();
@@ -16021,6 +17010,8 @@ function fixedUpdate() {
     updateSukunaGrabThrow(enemy, player);
     applyHit(enemy, player);
     updateProjectiles();
+    updateVecnaMinions(); // VECNA_PATCH
+    updateUpsideDown(); // VECNA_PATCH
     updateHitSparks();
   } else if (!gameOver && !paused && !(gameMode === "online" && onlineRole !== "p1")) {
     updatePlayer();
@@ -16041,6 +17032,8 @@ function fixedUpdate() {
     applyHit(player, enemy);
     if (!(gameMode === "online" && onlineRole === "p1")) applyHit(enemy, player);
     updateProjectiles();
+    updateVecnaMinions(); // VECNA_PATCH
+    updateUpsideDown(); // VECNA_PATCH
     updateHitSparks();
   } else if (roundEnding && !paused) {
     updateFighter(player, enemy);
@@ -16171,6 +17164,9 @@ window.addEventListener("keydown", (event) => {
     } else if (fighter?.technique === "blackleg") {
       // SANJI_PATCH: S kicks the air - Sky Walk.
       if (startSkyWalk(fighter) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("sky-walk");
+    } else if (fighter?.technique === "hivemind") {
+      // VECNA_PATCH: S melts into the ground / erupts back out.
+      if (startUpsideDownSlip(fighter) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("upside-slip");
     }
   }
   if (isEventForAction("ultimate", key, code) && !event.repeat) beginUltimateAim(player, mouseAimWorld);
