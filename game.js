@@ -1766,6 +1766,33 @@ const THRAGG_FLIGHT_SINK = 1.15;
 const THRAGG_DASH_COOLDOWN_TICKS = 280;
 const THRAGG_GROUND_BREAK_COOLDOWN = TECHNIQUE_HEAVY_COOLDOWN + 20;
 
+// SANJI_PATCH: Black Leg Sanji - fast rushdown kicks, fire, aerial movement.
+const SANJI_MOVE_MULTIPLIER = 1.12;
+const SANJI_HEAT_MAX = 100;
+const SANJI_BURN_TICKS = 180; // 3s burn
+const SANJI_BURN_INTERVAL = 30; // burn ticks twice a second
+const SANJI_BURN_DAMAGE = 2;
+const SANJI_DIABLE_COOLDOWN_TICKS = 8 * 60;
+const SANJI_DIABLE_TICKS = 18;
+const SANJI_DIABLE_SPEED = 13.5;
+const SANJI_DIABLE_DAMAGE = 22;
+const SANJI_DIABLE_KNOCKBACK = 20;
+const SANJI_SKYWALK_COOLDOWN_TICKS = 12 * 60;
+const SANJI_SKYWALK_JUMPS = 3;
+const SANJI_DIVE_KICK_DAMAGE = 16;
+const SANJI_MUTTON_COOLDOWN_TICKS = 10 * 60;
+const SANJI_MUTTON_WHIFF_COOLDOWN_TICKS = 3 * 60;
+const SANJI_MUTTON_RANGE = 86;
+const SANJI_MUTTON_TICKS = 46;
+const SANJI_MUTTON_HIT_INTERVAL = 7;
+const SANJI_MUTTON_HIT_DAMAGE = 4;
+const SANJI_MUTTON_FINISH_DAMAGE = 10;
+const SANJI_MUTTON_FINISH_KNOCKBACK = 30;
+const SANJI_ULT_TICKS = 20 * 60;
+const SANJI_ULT_FINISHER_WINDOW_TICKS = 5 * 60;
+const SANJI_BOEUF_DAMAGE = 55;
+const SANJI_BOEUF_KNOCKBACK = 46;
+
 const TECHNIQUE_STATS = {
   limitless: {
     maxHealth: 540,
@@ -1803,6 +1830,17 @@ const TECHNIQUE_STATS = {
     knockbackTakenMultiplier: 0.88,
     ceRegenRate: CE_REGEN_RATE - 0.03,
     ceLowRegenBonus: CE_LOW_REGEN_BONUS - 0.01
+  },
+  // SANJI_PATCH: average health, takes a bit more damage than the bruisers -
+  // he wins by not getting hit.
+  blackleg: {
+    maxHealth: 520,
+    healthBars: 5,
+    maxCe: 100,
+    damageTakenMultiplier: 1.05,
+    knockbackTakenMultiplier: 1,
+    ceRegenRate: CE_REGEN_RATE,
+    ceLowRegenBonus: CE_LOW_REGEN_BONUS
   }
 };
 const keys = new Set();
@@ -2465,6 +2503,7 @@ function getTechniqueCharacterName(technique) {
   if (technique === "shrine") return "Sukuna";
   if (technique === "deathnote") return "Light";
   if (technique === "brawler") return "Thragg";
+  if (technique === "blackleg") return "Sanji"; // SANJI_PATCH
   return "Gojo";
 }
 
@@ -2642,6 +2681,31 @@ function getAttackSpec(f, type = f.attacking) {
       attack.knockback += 4;
     }
   }
+  // SANJI_PATCH: every melee is a kick - quick, longer reach than a punch,
+  // modest damage. Ifrit Jambe speeds him up 25% and adds fire damage.
+  if (f.technique === "blackleg" && type !== "backThrow") {
+    if (type === "light") {
+      attack.damage += 1;
+      attack.range += 10;
+      attack.width += 6;
+      attack.windup = 2;
+      attack.active = 5;
+      attack.recovery = 7;
+      attack.knockback += 1;
+    } else if (type === "heavy") {
+      attack.damage += 4;
+      attack.range += 14;
+      attack.width += 8;
+      attack.windup = 11;
+      attack.recovery = 22;
+      attack.knockback += 5;
+    }
+    if ((f.sanjiUltTicks || 0) > 0) {
+      attack.damage += 3;
+      attack.windup = Math.max(1, Math.round(attack.windup * 0.75));
+      attack.recovery = Math.max(4, Math.round(attack.recovery * 0.75));
+    }
+  }
   // THRAGG_BRAWLER_PATCH: big hurtboxes, slow starts, heavy payoff.
   if (f.technique === "brawler" && type !== "backThrow") {
     if (type === "light") {
@@ -2683,7 +2747,11 @@ const techniqueMoves = {
   // THRAGG_BRAWLER_PATCH: his only ranged tool - a slow, weak chunk of
   // broken ground. Deliberately worse than every other projectile in the
   // game; it exists so he isn't helpless against zoning, not to zone himself.
-  groundBreak: { cost: 0, damage: 9, speed: 8.4, radius: 17, knockback: 10, life: 46 } // THRAGG_NO_JJK_PATCH: no CE
+  groundBreak: { cost: 0, damage: 9, speed: 8.4, radius: 17, knockback: 10, life: 46 }, // THRAGG_NO_JJK_PATCH: no CE
+  // SANJI_PATCH: both are melee specials handled in startTechnique, not
+  // projectiles - the specs exist so the cost/HUD plumbing has entries.
+  diableJambe: { cost: 0, damage: SANJI_DIABLE_DAMAGE, speed: 0, radius: 1, knockback: SANJI_DIABLE_KNOCKBACK, life: 1 },
+  muttonShot: { cost: 0, damage: 0, speed: 0, radius: 1, knockback: 0, life: 1 }
 };
 
 function getTechniqueMoveKey(f, slot) {
@@ -2692,6 +2760,7 @@ function getTechniqueMoveKey(f, slot) {
   if (f.technique === "deathnote") return slot === 2 ? "nameInvestigation" : "ryukStrike";
   // THRAGG_BRAWLER_PATCH: only one ranged tool, mapped to both mouse buttons.
   if (f.technique === "brawler") return "groundBreak";
+  if (f.technique === "blackleg") return slot === 2 ? "muttonShot" : "diableJambe"; // SANJI_PATCH
   return "blue";
 }
 
@@ -2702,6 +2771,9 @@ function getTechniqueDisplayName(move) {
   if (move === "nameInvestigation") return "INVESTIGATE";
   if (move === "groundBreak") return "GROUND BREAK";
   if (move === "flyingDash") return "FLIGHT";
+  if (move === "diableJambe") return "DIABLE JAMBE"; // SANJI_PATCH
+  if (move === "muttonShot") return "MUTTON SHOT"; // SANJI_PATCH
+  if (move === "skyWalk") return "SKY WALK"; // SANJI_PATCH
   return move.toUpperCase();
 }
 
@@ -2714,6 +2786,10 @@ function getTechniqueCooldownTicks(move, f = null) {
   // THRAGG_BRAWLER_PATCH:
   if (move === "groundBreak") return THRAGG_GROUND_BREAK_COOLDOWN;
   if (move === "flyingDash") return THRAGG_DASH_COOLDOWN_TICKS;
+  // SANJI_PATCH:
+  if (move === "diableJambe") return SANJI_DIABLE_COOLDOWN_TICKS;
+  if (move === "muttonShot") return SANJI_MUTTON_COOLDOWN_TICKS;
+  if (move === "skyWalk") return SANJI_SKYWALK_COOLDOWN_TICKS;
   let base = move === "red" || move === "cleave" ? TECHNIQUE_HEAVY_COOLDOWN : TECHNIQUE_FAST_COOLDOWN;
   if (move === "cleave" && hasBindingVow(f, "cleave")) base = Math.max(10, Math.ceil(base * 0.55));
   return base;
@@ -2755,14 +2831,15 @@ function getAffordableChargeRatio(f, move, chargeRatio) {
 
 function pickRandomTechnique() {
   const roll = Math.random();
-  if (roll < 0.32) return "limitless";
-  if (roll < 0.64) return "shrine";
-  if (roll < 0.85) return "deathnote";
-  return "brawler";
+  if (roll < 0.26) return "limitless";
+  if (roll < 0.52) return "shrine";
+  if (roll < 0.72) return "deathnote";
+  if (roll < 0.87) return "brawler";
+  return "blackleg"; // SANJI_PATCH
 }
 
 function isValidTechnique(technique) {
-  return technique === "limitless" || technique === "shrine" || technique === "deathnote" || technique === "brawler";
+  return technique === "limitless" || technique === "shrine" || technique === "deathnote" || technique === "brawler" || technique === "blackleg"; // SANJI_PATCH
 }
 
 function rollCpuOpponentTechnique(reason = "") {
@@ -2978,6 +3055,24 @@ function makeFighter(config) {
     thraggGrabCooldown: 0,
     thraggFlightTicks: 0,
     thraggDashCooldown: 0,
+    // SANJI_PATCH: Black Leg kit state + the shared burn debuff.
+    sanjiHeat: 0,
+    sanjiDiableTicks: 0,
+    sanjiDiableAir: false,
+    sanjiDiableHit: false,
+    sanjiDiableCooldown: 0,
+    sanjiSkyWalkJumps: 0,
+    sanjiSkyWalkCooldown: 0,
+    sanjiSkyWalkFlash: 0,
+    sanjiDiveKickTicks: 0,
+    sanjiDiveKickHit: false,
+    sanjiMuttonTicks: 0,
+    sanjiMuttonCooldown: 0,
+    sanjiMuttonNextHit: 0,
+    sanjiUltTicks: 0,
+    sanjiBoeufUsed: false,
+    burnTicks: 0,
+    burnTickCounter: 0,
     blocking: false,
     shieldTicks: SHIELD_MAX_TICKS,
     shieldCooldown: 0,
@@ -3030,7 +3125,7 @@ function applyTechniqueStats(f, preserveMeters = false) {
   const stats = TECHNIQUE_STATS[f.technique] || TECHNIQUE_STATS.limitless;
   const healthRatio = f.maxHealth > 0 ? f.health / f.maxHealth : 1;
   const ceRatio = f.maxCe > 0 ? f.ce / f.maxCe : 1;
-  f.speed = BASE_MOVE_SPEED * (f.technique === "limitless" ? LIMITLESS_MOVE_MULTIPLIER : f.technique === "deathnote" ? 0.94 : f.technique === "brawler" ? THRAGG_MOVE_MULTIPLIER : 1);
+  f.speed = BASE_MOVE_SPEED * (f.technique === "limitless" ? LIMITLESS_MOVE_MULTIPLIER : f.technique === "deathnote" ? 0.94 : f.technique === "brawler" ? THRAGG_MOVE_MULTIPLIER : f.technique === "blackleg" ? SANJI_MOVE_MULTIPLIER : 1); // SANJI_PATCH
   f.maxHealth = stats.maxHealth;
   f.healthBars = stats.healthBars || 3;
   f.maxCe = stats.maxCe;
@@ -3067,6 +3162,19 @@ function applyTechniqueStats(f, preserveMeters = false) {
     f.lightInvestigationCooldownMax = 0;
     f.eyeDealUsed = false;
   }
+  // SANJI_PATCH: clear the Black Leg kit when switching off Sanji.
+  if (f.technique !== "blackleg") {
+    f.sanjiHeat = 0;
+    f.sanjiDiableTicks = 0;
+    f.sanjiDiableCooldown = 0;
+    f.sanjiSkyWalkJumps = 0;
+    f.sanjiSkyWalkCooldown = 0;
+    f.sanjiDiveKickTicks = 0;
+    f.sanjiMuttonTicks = 0;
+    f.sanjiMuttonCooldown = 0;
+    f.sanjiUltTicks = 0;
+    f.sanjiBoeufUsed = false;
+  }
 }
 
 function applyCpuDifficultyStats() {
@@ -3098,6 +3206,7 @@ function getTechniqueHudMoves(f) {
   if (f.technique === "shrine") return ["slash", "cleave", "fuga"];
   if (f.technique === "deathnote") return ["ryukStrike", "nameInvestigation"];
   if (f.technique === "brawler") return ["groundBreak", "flyingDash"];
+  if (f.technique === "blackleg") return ["diableJambe", "muttonShot", "skyWalk"]; // SANJI_PATCH
   return ["blue", "red", "teleport"];
 }
 
@@ -3154,6 +3263,20 @@ function getTechniqueHudState(f, move) {
       blocked
     };
   }
+  // SANJI_PATCH: all of Sanji's specials are free - pure cooldown gates.
+  if (move === "diableJambe" || move === "muttonShot" || move === "skyWalk") {
+    const cooldown = move === "diableJambe" ? (f.sanjiDiableCooldown || 0)
+      : move === "muttonShot" ? (f.sanjiMuttonCooldown || 0)
+      : (f.sanjiSkyWalkCooldown || 0);
+    return {
+      cost: 0,
+      cooling: cooldown > 0,
+      cooldown,
+      maxCooldown: getTechniqueCooldownTicks(move, f),
+      lowCe: false,
+      blocked
+    };
+  }
   const cost = getTechniqueCost(f, move);
   return {
     cost,
@@ -3201,6 +3324,7 @@ function updateTechniqueCooldownHud(f, slots) {
     hud.slot.classList.toggle("sukuna-cooldown", f.technique === "shrine");
     hud.slot.classList.toggle("light-cooldown", f.technique === "deathnote");
     hud.slot.classList.toggle("thragg-cooldown", f.technique === "brawler");
+    hud.slot.classList.toggle("sanji-cooldown", f.technique === "blackleg"); // SANJI_PATCH
   });
 }
 
@@ -3298,6 +3422,12 @@ function pinStationaryPracticeDummy(f = enemy) {
   f.thraggGrabState = "idle";
   f.thraggGrabTimer = 0;
   f.thraggFlightTicks = 0;
+  // SANJI_PATCH: clear mid-move Black Leg state.
+  f.sanjiDiableTicks = 0;
+  f.sanjiDiveKickTicks = 0;
+  f.sanjiMuttonTicks = 0;
+  f.sanjiSkyWalkJumps = 0;
+  f.burnTicks = 0;
   f.dodging = 0;
 }
 
@@ -3604,6 +3734,59 @@ function installThraggWhiteHudStyle() {
 window.addEventListener("DOMContentLoaded", installThraggWhiteHudStyle);
 window.setTimeout(installThraggWhiteHudStyle, 0);
 
+// SANJI_PATCH: Sanji's cooldown HUD burns flame-orange.
+function installSanjiFlameHudStyle() {
+  if (document.getElementById("sanjiFlameEffectsStyle")) return;
+  const style = document.createElement("style");
+  style.id = "sanjiFlameEffectsStyle";
+  style.textContent = `
+    .ct-slot.sanji-cooldown,
+    .extra-cooldown.sanji-cooldown,
+    .ct-slot.sanji-cooldown.ready,
+    .ct-slot.sanji-cooldown.cooling,
+    .extra-cooldown.sanji-cooldown.ready,
+    .extra-cooldown.sanji-cooldown.cooling {
+      background: linear-gradient(180deg, rgba(46, 26, 12, 0.92), rgba(20, 12, 6, 0.95)) !important;
+      border: 3px solid #facc15 !important;
+      box-shadow: 0 3px 0 #713f12, 0 0 14px rgba(250, 204, 21, 0.4) !important;
+    }
+    .ct-slot.sanji-cooldown .ct-label,
+    .ct-slot.sanji-cooldown .ct-status,
+    .extra-cooldown.sanji-cooldown .ct-label,
+    .extra-cooldown.sanji-cooldown .ct-status,
+    .extra-cooldown.sanji-cooldown .extra-cooldown-label,
+    .extra-cooldown.sanji-cooldown .extra-cooldown-status {
+      color: #fef08a !important;
+      text-shadow: 0 0 6px rgba(250, 204, 21, 0.7) !important;
+    }
+    .ct-slot.sanji-cooldown .ct-meter,
+    .extra-cooldown.sanji-cooldown .ct-meter {
+      background: rgba(35, 20, 10, 0.75) !important;
+      border-color: rgba(250, 204, 21, 0.4) !important;
+    }
+    .ct-slot.sanji-cooldown .ct-fill,
+    .ct-slot.sanji-cooldown.ready .ct-fill,
+    .ct-slot.sanji-cooldown.low-ce .ct-fill,
+    .ct-slot.sanji-cooldown.blocked .ct-fill,
+    .extra-cooldown.sanji-cooldown .ct-fill,
+    .extra-cooldown.sanji-cooldown.ready .ct-fill,
+    .extra-cooldown.sanji-cooldown .extra-cooldown-fill {
+      background: linear-gradient(90deg, #ca8a04, #facc15, #fef08a) !important;
+      box-shadow: 0 0 12px rgba(250, 204, 21, 0.45), inset 0 1px 0 rgba(254, 240, 138, 0.35) !important;
+    }
+    .ct-slot.sanji-cooldown.cooling .ct-fill,
+    .ct-slot.sanji-cooldown.charging .ct-fill,
+    .extra-cooldown.sanji-cooldown.cooling .ct-fill,
+    .extra-cooldown.sanji-cooldown.cooling .extra-cooldown-fill {
+      background: linear-gradient(90deg, #422006, #854d0e, #ca8a04) !important;
+      opacity: 0.92 !important;
+    }
+  `;
+  document.head.appendChild(style);
+}
+window.addEventListener("DOMContentLoaded", installSanjiFlameHudStyle);
+window.setTimeout(installSanjiFlameHudStyle, 0);
+
 
 function installLightTechniqueOption() {
   installUniversalBrawlRename();
@@ -3685,6 +3868,10 @@ function getTechniqueControlHtml(technique) {
     // THRAGG_NO_JJK_PATCH: his own controls - no domains, no RCT.
     return '<span><kbd>Left/Right Click</kbd> Ground Break</span><span><kbd>S</kbd> Flight</span><span><kbd>Hold Space</kbd> rise while flying</span><span><kbd>Tab</kbd> Grab</span><span><kbd>C</kbd> War Stomp</span>';
   }
+  if (technique === "blackleg") {
+    // SANJI_PATCH: kick-only kit, no JJK controls.
+    return '<span><kbd>Left Click</kbd> Diable Jambe</span><span><kbd>Right Click</kbd> Mutton Shot</span><span><kbd>S</kbd> Sky Walk (air)</span><span><kbd>Attack in Sky Walk</kbd> Dive Kick</span><span><kbd>C</kbd> Ifrit Jambe / Boeuf Burst</span>';
+  }
   return '<span><kbd>Left Click</kbd> Blue</span><span><kbd>Right Click</kbd> Red</span><span><kbd>Hold S</kbd> Teleport</span><span><kbd>Hold T</kbd> Blue Punch</span><span><kbd>F</kbd> Infinity</span><span><kbd>Hold C</kbd> Aim Ultimate</span><span><kbd>R</kbd> hold RCT</span>';
 }
 
@@ -3696,6 +3883,7 @@ function getExtraBattleControlHtml(technique) {
     return '<span><kbd>Identity 100%</kbd> unlocks Death Note</span><span><kbd>Eye Deal</kbd> after Misa and Soichiro are gone</span>';
   }
   if (technique === "brawler") return ''; // THRAGG_NO_JJK_PATCH: nothing JJK down here
+  if (technique === "blackleg") return '<span><kbd>Heat 100%</kbd> next fire kick +15% and burns</span>'; // SANJI_PATCH
   return '<span><kbd>X</kbd> Domain Expansion</span><span><kbd>Z</kbd> Simple Domain</span>';
 }
 
@@ -4056,7 +4244,9 @@ function applyJoinerFighterStateOnHost(remoteFighter) {
     "ce", "maxCe", "ultimateMeter", "domainStartup", "domainAttemptType", "simpleDomainTicks", "simpleDomainFlash", "simpleDomainCooldown",
     "bindingVowType", "bindingVowTicks", "bindingVowCooldown", "bindingVowChoiceTicks", "bindingVowQuote", "bindingVowQuoteTicks", "bindingVowFlash", "sukunaThrowComboCooldown",
     "informationMeter", "identityProgress", "lightSummonStage", "lightSummonType", "lightSummonHealth", "lightSummonMaxHealth", "lightSummonTicks", "lightSummonHitFlash", "lightSummonAnchorX", "lightSummonAnchorY", "lightSummonAnchorDir", "potatoCooldown", "potatoFocusTicks", "potatoVulnerableTicks", "lightRyukCooldown", "lightRyukCooldownMax", "lightInvestigationCooldown", "lightInvestigationCooldownMax", "eyeDealUsed", "eyeDealGlowTicks", "deathNoteSlowTicks", "deathNoteFearTicks", "ctLockTimer",
-    "thraggGrabState", "thraggGrabTimer", "thraggGrabCooldown", "thraggFlightTicks", "thraggDashCooldown", "grabHeldTimer", "grabHeldBy", "grabLockY", "grabTechable"
+    "thraggGrabState", "thraggGrabTimer", "thraggGrabCooldown", "thraggFlightTicks", "thraggDashCooldown", "grabHeldTimer", "grabHeldBy", "grabLockY", "grabTechable",
+    // SANJI_PATCH
+    "sanjiHeat", "sanjiDiableTicks", "sanjiDiableAir", "sanjiDiableCooldown", "sanjiSkyWalkJumps", "sanjiSkyWalkCooldown", "sanjiDiveKickTicks", "sanjiMuttonTicks", "sanjiMuttonCooldown", "sanjiUltTicks", "sanjiBoeufUsed", "burnTicks"
   ];
 
   fields.forEach((field) => {
@@ -4150,6 +4340,7 @@ if (data.type === "role") {
       if (data.action === "heavy") startAttack(enemy, "heavy");
       if (data.action === "backThrow") handleThrowInput(enemy, false);
       if (data.action === "flying-dash") startFlyingDash(enemy);
+      if (data.action === "sky-walk") startSkyWalk(enemy); // SANJI_PATCH
       if (data.action === "dodge") startDodge(enemy, getVectorFromInput(remoteInput));
       if (data.action === "jump") jumpFighterWithMove(enemy, (remoteInput.right ? 1 : 0) - (remoteInput.left ? 1 : 0));
       if (data.action === "infinity" && !hasCtLock(enemy)) toggleInfinity(enemy);
@@ -5028,6 +5219,15 @@ function getExtraCooldownItems(f) {
     return items;
   }
 
+  // SANJI_PATCH: Heat Meter + Ifrit timer, nothing JJK.
+  if (f.technique === "blackleg") {
+    items.push({ name: "HEAT", current: f.sanjiHeat || 0, max: SANJI_HEAT_MAX, mode: "resource" });
+    if ((f.sanjiUltTicks || 0) > 0) {
+      items.push({ name: "IFRIT JAMBE", current: f.sanjiUltTicks, max: SANJI_ULT_TICKS, mode: "active" });
+    }
+    return items;
+  }
+
   if ((f.simpleDomainTicks || 0) > 0) {
     items.push({ name: "SIMPLE DOMAIN", current: f.simpleDomainTicks || 0, max: SIMPLE_DOMAIN_TICKS });
   } else {
@@ -5083,7 +5283,7 @@ function updateExtraCooldownHud(container, f) {
       : ready ? 100 : Math.max(4, ratio * 100);
 
     const row = document.createElement("div");
-    row.className = `extra-cooldown ct-slot ${ready ? "ready" : "cooling"} ${f.technique === "shrine" ? "sukuna-cooldown" : f.technique === "deathnote" ? "light-cooldown" : f.technique === "brawler" ? "thragg-cooldown" : "gojo-cooldown"} ${item.style || ""}`;
+    row.className = `extra-cooldown ct-slot ${ready ? "ready" : "cooling"} ${f.technique === "shrine" ? "sukuna-cooldown" : f.technique === "deathnote" ? "light-cooldown" : f.technique === "brawler" ? "thragg-cooldown" : f.technique === "blackleg" ? "sanji-cooldown" : "gojo-cooldown"} ${item.style || ""}`;
 
     const label = document.createElement("span");
     label.className = "extra-cooldown-label ct-label";
@@ -5146,7 +5346,7 @@ function updateResourceBarLabels() {
   const playerUltFrame = playerUltimateEl ? playerUltimateEl.closest(".ultimate-frame") : null;
   const enemyUltFrame = enemyUltimateEl ? enemyUltimateEl.closest(".ultimate-frame") : null;
 
-  ensureResourceBarLabel(playerCeFrame, isLight(player) ? "Information" : player?.technique === "brawler" ? "" : "Cursed Energy", "ce");
+  ensureResourceBarLabel(playerCeFrame, isLight(player) ? "Information" : player?.technique === "brawler" || player?.technique === "blackleg" ? "" : "Cursed Energy", "ce"); // SANJI_PATCH
   ensureResourceBarLabel(playerUltFrame, isLight(player) ? "Name" : "Ultimate", "ultimate");
 
   // DUMMY_HUD_NO_WORDS_PATCH:
@@ -5157,7 +5357,7 @@ function updateResourceBarLabels() {
     return;
   }
 
-  ensureResourceBarLabel(enemyCeFrame, isLight(enemy) ? "Information" : enemy?.technique === "brawler" ? "" : "Cursed Energy", "ce");
+  ensureResourceBarLabel(enemyCeFrame, isLight(enemy) ? "Information" : enemy?.technique === "brawler" || enemy?.technique === "blackleg" ? "" : "Cursed Energy", "ce"); // SANJI_PATCH
   ensureResourceBarLabel(enemyUltFrame, isLight(enemy) ? "Name" : "Ultimate", "ultimate");
 }
 
@@ -5198,11 +5398,11 @@ function updateLightHudVisibility() {
   // Light uses the CE slot as INFO and the Ultimate slot as NAME.
   // THRAGG_NO_JJK_PATCH: Thragg has no Cursed Energy at all - his CE bar
   // is hidden outright (abilities are cooldown-gated).
-  setHudElementHidden(playerCeFrame, player?.technique === "brawler");
+  setHudElementHidden(playerCeFrame, player?.technique === "brawler" || player?.technique === "blackleg"); // SANJI_PATCH
   setHudElementHidden(playerUltFrame, false);
 
   if (gameMode !== "practice") {
-    setHudElementHidden(enemyCeFrame, enemy?.technique === "brawler");
+    setHudElementHidden(enemyCeFrame, enemy?.technique === "brawler" || enemy?.technique === "blackleg"); // SANJI_PATCH
     setHudElementHidden(enemyUltFrame, false);
   } else {
     setHudElementHidden(enemyCeFrame, true);
@@ -5631,10 +5831,15 @@ function isThraggCommitted(f) {
   return Boolean(f && f.thraggGrabState && f.thraggGrabState !== "idle");
 }
 
+// SANJI_PATCH: mid-Diable-dash and mid-Mutton-flurry he is committed.
+function isSanjiCommitted(f) {
+  return Boolean(f && ((f.sanjiDiableTicks || 0) > 0 || (f.sanjiMuttonTicks || 0) > 0));
+}
+
 function isSpecialLocked(f) {
   const owner = getFighterOwner(f);
   const clashing = Boolean(owner && domainClash?.attempts?.[owner]);
-  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || (f?.domainStartup || 0) > 0 || clashing || (f?.potatoVulnerableTicks || 0) > 0;
+  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || isSanjiCommitted(f) || (f?.domainStartup || 0) > 0 || clashing || (f?.potatoVulnerableTicks || 0) > 0;
 }
 
 // DOMAIN_MOVEMENT_FIX
@@ -5643,7 +5848,7 @@ function isSpecialLocked(f) {
 function isMovementLocked(f) {
   const owner = getFighterOwner(f);
   const clashing = Boolean(owner && domainClash?.attempts?.[owner]);
-  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || clashing;
+  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || (f?.sanjiMuttonTicks || 0) > 0 || clashing; // SANJI_PATCH: the flurry roots him, the dash doesn't
 }
 
 function getMoveInputForFighter(f) {
@@ -5771,6 +5976,8 @@ function beginAttack(f, type) {
 
 function startAttack(f, type) {
   if (gameOver || isSpecialLocked(f) || f.rctHealing || f.chargingTechnique || f.fugaAiming || f.stun > 0 || f.dodging > 0 || f.knockdown || f.punchCooldown > 0 || f.pendingPunchCooldown) return;
+  // SANJI_PATCH: pressing attack during Sky Walk performs the diving kick.
+  if (isSanji(f) && trySanjiDiveKick(f)) return;
   if (f.attacking) {
     if (f.hasHit && canChainAttack(f, type)) f.queuedAttack = type;
     return;
@@ -6075,6 +6282,390 @@ function updateFlyingDash(f) {
   if (f.thraggFlightTicks <= 0) endThraggFlight(f);
 }
 
+// ==========================================================================
+// SANJI_PATCH: Black Leg kit. Diable Jambe (flaming dash kick / air dive),
+// Sky Walk (chained air jumps + dive kick), Mutton Shot (locking kick
+// flurry), the Heat passive, the burn debuff, and Ifrit Jambe with the
+// Boeuf Burst finisher.
+// ==========================================================================
+
+function isSanji(f) {
+  return Boolean(f && f.technique === "blackleg");
+}
+
+function sanjiHeatFull(f) {
+  return (f.sanjiHeat || 0) >= SANJI_HEAT_MAX;
+}
+
+function gainSanjiHeat(f, amount) {
+  if (!isSanji(f) || f.ko) return;
+  f.sanjiHeat = Math.max(0, Math.min(SANJI_HEAT_MAX, (f.sanjiHeat || 0) + amount));
+}
+
+// Full Heat powers up the next fire attack (+15% damage, applies burn)
+// and is spent by it.
+function consumeSanjiHeatForFire(f) {
+  if (!sanjiHeatFull(f)) return false;
+  f.sanjiHeat = 0;
+  return true;
+}
+
+function applyBurn(defender, ticks = SANJI_BURN_TICKS) {
+  if (!defender || defender.ko) return;
+  defender.burnTicks = Math.max(defender.burnTicks || 0, ticks);
+}
+
+// Burn chips but never finishes a fighter - the kill has to be a real hit.
+function updateBurn(f) {
+  if (f.ko) {
+    f.burnTicks = 0;
+    return;
+  }
+  if ((f.burnTicks || 0) <= 0) return;
+  f.burnTicks -= 1;
+  f.burnTickCounter = (f.burnTickCounter || 0) + 1;
+  if (f.burnTickCounter >= SANJI_BURN_INTERVAL) {
+    f.burnTickCounter = 0;
+    if (f.health > SANJI_BURN_DAMAGE + 1) {
+      applyFighterDamage(f, SANJI_BURN_DAMAGE);
+      updateHud();
+    }
+    const center = getFighterCenter(f);
+    spawnHitSpark(center.x + (Math.random() - 0.5) * 18, center.y - 12 + (Math.random() - 0.5) * 20, 1, "light");
+  }
+}
+
+function canStartSanjiSpecial(f) {
+  return Boolean(
+    f &&
+    !gameOver &&
+    !paused &&
+    !isSpecialLocked(f) &&
+    !f.ko &&
+    f.stun <= 0 &&
+    f.dodging <= 0 &&
+    !f.knockdown &&
+    !f.attacking &&
+    (f.sanjiMuttonTicks || 0) <= 0 &&
+    (f.sanjiDiableTicks || 0) <= 0
+  );
+}
+
+function startDiableJambe(f) {
+  if (!isSanji(f) || !canStartSanjiSpecial(f)) return false;
+  if ((f.sanjiDiableCooldown || 0) > 0) return false;
+  f.sanjiDiableCooldown = SANJI_DIABLE_COOLDOWN_TICKS;
+  f.sanjiDiableTicks = SANJI_DIABLE_TICKS;
+  f.sanjiDiableHit = false;
+  f.sanjiDiableAir = !f.grounded;
+  f.blocking = false;
+  if (f.sanjiDiableAir) {
+    // Air version dives diagonally toward the ground.
+    f.vx = f.dir * 9.5;
+    f.vy = Math.max(f.vy, 7.5);
+  } else {
+    f.vx = f.dir * SANJI_DIABLE_SPEED;
+  }
+  return true;
+}
+
+function updateSanjiDiable(f, opponent) {
+  if ((f.sanjiDiableTicks || 0) <= 0) return;
+  if (f.ko || f.stun > 0 || f.knockdown) {
+    f.sanjiDiableTicks = 0;
+    return;
+  }
+  f.sanjiDiableTicks -= 1;
+  const ult = (f.sanjiUltTicks || 0) > 0;
+  if (f.sanjiDiableAir) {
+    f.vx = f.dir * 9.5;
+    f.vy = Math.max(f.vy, 7.5);
+    if (f.grounded) f.sanjiDiableTicks = 0;
+  } else {
+    f.vx = f.dir * SANJI_DIABLE_SPEED * (ult ? 1.15 : 1);
+  }
+  // Ifrit Jambe leaves a trail of blue fire.
+  if (ult && frame % 2 === 0) {
+    spawnHitSpark(f.x + f.w / 2 - f.dir * 16, f.y + f.h - 14, -f.dir, "blue");
+  }
+  // keepFightersApart un-overlaps the pair every tick, so the contact
+  // test needs a margin or the dash can never "touch" its target.
+  if (!f.sanjiDiableHit && opponent && !opponent.ko && opponent.dodging <= 0 && rectsOverlap(expandRect(f, 10), opponent)) {
+    f.sanjiDiableHit = true;
+    const empowered = consumeSanjiHeatForFire(f);
+    const raw = SANJI_DIABLE_DAMAGE * (empowered ? 1.15 : 1) * (ult ? 1.12 : 1);
+    const blocked = isBlockingAttack(opponent, f.dir);
+    const damage = blocked ? 0 : getTakenDamage(opponent, Math.ceil(raw * getOutgoingDamageMultiplier(f)));
+    if (blocked) {
+      damageShield(opponent, Math.ceil(raw));
+    } else {
+      applyFighterDamage(opponent, damage);
+      applyBurn(opponent);
+      gainSanjiHeat(f, 10);
+      gainUltimate(f, damage * ULT_DAMAGE_GAIN_SCALE);
+      opponent.hurt = 14;
+      opponent.stun = Math.max(opponent.stun, 16);
+    }
+    opponent.vx = f.dir * getTakenKnockback(opponent, blocked ? 8 : SANJI_DIABLE_KNOCKBACK);
+    if (!blocked && f.sanjiDiableAir) {
+      opponent.vy = -5;
+      opponent.grounded = false;
+    }
+    const center = getFighterCenter(opponent);
+    spawnHitSpark(center.x, center.y, f.dir, ult ? "blue" : "heavy");
+    hitStopTicks = Math.max(hitStopTicks, HITSTOP_HEAVY);
+    shake = Math.max(shake, 9);
+    f.vx *= 0.4;
+    f.sanjiDiableTicks = Math.min(f.sanjiDiableTicks, 4);
+    updateHud();
+  }
+}
+
+function startSkyWalk(f) {
+  if (!isSanji(f) || gameOver || paused || f.ko || f.knockdown || f.stun > 0 || f.dodging > 0) return false;
+  if (f.grounded) return false;
+  if ((f.sanjiMuttonTicks || 0) > 0) return false;
+  const ult = (f.sanjiUltTicks || 0) > 0;
+  if (!ult) {
+    if ((f.sanjiSkyWalkCooldown || 0) > 0) return false;
+    if ((f.sanjiSkyWalkJumps || 0) >= SANJI_SKYWALK_JUMPS) return false;
+  }
+  f.sanjiSkyWalkJumps = (f.sanjiSkyWalkJumps || 0) + 1;
+  f.sanjiSkyWalkFlash = 10;
+  f.vy = -10.5;
+  const move = getMoveInputForFighter(f);
+  if (move !== 0) f.vx = move * f.speed * 1.6;
+  f.jumpsUsed = 2;
+  spawnHitSpark(f.x + f.w / 2, f.y + f.h - 4, f.dir, ult ? "blue" : "light");
+  return true;
+}
+
+// Landing settles the Sky Walk chain: using the whole chain costs the
+// full 12s cooldown, partial use costs a slice of it.
+function settleSkyWalkOnLanding(f) {
+  if (!isSanji(f)) return;
+  if (!f.grounded || (f.sanjiSkyWalkJumps || 0) <= 0) return;
+  if ((f.sanjiUltTicks || 0) <= 0) {
+    const used = Math.min(SANJI_SKYWALK_JUMPS, f.sanjiSkyWalkJumps);
+    f.sanjiSkyWalkCooldown = Math.max(f.sanjiSkyWalkCooldown || 0, Math.round(SANJI_SKYWALK_COOLDOWN_TICKS * (used / SANJI_SKYWALK_JUMPS)));
+  }
+  f.sanjiSkyWalkJumps = 0;
+  f.sanjiDiveKickTicks = 0;
+}
+
+// Pressing an attack button mid-Sky-Walk converts into the diving kick.
+function trySanjiDiveKick(f) {
+  if (!isSanji(f) || f.grounded) return false;
+  if ((f.sanjiSkyWalkJumps || 0) <= 0) return false;
+  if ((f.sanjiDiveKickTicks || 0) > 0) return false;
+  f.sanjiDiveKickTicks = 40;
+  f.sanjiDiveKickHit = false;
+  f.vy = Math.max(f.vy, 9.5);
+  f.vx = f.dir * 6.5;
+  return true;
+}
+
+function updateSanjiDiveKick(f, opponent) {
+  if ((f.sanjiDiveKickTicks || 0) <= 0) return;
+  if (f.ko || f.stun > 0 || f.knockdown || f.grounded) {
+    f.sanjiDiveKickTicks = 0;
+    return;
+  }
+  f.sanjiDiveKickTicks -= 1;
+  f.vy = Math.max(f.vy, 8);
+  if (!f.sanjiDiveKickHit && opponent && !opponent.ko && opponent.dodging <= 0 && rectsOverlap(expandRect(f, 10), opponent)) {
+    f.sanjiDiveKickHit = true;
+    const blocked = isBlockingAttack(opponent, f.dir);
+    const damage = blocked ? 0 : getTakenDamage(opponent, Math.ceil(SANJI_DIVE_KICK_DAMAGE * getOutgoingDamageMultiplier(f)));
+    if (blocked) {
+      damageShield(opponent, SANJI_DIVE_KICK_DAMAGE);
+    } else {
+      applyFighterDamage(opponent, damage);
+      gainSanjiHeat(f, 8);
+      gainUltimate(f, damage * ULT_DAMAGE_GAIN_SCALE);
+      opponent.hurt = 12;
+      opponent.stun = Math.max(opponent.stun, 14);
+      opponent.vy = -4;
+      opponent.grounded = false;
+    }
+    opponent.vx = f.dir * getTakenKnockback(opponent, blocked ? 6 : 14);
+    const center = getFighterCenter(opponent);
+    spawnHitSpark(center.x, center.y, f.dir, "heavy");
+    hitStopTicks = Math.max(hitStopTicks, HITSTOP_LIGHT);
+    shake = Math.max(shake, 6);
+    f.vy = -5;
+    f.sanjiDiveKickTicks = 0;
+    updateHud();
+  }
+}
+
+function startMuttonShot(f) {
+  if (!isSanji(f) || !canStartSanjiSpecial(f)) return false;
+  if ((f.sanjiMuttonCooldown || 0) > 0) return false;
+  const opponent = getOpponent(f);
+  const inRange = opponent && !opponent.ko && opponent.dodging <= 0 && !isHeldBySpecial(opponent) &&
+    Math.abs(getFighterCenter(opponent).x - getFighterCenter(f).x) <= SANJI_MUTTON_RANGE &&
+    Math.abs(getFighterCenter(opponent).y - getFighterCenter(f).y) <= 64;
+  if (!inRange) {
+    f.sanjiMuttonCooldown = SANJI_MUTTON_WHIFF_COOLDOWN_TICKS;
+    updateHud();
+    return false;
+  }
+  f.sanjiMuttonCooldown = SANJI_MUTTON_COOLDOWN_TICKS;
+  f.sanjiMuttonTicks = SANJI_MUTTON_TICKS;
+  f.sanjiMuttonNextHit = SANJI_MUTTON_HIT_INTERVAL;
+  f.dir = getFighterCenter(opponent).x >= getFighterCenter(f).x ? 1 : -1;
+  f.blocking = false;
+  f.vx = 0;
+  // The flurry locks the opponent in place for the combo.
+  opponent.blocking = false;
+  opponent.attacking = null;
+  opponent.stun = Math.max(opponent.stun, SANJI_MUTTON_TICKS + 10);
+  opponent.dir = -f.dir;
+  return true;
+}
+
+function updateSanjiMutton(f, opponent) {
+  if ((f.sanjiMuttonTicks || 0) <= 0) return;
+  if (f.ko || f.stun > 0 || f.knockdown || !opponent || opponent.ko) {
+    f.sanjiMuttonTicks = 0;
+    return;
+  }
+  f.sanjiMuttonTicks -= 1;
+  f.vx = 0;
+  // hold the victim at kicking range
+  opponent.x = f.x + f.dir * (f.w * 0.5 + 22);
+  opponent.vx = 0;
+  opponent.vy = 0;
+  opponent.hurt = Math.max(opponent.hurt, 5);
+  opponent.stun = Math.max(opponent.stun, 8);
+  const ult = (f.sanjiUltTicks || 0) > 0;
+  f.sanjiMuttonNextHit -= 1;
+  if (f.sanjiMuttonNextHit <= 0 && f.sanjiMuttonTicks > 4) {
+    f.sanjiMuttonNextHit = SANJI_MUTTON_HIT_INTERVAL;
+    const damage = getTakenDamage(opponent, Math.ceil(SANJI_MUTTON_HIT_DAMAGE * getOutgoingDamageMultiplier(f)));
+    applyFighterDamage(opponent, damage);
+    gainSanjiHeat(f, 4);
+    gainUltimate(f, damage * ULT_DAMAGE_GAIN_SCALE * 0.7);
+    const center = getFighterCenter(opponent);
+    spawnHitSpark(center.x + (Math.random() - 0.5) * 14, center.y + (Math.random() - 0.5) * 26, f.dir, ult ? "blue" : "light");
+    hitStopTicks = Math.max(hitStopTicks, 1);
+    updateHud();
+  }
+  if (f.sanjiMuttonTicks <= 0) {
+    // Final kick launches them away - explosive during Ifrit Jambe.
+    const empowered = consumeSanjiHeatForFire(f);
+    const raw = SANJI_MUTTON_FINISH_DAMAGE * (empowered ? 1.15 : 1) + (ult ? 8 : 0);
+    const damage = getTakenDamage(opponent, Math.ceil(raw * getOutgoingDamageMultiplier(f)));
+    applyFighterDamage(opponent, damage);
+    if (empowered || ult) applyBurn(opponent);
+    gainUltimate(f, damage * ULT_DAMAGE_GAIN_SCALE);
+    opponent.vx = f.dir * getTakenKnockback(opponent, SANJI_MUTTON_FINISH_KNOCKBACK * (ult ? 1.3 : 1));
+    opponent.vy = ult ? -8 : -5.5;
+    opponent.grounded = false;
+    opponent.knockdown = true;
+    opponent.knockdownTimer = ult ? 26 : 20;
+    const center = getFighterCenter(opponent);
+    spawnHitSpark(center.x, center.y, f.dir, ult ? "blue" : "heavy");
+    if (ult) spawnHitSpark(center.x + f.dir * 14, center.y - 10, f.dir, "fuga");
+    shake = Math.max(shake, ult ? 14 : 8);
+    hitStopTicks = Math.max(hitStopTicks, HITSTOP_HEAVY);
+    updateHud();
+  }
+}
+
+function startSanjiUltimate(f) {
+  // Boeuf Burst: pressing Ultimate again inside the last 5 seconds.
+  if ((f.sanjiUltTicks || 0) > 0) {
+    if (f.sanjiUltTicks <= SANJI_ULT_FINISHER_WINDOW_TICKS && !f.sanjiBoeufUsed) return performBoeufBurst(f);
+    return false;
+  }
+  if (!canStartUltimate(f)) {
+    const warning = getUltimateFailureMessage(f);
+    if (warning) showActionWarning(warning);
+    return false;
+  }
+  f.ultimateMeter = 0;
+  f.sanjiUltTicks = SANJI_ULT_TICKS;
+  f.sanjiBoeufUsed = false;
+  const center = getFighterCenter(f);
+  spawnHitSpark(center.x, center.y + 30, f.dir, "blue");
+  spawnHitSpark(center.x, center.y + 44, -f.dir, "blue");
+  shake = Math.max(shake, 10);
+  showActionWarning("IFRIT JAMBE");
+  updateHud();
+  return true;
+}
+
+function performBoeufBurst(f) {
+  const opponent = getOpponent(f);
+  if (!opponent || opponent.ko || gameOver || paused || f.ko || f.stun > 0 || f.knockdown) return false;
+  f.sanjiBoeufUsed = true;
+  f.sanjiUltTicks = 0;
+  // Vanish behind the opponent (the side they are NOT facing)...
+  const behindDir = opponent.dir || 1;
+  const targetCenterX = opponent.x + opponent.w / 2 - behindDir * (opponent.w / 2 + f.w / 2 + 10);
+  f.x = clampStageX(targetCenterX - f.w / 2, f.w);
+  f.y = opponent.y;
+  f.vx = 0;
+  f.vy = 0;
+  f.dir = getFighterCenter(opponent).x >= getFighterCenter(f).x ? 1 : -1;
+  const start = getFighterCenter(f);
+  spawnHitSpark(start.x, start.y, f.dir, "blue");
+  // ...and deliver the enormous blue flaming kick.
+  const damage = getTakenDamage(opponent, Math.ceil(SANJI_BOEUF_DAMAGE * getOutgoingDamageMultiplier(f)));
+  applyFighterDamage(opponent, damage);
+  applyBurn(opponent, SANJI_BURN_TICKS + 60);
+  gainUltimate(f, damage * ULT_DAMAGE_GAIN_SCALE * 0.5);
+  opponent.hurt = 20;
+  opponent.stun = Math.max(opponent.stun, 34);
+  opponent.vx = f.dir * getTakenKnockback(opponent, SANJI_BOEUF_KNOCKBACK);
+  opponent.vy = -9;
+  opponent.grounded = false;
+  opponent.knockdown = true;
+  opponent.knockdownTimer = 30;
+  const center = getFighterCenter(opponent);
+  spawnHitSpark(center.x, center.y, f.dir, "blue");
+  spawnHitSpark(center.x + f.dir * 20, center.y - 12, f.dir, "fuga");
+  spawnHitSpark(center.x - f.dir * 10, center.y + 14, -f.dir, "blue");
+  shake = Math.max(shake, 18);
+  hitStopTicks = Math.max(hitStopTicks, HITSTOP_HEAVY + 4);
+  showActionWarning("BOEUF BURST");
+  updateHud();
+  return true;
+}
+
+// Per-tick driver, called from updateFighter alongside the Thragg systems.
+function updateSanjiSystems(f, opponent) {
+  updateBurn(f);
+  if (!isSanji(f)) return;
+  if ((f.sanjiDiableCooldown || 0) > 0) f.sanjiDiableCooldown -= 1;
+  if ((f.sanjiMuttonCooldown || 0) > 0 && (f.sanjiMuttonTicks || 0) <= 0) f.sanjiMuttonCooldown -= 1;
+  if ((f.sanjiSkyWalkCooldown || 0) > 0) f.sanjiSkyWalkCooldown -= 1;
+  if ((f.sanjiSkyWalkFlash || 0) > 0) f.sanjiSkyWalkFlash -= 1;
+  if ((f.sanjiUltTicks || 0) > 0) {
+    f.sanjiUltTicks -= 1;
+    // +20% movement speed while Ifrit Jambe burns.
+    if (frame % 3 === 0) {
+      spawnHitSpark(f.x + f.w / 2 + (Math.random() - 0.5) * 20, f.y + f.h - 8, f.dir, "blue");
+    }
+  }
+  // +20% movement speed while the ultimate is up, applied as a reversible
+  // multiplier so CPU difficulty speed scaling isn't clobbered.
+  const wantSpeedBoost = (f.sanjiUltTicks || 0) > 0;
+  if (wantSpeedBoost && !f.sanjiSpeedBoosted) {
+    f.speed *= 1.2;
+    f.sanjiSpeedBoosted = true;
+  } else if (!wantSpeedBoost && f.sanjiSpeedBoosted) {
+    f.speed /= 1.2;
+    f.sanjiSpeedBoosted = false;
+  }
+  settleSkyWalkOnLanding(f);
+  updateSanjiDiable(f, opponent);
+  updateSanjiDiveKick(f, opponent);
+  updateSanjiMutton(f, opponent);
+}
+
 function startKnockout(attacker, defender) {
   if (roundEnding || roundResolved) return;
   gameOver = true;
@@ -6348,6 +6939,13 @@ function startTechnique(f, slot, chargeRatio = 0, aimPoint = null, releasingChar
   const aimVector = getTechniqueAimVector(f, move, aimPoint);
   if (Math.abs(aimVector.x) > 0.08) f.dir = aimVector.dir;
 
+  // SANJI_PATCH: both mouse specials are melee actions, not projectiles.
+  if (f.technique === "blackleg") {
+    if (move === "diableJambe") startDiableJambe(f);
+    if (move === "muttonShot") startMuttonShot(f);
+    return;
+  }
+
   if (f.technique === "deathnote") {
     if (move === "ryukStrike") {
       if ((f.lightRyukCooldown || 0) > 0) return;
@@ -6619,7 +7217,7 @@ function getRctHealPerTick(f) {
 }
 
 function canStartRct(f) {
-  if (isLight(f) || f?.technique === "brawler") return false; // THRAGG_NO_JJK_PATCH
+  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg") return false; // THRAGG_NO_JJK_PATCH + SANJI_PATCH
   if (!f || gameOver || paused || isSpecialLocked(f) || f.ko || f.knockdown || f.dodging > 0) return false;
   if (f.health >= getCurrentHealthBarCeiling(f) || f.rctCooldown > 0) return false;
   return f.ce >= f.maxCe * RCT_MIN_CE_RATIO;
@@ -6641,7 +7239,7 @@ function cancelRct(f, startCooldown = true) {
 }
 
 function setRctHealing(f, wantsRct) {
-  if (isLight(f) || f?.technique === "brawler") { // THRAGG_NO_JJK_PATCH
+  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg") { // THRAGG_NO_JJK_PATCH + SANJI_PATCH
     cancelRct(f, false);
     return;
   }
@@ -6888,6 +7486,7 @@ function startThraggUltimate(f) {
 function startUltimate(f, aimPoint = null) {
   if (isLight(f)) return startDeathNoteUltimate(f);
   if (f.technique === "brawler") return startThraggUltimate(f); // THRAGG_NO_JJK_PATCH
+  if (f.technique === "blackleg") return startSanjiUltimate(f); // SANJI_PATCH
   return beginUltimateAim(f, aimPoint);
 }
 
@@ -6895,6 +7494,7 @@ function startUltimate(f, aimPoint = null) {
 function beginUltimateAim(f, aimPoint = null) {
   if (isLight(f)) return startDeathNoteUltimate(f);
   if (f.technique === "brawler") return startThraggUltimate(f); // THRAGG_NO_JJK_PATCH
+  if (f.technique === "blackleg") return startSanjiUltimate(f); // SANJI_PATCH
   if (!canStartUltimate(f)) {
     const warning = getUltimateFailureMessage(f);
     if (warning) showActionWarning(warning);
@@ -7310,7 +7910,7 @@ function canStartSimpleDomain(f) {
 }
 
 function startSimpleDomain(f) {
-  if (isLight(f) || f?.technique === "brawler") return false; // THRAGG_NO_JJK_PATCH
+  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg") return false; // THRAGG_NO_JJK_PATCH + SANJI_PATCH
   if (!canStartSimpleDomain(f)) {
     showActionWarning(f && f.ce < Math.ceil(f.maxCe * SIMPLE_DOMAIN_CE_COST_RATIO) ? "Not Enough Cursed Energy" : "Can't Use Simple Domain");
     return false;
@@ -7405,7 +8005,7 @@ function getDomainAttemptForFighter(f) {
 }
 
 function canStartDomain(f) {
-  if (isLight(f) || f?.technique === "brawler") return false; // THRAGG_NO_JJK_PATCH
+  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg") return false; // THRAGG_NO_JJK_PATCH + SANJI_PATCH
   if (!f || gameState !== "playing" || gameOver || paused || f.ko || f.knockdown || f.stun > 0) return false;
   if (isSpecialLocked(f) || f.attacking || f.dodging > 0 || f.rctHealing || hasCtLock(f)) return false;
   if (activeDomain || domainClash) return false;
@@ -8369,6 +8969,12 @@ function applyHit(attacker, defender) {
     if (isLight(attacker)) {
       // Attacks must hit to build Info. They do not build Name.
       gainLightInfo(attacker, attackType === "heavy" ? 7 : 4);
+    }
+    // SANJI_PATCH: landing kicks fills the Heat Meter; during Ifrit Jambe
+    // every kick carries fire and burns.
+    if (isSanji(attacker)) {
+      gainSanjiHeat(attacker, attackType === "heavy" ? 12 : 7);
+      if ((attacker.sanjiUltTicks || 0) > 0) applyBurn(defender, Math.round(SANJI_BURN_TICKS * 0.6));
     }
   }
   gainUltimate(attacker, meleeDamageDealt * (blocked ? ULT_BLOCKED_DAMAGE_GAIN_SCALE : ULT_DAMAGE_GAIN_SCALE));
@@ -9834,6 +10440,21 @@ function updateEnemyAi() {
     }
   }
 
+  // SANJI_PATCH: CPU Sanji plays rushdown - Diable Jambe to close space,
+  // Mutton Shot up close, Sky Walk to chase in the air, Boeuf on cue.
+  if (enemy.technique === "blackleg" && !pacifistBot && enemy.stun <= 0 && !enemy.knockdown && !gameOver) {
+    const sGap = Math.abs((player.x + player.w / 2) - (enemy.x + enemy.w / 2));
+    if ((enemy.sanjiUltTicks || 0) > 0 && enemy.sanjiUltTicks <= SANJI_ULT_FINISHER_WINDOW_TICKS && !enemy.sanjiBoeufUsed && Math.random() < getCpuDecisionChance(0.01, 0.03, 0.06)) {
+      performBoeufBurst(enemy);
+    } else if ((enemy.sanjiDiableCooldown || 0) <= 0 && sGap > 130 && sGap < 340 && Math.random() < getCpuDecisionChance(0.006, 0.016, 0.035)) {
+      startDiableJambe(enemy);
+    } else if ((enemy.sanjiMuttonCooldown || 0) <= 0 && sGap < SANJI_MUTTON_RANGE - 6 && Math.random() < getCpuDecisionChance(0.008, 0.02, 0.045)) {
+      startMuttonShot(enemy);
+    } else if (!enemy.grounded && player.y + player.h < enemy.y + enemy.h - 40 && Math.random() < getCpuDecisionChance(0.01, 0.025, 0.05)) {
+      startSkyWalk(enemy);
+    }
+  }
+
   if (gameOver || isSpecialLocked(enemy) || enemy.stun > 0 || enemy.knockdown) return;
 
   enemy.aiCooldown = Number.isFinite(enemy.aiCooldown) ? enemy.aiCooldown - 1 : 0;
@@ -9872,7 +10493,7 @@ function updateEnemyAi() {
 
   if (enemy.ultimateMeter >= MAX_ULTIMATE && enemy.aiCooldown <= 0) {
     const ultimateChance = cpuDifficulty === "hard" ? 0.18 : cpuDifficulty === "medium" ? 0.08 : 0.025;
-    const goodRange = enemy.technique === "shrine" ? distance > 120 : distance > 260;
+    const goodRange = enemy.technique === "blackleg" ? true : enemy.technique === "shrine" ? distance > 120 : distance > 260; // SANJI_PATCH: Ifrit is a self-buff, any range works
     if (goodRange && Math.random() < ultimateChance && startUltimate(enemy)) {
       enemy.aiGoal = "ultimate";
       enemy.aiCooldown = cpu.attackCooldown + 48;
@@ -10019,6 +10640,8 @@ function updateFighter(f, opponent) {
   // THRAGG_BRAWLER_PATCH
   updateThraggGrab(f);
   updateFlyingDash(f);
+  // SANJI_PATCH
+  updateSanjiSystems(f, opponent);
 
   if (f.ko) {
     f.attacking = null;
@@ -10895,6 +11518,20 @@ function getTechniqueSkin(f, flash) {
       hair: "#101114",
       eye: "#0b0705",
       mark: "#dc2626"
+    };
+  }
+
+  // SANJI_PATCH: black suit, blue shirt, blond hair, black dress shoes.
+  if (f.technique === "blackleg") {
+    return {
+      body: "#16181f",
+      skin: "#f2c69a",
+      accent: "#facc15",
+      pants: "#101218",
+      shoe: "#0b0d12",
+      hair: "#eac04d",
+      eye: "#0b0705",
+      mark: "#facc15"
     };
   }
 
@@ -12333,6 +12970,70 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     rightKnee.x += f.technique === "shrine" ? 3 : 1;
   }
 
+  // SANJI_PATCH: Black Leg style - every attack redraws the legs, not the
+  // arms. The front (right) leg is the kicking leg; the support leg stays
+  // planted. Also poses the Diable dash, dive kick, and Mutton flurry.
+  const sanjiUltActive = isSanji(f) && (f.sanjiUltTicks || 0) > 0;
+  let sanjiKickFoot = null;
+  if (isSanji(f) && !f.ko && !f.knockdown) {
+    if ((f.attacking === "light" || f.attacking === "heavy") && !jumpPose) {
+      const kickSpec = getAttackSpec(f);
+      const kickTotal = kickSpec.windup + kickSpec.active + kickSpec.recovery;
+      const fr = Math.min(f.attackFrame, kickTotal);
+      let ext;
+      if (fr < kickSpec.windup) ext = (fr / Math.max(1, kickSpec.windup)) * 0.4;
+      else if (fr <= kickSpec.windup + kickSpec.active) ext = 1;
+      else ext = Math.max(0, 1 - (fr - kickSpec.windup - kickSpec.active) / Math.max(1, kickSpec.recovery));
+      const heavyKick = f.attacking === "heavy";
+      // light: snapping mid kick; heavy: high roundhouse
+      rightFoot.x = lerp(34, heavyKick ? 68 : 66, ext);
+      rightFoot.y = lerp(footY, heavyKick ? 44 : 78, ext);
+      rightKnee.x = lerp(36, heavyKick ? 46 : 52, ext);
+      rightKnee.y = lerp(kneeY, heavyKick ? 58 : 84, ext);
+      leftFoot.x = 12;
+      leftFoot.y = footY;
+      leftKnee.x = 15;
+      leftKnee.y = 103;
+      if (ext > 0.55) sanjiKickFoot = rightFoot;
+    } else if ((f.sanjiDiableTicks || 0) > 0) {
+      // flying kick carriage - lead leg speared out, rear leg trailing
+      const dive = f.sanjiDiableAir ? 12 : 0;
+      rightFoot.x = 70;
+      rightFoot.y = 84 + dive;
+      rightKnee.x = 52;
+      rightKnee.y = 80 + dive * 0.6;
+      leftFoot.x = -4;
+      leftFoot.y = 104;
+      leftKnee.x = 12;
+      leftKnee.y = 95;
+      sanjiKickFoot = rightFoot;
+    } else if ((f.sanjiDiveKickTicks || 0) > 0) {
+      // foot-first meteor drop
+      rightFoot.x = 56;
+      rightFoot.y = 116;
+      rightKnee.x = 44;
+      rightKnee.y = 96;
+      leftFoot.x = 6;
+      leftFoot.y = 96;
+      leftKnee.x = 16;
+      leftKnee.y = 88;
+      sanjiKickFoot = rightFoot;
+    } else if ((f.sanjiMuttonTicks || 0) > 0) {
+      // Mutton Shot - a blur of alternating kicks
+      const flurry = Math.sin(frame * 1.25);
+      const high = flurry > 0;
+      rightFoot.x = 60 + flurry * 6;
+      rightFoot.y = high ? 58 : 88;
+      rightKnee.x = 48;
+      rightKnee.y = high ? 66 : 88;
+      leftFoot.x = 12;
+      leftFoot.y = footY;
+      leftKnee.x = 15;
+      leftKnee.y = 103;
+      sanjiKickFoot = rightFoot;
+    }
+  }
+
   // LEG_BOOT_PATCH: legs stop at the ankle instead of running to the
   // sole - the 17px round leg cap used to stab straight through the
   // flat shoe stroke and touch the ground beside it.
@@ -12377,6 +13078,35 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   };
   drawBoot(leftFoot);
   drawBoot(rightFoot);
+
+  // SANJI_PATCH: leg fire. Orange on an empowered/Diable kick, blue on
+  // both legs for the whole Ifrit Jambe window.
+  if (isSanji(f)) {
+    const drawLegFlame = (fx, fy, blue) => {
+      const flick = Math.sin(frame * 0.9 + fx * 0.7) * 2.4;
+      ctx.fillStyle = blue ? "rgba(56, 189, 248, 0.82)" : "rgba(249, 115, 22, 0.82)";
+      ctx.beginPath();
+      ctx.moveTo(fx - 9, fy + 2);
+      ctx.quadraticCurveTo(fx - 13, fy - 12 - flick, fx - 3, fy - 8);
+      ctx.quadraticCurveTo(fx + 1, fy - 19 - flick, fx + 7, fy - 8);
+      ctx.quadraticCurveTo(fx + 15, fy - 13 + flick, fx + 13, fy + 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = blue ? "rgba(224, 242, 254, 0.85)" : "rgba(253, 224, 71, 0.85)";
+      ctx.beginPath();
+      ctx.moveTo(fx - 4, fy + 1);
+      ctx.quadraticCurveTo(fx - 5, fy - 7 - flick * 0.6, fx + 2, fy - 5);
+      ctx.quadraticCurveTo(fx + 7, fy - 8 + flick * 0.6, fx + 8, fy + 1);
+      ctx.closePath();
+      ctx.fill();
+    };
+    if (sanjiUltActive) {
+      drawLegFlame(leftFoot.x + 2, leftFoot.y - 4, true);
+      drawLegFlame(rightFoot.x + 2, rightFoot.y - 4, true);
+    } else if (sanjiKickFoot && (sanjiHeatFull(f) || (f.sanjiDiableTicks || 0) > 0)) {
+      drawLegFlame(sanjiKickFoot.x + 2, sanjiKickFoot.y - 4, false);
+    }
+  }
 
   // BACKPEDAL torso: shifted and rotated slightly BACK (positive), the
   // opposite of the forward walk's forward lean.
@@ -12586,6 +13316,46 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.moveTo(20, 35);
     ctx.quadraticCurveTo(26, 33.5, 34, 35);
     ctx.stroke();
+  } else if (f.technique === "blackleg") {
+    // SANJI_PATCH: black double-breasted suit over a blue shirt with a
+    // dark tie - lapels open in a V at the chest.
+    ctx.fillStyle = "#5f89b8";
+    ctx.beginPath();
+    ctx.moveTo(20, 37);
+    ctx.lineTo(34, 38);
+    ctx.lineTo(31, 58);
+    ctx.lineTo(27, 62);
+    ctx.lineTo(23, 58);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#0a0c11";
+    ctx.beginPath();
+    ctx.moveTo(24.5, 38);
+    ctx.lineTo(29.5, 38.5);
+    ctx.lineTo(28.5, 57);
+    ctx.lineTo(26.5, 60);
+    ctx.lineTo(24.8, 56.5);
+    ctx.closePath();
+    ctx.fill();
+    // lapel edges
+    ctx.strokeStyle = "rgba(255,255,255,0.14)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(19, 38);
+    ctx.lineTo(24, 52);
+    ctx.lineTo(20, 66);
+    ctx.moveTo(35, 39);
+    ctx.lineTo(30, 52);
+    ctx.lineTo(34, 66);
+    ctx.stroke();
+    // suit buttons - subtle, they turned into a chest blotch at full alpha
+    ctx.fillStyle = "rgba(220, 226, 235, 0.28)";
+    ctx.beginPath();
+    ctx.arc(21.5, 62, 1.1, 0, Math.PI * 2);
+    ctx.arc(32.5, 62, 1.1, 0, Math.PI * 2);
+    ctx.arc(21.5, 70, 1.1, 0, Math.PI * 2);
+    ctx.arc(32.5, 70, 1.1, 0, Math.PI * 2);
+    ctx.fill();
   } else if (isPracticeDummy(f)) {
     ctx.strokeStyle = "#111827";
     ctx.lineWidth = 3;
@@ -12807,6 +13577,44 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.quadraticCurveTo(18.2, 31.8, 16.5, 33.5);
     ctx.closePath();
     ctx.fill();
+  } else if (f.technique === "blackleg") {
+    // SANJI_PATCH: sleek blond hair with the long fringe sweeping down
+    // over the leading side of the face (his hidden-eye side), plus the
+    // chin stubble. Hair silhouette only - no facial features.
+    const hairSway = idle * 0.5;
+    ctx.fillStyle = skin.hair;
+    ctx.beginPath();
+    ctx.moveTo(13, 24 + hairSway);
+    ctx.quadraticCurveTo(11.5, 8, 26, 6.5);
+    ctx.quadraticCurveTo(40, 7.5, 39.5, 22);
+    // fringe curtain over the front half of the face
+    ctx.lineTo(39.5, 30 + hairSway);
+    ctx.quadraticCurveTo(37.5, 33, 35.5, 29.5 + hairSway);
+    ctx.lineTo(34.5, 20);
+    ctx.quadraticCurveTo(31, 13.5, 24, 13);
+    ctx.quadraticCurveTo(17, 13.5, 15.5, 20);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(146, 104, 26, 0.55)";
+    ctx.lineWidth = 1.4;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(33.5, 15);
+    ctx.quadraticCurveTo(37, 20, 37.4, 28);
+    ctx.moveTo(18, 10.5);
+    ctx.quadraticCurveTo(26, 8.5, 33, 11);
+    ctx.stroke();
+    // chin stubble - a light scratchy patch, not a mouth
+    ctx.strokeStyle = "rgba(120, 90, 40, 0.6)";
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.moveTo(22.5, 34.5);
+    ctx.lineTo(24, 36.2);
+    ctx.moveTo(25.5, 35);
+    ctx.lineTo(27, 36.8);
+    ctx.moveTo(28.5, 34.6);
+    ctx.lineTo(30, 36.2);
+    ctx.stroke();
   }
   ctx.restore();
 
@@ -12895,7 +13703,13 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       skinColor
     );
   }
-  if (f.attacking) {
+  if (f.attacking && isSanji(f) && f.attacking !== "backThrow") {
+    // SANJI_PATCH: he never punches - while kicking, both hands stay up
+    // in a loose boxing-style guard (pockets are for after the fight).
+    const guardBob = Math.sin(frame * 0.35) * 1.2;
+    drawArmRig({ x: 40, y: 48 }, { x: 50, y: 58 }, { x: 44, y: 45 + guardBob });
+    drawArmRig({ x: 12, y: 50 }, { x: 21, y: 60 }, { x: 27, y: 48 - guardBob });
+  } else if (f.attacking) {
     const attack = getAttackSpec(f);
     const windup = f.attackFrame < attack.windup;
     const active = f.attackFrame >= attack.windup && f.attackFrame <= attack.windup + attack.active;
@@ -13083,6 +13897,15 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     }
     }
     }
+  } else if (isSanji(f) && ((f.sanjiDiableTicks || 0) > 0 || (f.sanjiDiveKickTicks || 0) > 0)) {
+    // SANJI_PATCH: arms swept back behind him through the flying kicks.
+    drawArmRig({ x: 40, y: 48 }, { x: 28, y: 56 }, { x: 14, y: 64 });
+    drawArmRig({ x: 12, y: 50 }, { x: 0, y: 58 }, { x: -12, y: 66 });
+  } else if (isSanji(f) && (f.sanjiMuttonTicks || 0) > 0) {
+    // SANJI_PATCH: hands in a tight guard while the legs do the talking.
+    const guardBob = Math.sin(frame * 0.55) * 1.6;
+    drawArmRig({ x: 40, y: 48 }, { x: 50, y: 58 }, { x: 44, y: 45 + guardBob });
+    drawArmRig({ x: 12, y: 50 }, { x: 21, y: 60 }, { x: 27, y: 48 - guardBob });
   } else if ((f.thraggFlightTicks || 0) > 0 && jumpPose) {
     // THRAGG_FLIGHT_POSE_PATCH: lead fist punched out ahead, rear arm
     // tucked back along the flank.
@@ -13268,21 +14091,29 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     const lightShield = f.technique === "deathnote";
     // THRAGG_THEME_PATCH: white shield bubble to match his suit.
     const thraggShield = f.technique === "brawler";
-    const fillColor = thraggShield
+    // SANJI_PATCH: flame-orange shield bubble.
+    const sanjiShield = f.technique === "blackleg";
+    const fillColor = sanjiShield
+      ? `rgba(250, 204, 21, ${0.05 + shieldPower * 0.13 + hitFlash * 0.08})`
+      : thraggShield
       ? `rgba(226, 232, 240, ${0.06 + shieldPower * 0.14 + hitFlash * 0.08})`
       : lightShield
       ? `rgba(120, 72, 35, ${0.07 + shieldPower * 0.16 + hitFlash * 0.08})`
       : shrineShield
       ? `rgba(127, 29, 29, ${0.05 + shieldPower * 0.14 + hitFlash * 0.08})`
       : `rgba(14, 165, 233, ${0.04 + shieldPower * 0.12 + hitFlash * 0.08})`;
-    const strokeColor = thraggShield
+    const strokeColor = sanjiShield
+      ? `rgba(253, 224, 71, ${0.3 + shieldPower * 0.55 + hitFlash * 0.16})`
+      : thraggShield
       ? `rgba(248, 250, 252, ${0.3 + shieldPower * 0.55 + hitFlash * 0.16})`
       : lightShield
       ? `rgba(202, 138, 74, ${0.34 + shieldPower * 0.52 + hitFlash * 0.16})`
       : shrineShield
       ? `rgba(248, 113, 113, ${0.26 + shieldPower * 0.55 + hitFlash * 0.16})`
       : `rgba(196, 241, 255, ${0.24 + shieldPower * 0.58 + hitFlash * 0.16})`;
-    const innerColor = thraggShield
+    const innerColor = sanjiShield
+      ? `rgba(202, 138, 4, ${0.22 + shieldPower * 0.32})`
+      : thraggShield
       ? `rgba(148, 163, 184, ${0.22 + shieldPower * 0.32})`
       : lightShield
       ? `rgba(92, 54, 26, ${0.24 + shieldPower * 0.34})`
@@ -13311,7 +14142,9 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.setLineDash([]);
 
     if (shieldPower < 0.34 || hitFlash > 0) {
-      ctx.strokeStyle = thraggShield
+      ctx.strokeStyle = sanjiShield
+        ? `rgba(254, 240, 138, ${0.3 + hitFlash * 0.5})`
+        : thraggShield
         ? `rgba(255, 255, 255, ${0.32 + hitFlash * 0.5})`
         : lightShield
         ? `rgba(253, 230, 138, ${0.28 + hitFlash * 0.5})`
@@ -13361,8 +14194,8 @@ function drawTechniquePreview(canvasEl, technique) {
     w: technique === "shrine" ? 52 : technique === "brawler" ? 54 : 50,
     h: 128,
     dir: 1,
-    color: technique === "shrine" ? "#dc2626" : technique === "deathnote" ? "#111827" : technique === "brawler" ? "#eceef2" : "#2563eb",
-    accent: technique === "shrine" ? "#991b1b" : technique === "deathnote" ? "#b91c1c" : technique === "brawler" ? "#dc2626" : "#1d4ed8"
+    color: technique === "shrine" ? "#dc2626" : technique === "deathnote" ? "#111827" : technique === "brawler" ? "#eceef2" : technique === "blackleg" ? "#16181f" : "#2563eb",
+    accent: technique === "shrine" ? "#991b1b" : technique === "deathnote" ? "#b91c1c" : technique === "brawler" ? "#dc2626" : technique === "blackleg" ? "#facc15" : "#1d4ed8"
   });
   previewFighter.technique = technique;
   previewFighter.y = GROUND - previewFighter.h;
@@ -13371,7 +14204,7 @@ function drawTechniquePreview(canvasEl, technique) {
   ctx = previewCtx;
   ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
   const backdrop = ctx.createLinearGradient(0, 0, 0, canvasEl.height);
-  backdrop.addColorStop(0, technique === "shrine" ? "#2b1420" : technique === "deathnote" ? "#180b12" : technique === "brawler" ? "#141822" : "#142033");
+  backdrop.addColorStop(0, technique === "shrine" ? "#2b1420" : technique === "deathnote" ? "#180b12" : technique === "brawler" ? "#141822" : technique === "blackleg" ? "#221208" : "#142033");
   backdrop.addColorStop(1, "#050814");
   ctx.fillStyle = backdrop;
   ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
@@ -13395,6 +14228,7 @@ function renderTechniquePreviews() {
   drawTechniquePreview(techniquePreviewCanvases.shrine, "shrine");
   drawTechniquePreview(techniquePreviewCanvases.deathnote, "deathnote");
   drawTechniquePreview(techniquePreviewCanvases.brawler, "brawler");
+  drawTechniquePreview(techniquePreviewCanvases.blackleg, "blackleg"); // SANJI_PATCH
 }
 
 // THRAGG_BRAWLER_PATCH: install his character-select card the same way
@@ -13433,6 +14267,42 @@ function installThraggTechniqueOption() {
 }
 
 window.addEventListener("DOMContentLoaded", installThraggTechniqueOption);
+
+// SANJI_PATCH: Sanji's character-select card, cloned at runtime like
+// Thragg's and Light's - no index.html edits required.
+function installSanjiTechniqueOption() {
+  if (!techniqueScreen) return;
+  const existing = techniqueScreen.querySelector('[data-technique="blackleg"]');
+  if (!existing) {
+    const sample = techniqueScreen.querySelector(".technique-button");
+    const button = sample ? sample.cloneNode(true) : document.createElement("button");
+    button.type = "button";
+    button.className = sample ? sample.className : "technique-button";
+    button.dataset.technique = "blackleg";
+    button.innerHTML = `
+      <canvas id="blacklegPreview" width="320" height="180" aria-hidden="true"></canvas>
+      <strong>Sanji</strong>
+      <span>Black Leg style - kicks, fire, aerial pressure</span>
+      <small>Diable Jambe · Sky Walk · Mutton Shot · Ifrit Jambe</small>
+    `;
+    const holder = sample?.parentNode || techniqueScreen;
+    holder.appendChild(button);
+  }
+
+  const canvas = document.getElementById("blacklegPreview");
+  if (canvas) techniquePreviewCanvases.blackleg = canvas;
+
+  techniqueButtons = Array.from(document.querySelectorAll(".technique-button"));
+  techniqueButtons.forEach((button) => {
+    if (button.dataset.sanjiBound === "1") return;
+    button.dataset.sanjiBound = "1";
+    button.addEventListener("click", () => finishTechniqueSelect(button.dataset.technique));
+  });
+
+  renderTechniquePreviews();
+}
+
+window.addEventListener("DOMContentLoaded", installSanjiTechniqueOption);
 
 
 function drawSukunaModelCleanup(f) {
@@ -15298,6 +16168,9 @@ window.addEventListener("keydown", (event) => {
     } else if (fighter?.technique === "brawler") {
       // THRAGG_BRAWLER_PATCH: flying dash is instant, no aim/charge needed.
       if (startFlyingDash(fighter) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("flying-dash");
+    } else if (fighter?.technique === "blackleg") {
+      // SANJI_PATCH: S kicks the air - Sky Walk.
+      if (startSkyWalk(fighter) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("sky-walk");
     }
   }
   if (isEventForAction("ultimate", key, code) && !event.repeat) beginUltimateAim(player, mouseAimWorld);
