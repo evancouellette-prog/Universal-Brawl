@@ -4389,6 +4389,10 @@ function restartWholeBattle(broadcast = true) {
   readyCountdownValue = 0;
   lastRoundWinner = null;
   koWinner = null;
+  // CPU_OPPONENT_VARIETY_PATCH: restarting the match returns to character
+  // select, so drop the lock and roll a fresh random CPU opponent - the
+  // Restart button used to keep re-facing the same character (Sukuna).
+  cpuOpponentTechniqueLocked = false;
   clearInterval(readyCountdownId);
   setCountdownOverlay(0);
   keys.clear();
@@ -13456,19 +13460,20 @@ function getTechniqueSkin(f, flash) {
     };
   }
 
-  // THRAGG_LOOK_PATCH: the actual Viltrumite - pale skin, slicked black
-  // hair and the walrus mustache (drawn in the head section), charcoal
-  // Viltrumite uniform with blood-red trim and grey boots.
+  // THRAGG_EMPEROR_PATCH: Grand Regent look - blood-red Viltrumite robes
+  // with a grey/silver inner robe + belt, a big grey-white fur collar
+  // (drawn in the torso section), pale skin, slicked black hair and the
+  // walrus mustache. Grey boots.
   if (f.technique === "brawler") {
     return {
-      body: "#eceef2",
+      body: "#b8332b",
       skin: "#efc9a8",
-      accent: "#dc2626",
-      pants: "#dfe3e9",
-      shoe: "#b91c1c",
+      accent: "#d7dbe0",
+      pants: "#b7bcc4",
+      shoe: "#9aa0a8",
       hair: "#101114",
       eye: "#0b0705",
-      mark: "#dc2626"
+      mark: "#d7dbe0"
     };
   }
 
@@ -15276,75 +15281,120 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.quadraticCurveTo(27, 75, 40, 71);
     ctx.stroke();
   } else if (f.technique === "brawler") {
-    // THRAGG_LOOK_PATCH: Viltrumite uniform - red collar V over the
-    // chest, faint shoulder seams, and a red belt with a steel buckle.
-    ctx.strokeStyle = skin.accent;
-    ctx.lineWidth = 3;
+    // THRAGG_EMPEROR_PATCH: the Grand Regent robes from the reference -
+    // blood-red outer robe (the torso is already red) with red coat
+    // panels flaring over the sides of the legs, a grey inner robe strip
+    // and belt, the Viltrumite chest emblem, and a big grey-white fur
+    // collar. (Torso base fill is red via the palette.)
+    // red coat panels flaring down over the outer legs (drawn first, they
+    // sit over the leg tops but leave the shins visible for the walk)
+    ctx.fillStyle = "#a02a23";
+    ctx.beginPath();
+    ctx.moveTo(11, 60);
+    ctx.quadraticCurveTo(2, 84, 6, 108);
+    ctx.lineTo(16, 106);
+    ctx.quadraticCurveTo(16, 84, 20, 66);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(43, 60);
+    ctx.quadraticCurveTo(52, 84, 48, 108);
+    ctx.lineTo(38, 106);
+    ctx.quadraticCurveTo(38, 84, 34, 66);
+    ctx.closePath();
+    ctx.fill();
+    // darker robe folds
+    ctx.strokeStyle = "rgba(90, 20, 16, 0.7)";
+    ctx.lineWidth = 1.6;
     ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.moveTo(17, 39);
-    ctx.lineTo(26, 52);
-    ctx.lineTo(36, 39);
+    ctx.moveTo(9, 70); ctx.quadraticCurveTo(7, 88, 10, 104);
+    ctx.moveTo(45, 70); ctx.quadraticCurveTo(47, 88, 44, 104);
     ctx.stroke();
-    ctx.strokeStyle = "rgba(255,255,255,0.10)";
-    ctx.lineWidth = 2;
+    // grey inner-robe strip down the center chest-to-hem
+    ctx.fillStyle = "#c2c7cf";
     ctx.beginPath();
-    ctx.moveTo(14, 44);
-    ctx.lineTo(19, 62);
-    ctx.moveTo(39, 44);
-    ctx.lineTo(35, 62);
-    ctx.stroke();
-    ctx.fillStyle = skin.accent;
-    ctx.fillRect(12, 68, 31, 5.5);
-    ctx.fillStyle = "#c7ced6";
-    ctx.fillRect(24, 67.4, 6, 6.6);
-    // THRAGG_THEME_PATCH: the fur pelt draped over his shoulders (the
-    // Battle Beast trophy) - tawny tufts on each shoulder with a collar
-    // bridging behind the neck, jagged fur edges and darker strand lines.
-    ctx.fillStyle = "#7c552f";
-    ctx.beginPath();
-    ctx.moveTo(15, 36.5);
-    ctx.quadraticCurveTo(26, 32.5, 39, 36.5);
-    ctx.lineTo(38, 40.5);
-    ctx.quadraticCurveTo(26, 37, 16, 40.5);
+    ctx.moveTo(22, 47);
+    ctx.lineTo(32, 47);
+    ctx.lineTo(33, 104);
+    ctx.lineTo(27, 108);
+    ctx.lineTo(21, 104);
     ctx.closePath();
     ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(6.5, 37.5);
-    ctx.quadraticCurveTo(12, 33.5, 19, 36);
-    ctx.lineTo(20, 47.5);
-    ctx.lineTo(16.5, 43.5);
-    ctx.lineTo(15, 50.5);
-    ctx.lineTo(11.5, 45);
-    ctx.lineTo(9, 51.5);
-    ctx.lineTo(6, 44.5);
-    ctx.closePath();
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(47.5, 37.5);
-    ctx.quadraticCurveTo(42, 33.5, 35, 36);
-    ctx.lineTo(34, 47.5);
-    ctx.lineTo(37.5, 43.5);
-    ctx.lineTo(39, 50.5);
-    ctx.lineTo(42.5, 45);
-    ctx.lineTo(45, 51.5);
-    ctx.lineTo(48, 44.5);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = "rgba(59, 42, 20, 0.85)";
+    ctx.strokeStyle = "rgba(120, 126, 134, 0.7)";
     ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    ctx.moveTo(27, 74); ctx.lineTo(27, 104);
+    ctx.moveTo(24, 88); ctx.lineTo(24, 104);
+    ctx.moveTo(30, 88); ctx.lineTo(30, 104);
+    ctx.stroke();
+    // red robe opening (V) over the grey strip at the chest
+    ctx.fillStyle = "#b8332b";
+    ctx.beginPath();
+    ctx.moveTo(16, 40); ctx.lineTo(27, 56); ctx.lineTo(38, 40);
+    ctx.lineTo(38, 47); ctx.lineTo(27, 60); ctx.lineTo(16, 47);
+    ctx.closePath();
+    ctx.fill();
+    // grey/silver belt + buckle
+    ctx.fillStyle = "#cdd2d9";
+    ctx.fillRect(19, 67, 16, 7);
+    ctx.strokeStyle = "#8a8f97";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(19, 67, 16, 7);
+    ctx.fillStyle = "#e6e9ee";
+    ctx.fillRect(24.5, 66, 5, 9);
+    ctx.strokeStyle = "#8a8f97";
+    ctx.strokeRect(24.5, 66, 5, 9);
+    // Viltrumite chest emblem - grey ring with a hooked glyph
+    ctx.fillStyle = "#d7dbe0";
+    ctx.beginPath();
+    ctx.arc(27, 48, 5.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#b8332b";
+    ctx.beginPath();
+    ctx.arc(27, 48, 3.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#d7dbe0";
+    ctx.lineWidth = 1.5;
     ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.moveTo(10, 38.5);
-    ctx.lineTo(11, 46.5);
-    ctx.moveTo(14, 37.5);
-    ctx.lineTo(15.5, 45.5);
-    ctx.moveTo(44, 38.5);
-    ctx.lineTo(43, 46.5);
-    ctx.moveTo(40, 37.5);
-    ctx.lineTo(38.5, 45.5);
-    ctx.moveTo(20, 35);
-    ctx.quadraticCurveTo(26, 33.5, 34, 35);
+    ctx.arc(27, 48, 2.1, Math.PI * 0.25, Math.PI * 1.75);
+    ctx.moveTo(27, 46);
+    ctx.lineTo(27, 50);
+    ctx.stroke();
+    // THRAGG_EMPEROR_PATCH: the big grey-white fur collar standing up
+    // around the neck and over the shoulders.
+    ctx.fillStyle = "#e7eaee";
+    // left and right fur masses sweeping up off the shoulders
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(23, 42);
+    ctx.quadraticCurveTo(12, 40, 6, 26);
+    ctx.quadraticCurveTo(3, 33, 5, 40);
+    ctx.quadraticCurveTo(2, 44, 8, 47);
+    ctx.quadraticCurveTo(16, 49, 23, 45);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(31, 42);
+    ctx.quadraticCurveTo(42, 40, 48, 26);
+    ctx.quadraticCurveTo(51, 33, 49, 40);
+    ctx.quadraticCurveTo(52, 44, 46, 47);
+    ctx.quadraticCurveTo(38, 49, 31, 45);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    // fur shading strands
+    ctx.strokeStyle = "rgba(150, 156, 164, 0.7)";
+    ctx.lineWidth = 1;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(8, 30); ctx.lineTo(11, 40);
+    ctx.moveTo(13, 32); ctx.lineTo(15, 42);
+    ctx.moveTo(18, 40); ctx.lineTo(20, 45);
+    ctx.moveTo(46, 30); ctx.lineTo(43, 40);
+    ctx.moveTo(41, 32); ctx.lineTo(39, 42);
+    ctx.moveTo(36, 40); ctx.lineTo(34, 45);
     ctx.stroke();
   } else if (f.technique === "blackleg") {
     // SANJI_PATCH: black double-breasted suit over a blue shirt with a
@@ -16573,17 +16623,34 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       }
       ctx.restore();
     } else {
-      const attacking = (f.zealotChargeTicks || 0) > 0 || (f.zealotFlurryTicks || 0) > 0 ||
-        Boolean(f.attacking && f.attacking !== "backThrow");
-      if (attacking) {
-        // thrust both blades forward
-        drawPsiBlade(48, 58, -0.16 + flick, 40);
-        drawPsiBlade(44, 70, 0.05 + flick, 36);
-      } else {
-        // at rest: blades sweep down-and-outward from each forearm
-        drawPsiBlade(48, 72, 0.68 + flick, 38);   // front / lead side
-        drawPsiBlade(5, 72, Math.PI - 0.68 - flick, 38); // rear side
+      // ARTANIS_DETAIL_PATCH: blades project STRAIGHT OUT (horizontal) from
+      // the top of each forearm - never on a downward angle. At rest the
+      // front blade points forward and the rear blade points back so both
+      // are always visible; during an attack both SWING forward through a
+      // slash arc.
+      let swing = 0;     // slash offset (radians)
+      let attacking = false;
+      if (f.attacking === "light" || f.attacking === "heavy") {
+        const spec = getAttackSpec(f);
+        if (spec) {
+          const total = spec.windup + spec.active + spec.recovery;
+          const t = Math.min(1, (f.attackFrame || 0) / Math.max(1, total));
+          swing = -0.9 + t * 1.8; // wind up (-) then slash down (+)
+        }
+        attacking = true;
+      } else if ((f.zealotFlurryTicks || 0) > 0) {
+        swing = Math.sin(frame * 0.9) * 0.9; // rapid alternating slashes
+        attacking = true;
+      } else if ((f.zealotChargeTicks || 0) > 0) {
+        swing = -0.2;
+        attacking = true;
       }
+      // front / lead arm blade points forward (and swings when attacking)
+      drawPsiBlade(46, 62, swing + flick, 40);
+      // rear arm blade: points back at rest (so it clears the body and is
+      // visible), sweeps forward with the front during an attack
+      if (attacking) drawPsiBlade(12, 58, swing * 0.85 + flick, 36);
+      else drawPsiBlade(9, 62, Math.PI - flick, 34);
     }
   }
 
