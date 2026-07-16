@@ -1792,6 +1792,22 @@ const SANJI_ULT_TICKS = 20 * 60;
 const SANJI_ULT_FINISHER_WINDOW_TICKS = 5 * 60;
 const SANJI_BOEUF_DAMAGE = 55;
 const SANJI_BOEUF_KNOCKBACK = 46;
+// SANJI_UTENSIL_PATCH: thrown-utensil kit. Each utensil trades reload speed
+// for a different effect - chopsticks reload fastest, fork pins (roots) but
+// reloads slowly, spoon launches, knife hits hard.
+const SANJI_UTENSIL_ORDER = ["chopsticks", "fork", "spoon", "knife"];
+const SANJI_UTENSILS = {
+  chopsticks: { label: "CHOPSTICKS", reload: 26, damage: 5, speed: 16, knockback: 7, root: 0 },
+  fork: { label: "FORK", reload: 150, damage: 8, speed: 13.5, knockback: 6, root: 48 },
+  spoon: { label: "SPOON", reload: 96, damage: 6, speed: 13, knockback: 44, root: 0 },
+  knife: { label: "KNIFE", reload: 96, damage: 17, speed: 16.5, knockback: 11, root: 0 }
+};
+const SANJI_UTENSIL_LIFE = 60;
+// SANJI_COOK_PATCH: channel a quick meal to heal back to the current health
+// bar - the same ceiling RCT uses - while standing still and vulnerable.
+const SANJI_COOK_CHANNEL_TICKS = 78;
+const SANJI_COOK_COOLDOWN_TICKS = 11 * 60;
+const SANJI_COOK_HEAL_PER_TICK = 3.2;
 
 // VECNA_PATCH: Vecna - summoner/controller. Hive Mind corruption passive,
 // Demobat Swarm, Demodog Hunt, Upside Down Slip, Bone Snap, and The
@@ -3130,6 +3146,12 @@ function makeFighter(config) {
     sanjiMuttonNextHit: 0,
     sanjiUltTicks: 0,
     sanjiBoeufUsed: false,
+    // SANJI_UTENSIL_PATCH + SANJI_COOK_PATCH
+    sanjiUtensil: "chopsticks",
+    sanjiUtensilCooldown: 0,
+    sanjiThrowTicks: 0,
+    sanjiCookTicks: 0,
+    sanjiCookCooldown: 0,
     burnTicks: 0,
     burnTickCounter: 0,
     // VECNA_PATCH: Hive Mind kit state + the shared root debuff.
@@ -3250,6 +3272,9 @@ function applyTechniqueStats(f, preserveMeters = false) {
     f.sanjiMuttonCooldown = 0;
     f.sanjiUltTicks = 0;
     f.sanjiBoeufUsed = false;
+    f.sanjiUtensilCooldown = 0;
+    f.sanjiCookTicks = 0;
+    f.sanjiCookCooldown = 0;
   }
 }
 
@@ -3511,6 +3536,7 @@ function pinStationaryPracticeDummy(f = enemy) {
   f.sanjiDiveKickTicks = 0;
   f.sanjiMuttonTicks = 0;
   f.sanjiSkyWalkJumps = 0;
+  f.sanjiCookTicks = 0;
   f.burnTicks = 0;
   f.dodging = 0;
 }
@@ -4007,7 +4033,7 @@ function getTechniqueControlHtml(technique) {
   }
   if (technique === "blackleg") {
     // SANJI_PATCH: kick-only kit, no JJK controls.
-    return '<span><kbd>Left Click</kbd> Diable Jambe</span><span><kbd>Right Click</kbd> Mutton Shot</span><span><kbd>S</kbd> Sky Walk (air)</span><span><kbd>Attack in Sky Walk</kbd> Dive Kick</span><span><kbd>C</kbd> Ifrit Jambe / Boeuf Burst</span>';
+    return '<span><kbd>Left Click</kbd> Diable Jambe</span><span><kbd>Right Click</kbd> Mutton Shot</span><span><kbd>S</kbd> Sky Walk (air)</span><span><kbd>Attack in Sky Walk</kbd> Dive Kick</span><span><kbd>Tab</kbd> Throw Utensil</span><span><kbd>R</kbd> Switch Utensil</span><span><kbd>F</kbd> Cook (heal)</span><span><kbd>C</kbd> Ifrit Jambe / Boeuf Burst</span>';
   }
   if (technique === "hivemind") {
     // VECNA_PATCH: summoner kit, no JJK controls.
@@ -4024,7 +4050,7 @@ function getExtraBattleControlHtml(technique) {
     return '<span><kbd>Identity 100%</kbd> unlocks Death Note</span><span><kbd>Eye Deal</kbd> after Misa and Soichiro are gone</span>';
   }
   if (technique === "brawler") return ''; // THRAGG_NO_JJK_PATCH: nothing JJK down here
-  if (technique === "blackleg") return '<span><kbd>Heat 100%</kbd> next fire kick +15% and burns</span>'; // SANJI_PATCH
+  if (technique === "blackleg") return '<span><kbd>Heat 100%</kbd> next fire attack +15% and burns</span><span><kbd>Chopsticks</kbd> fast reload · <kbd>Fork</kbd> pins · <kbd>Spoon</kbd> knockback · <kbd>Knife</kbd> damage</span>'; // SANJI_PATCH
   if (technique === "hivemind") return '<span><kbd>Corruption 100%</kbd> next summon/ability is enhanced</span>'; // VECNA_PATCH
   return '<span><kbd>X</kbd> Domain Expansion</span><span><kbd>Z</kbd> Simple Domain</span>';
 }
@@ -4388,7 +4414,7 @@ function applyJoinerFighterStateOnHost(remoteFighter) {
     "informationMeter", "identityProgress", "lightSummonStage", "lightSummonType", "lightSummonHealth", "lightSummonMaxHealth", "lightSummonTicks", "lightSummonHitFlash", "lightSummonAnchorX", "lightSummonAnchorY", "lightSummonAnchorDir", "potatoCooldown", "potatoFocusTicks", "potatoVulnerableTicks", "lightRyukCooldown", "lightRyukCooldownMax", "lightInvestigationCooldown", "lightInvestigationCooldownMax", "eyeDealUsed", "eyeDealGlowTicks", "deathNoteSlowTicks", "deathNoteFearTicks", "ctLockTimer",
     "thraggGrabState", "thraggGrabTimer", "thraggGrabCooldown", "thraggFlightTicks", "thraggDashCooldown", "grabHeldTimer", "grabHeldBy", "grabLockY", "grabTechable",
     // SANJI_PATCH
-    "sanjiHeat", "sanjiDiableTicks", "sanjiDiableAir", "sanjiDiableCooldown", "sanjiSkyWalkJumps", "sanjiSkyWalkCooldown", "sanjiDiveKickTicks", "sanjiMuttonTicks", "sanjiMuttonCooldown", "sanjiUltTicks", "sanjiBoeufUsed", "burnTicks",
+    "sanjiHeat", "sanjiDiableTicks", "sanjiDiableAir", "sanjiDiableCooldown", "sanjiSkyWalkJumps", "sanjiSkyWalkCooldown", "sanjiDiveKickTicks", "sanjiMuttonTicks", "sanjiMuttonCooldown", "sanjiUltTicks", "sanjiBoeufUsed", "sanjiUtensil", "sanjiUtensilCooldown", "sanjiThrowTicks", "sanjiCookTicks", "sanjiCookCooldown", "burnTicks",
     // VECNA_PATCH
     "vecnaCorruption", "vecnaBatCooldown", "vecnaDogCooldown", "vecnaSlipCooldown", "vecnaSlipTicks", "vecnaBoneSnapCooldown", "rootedTicks"
   ];
@@ -4485,6 +4511,8 @@ if (data.type === "role") {
       if (data.action === "backThrow") handleThrowInput(enemy, false);
       if (data.action === "flying-dash") startFlyingDash(enemy);
       if (data.action === "sky-walk") startSkyWalk(enemy); // SANJI_PATCH
+      if (data.action === "sanji-utensil-switch") switchSanjiUtensil(enemy); // SANJI_UTENSIL_PATCH
+      if (data.action === "sanji-cook") startSanjiCook(enemy); // SANJI_COOK_PATCH
       if (data.action === "upside-slip") startUpsideDownSlip(enemy); // VECNA_PATCH
       if (data.action === "dodge") startDodge(enemy, getVectorFromInput(remoteInput));
       if (data.action === "jump") jumpFighterWithMove(enemy, (remoteInput.right ? 1 : 0) - (remoteInput.left ? 1 : 0));
@@ -5379,6 +5407,16 @@ function getExtraCooldownItems(f) {
   // SANJI_PATCH: Heat Meter + Ifrit timer, nothing JJK.
   if (f.technique === "blackleg") {
     items.push({ name: "HEAT", current: f.sanjiHeat || 0, max: SANJI_HEAT_MAX, mode: "resource" });
+    // SANJI_UTENSIL_PATCH: loaded utensil + reload gauge.
+    const utensilLabel = (SANJI_UTENSILS[f.sanjiUtensil] || SANJI_UTENSILS.chopsticks).label;
+    const reloadMax = Math.max(1, Math.round((SANJI_UTENSILS[f.sanjiUtensil] || SANJI_UTENSILS.chopsticks).reload * ((f.sanjiUltTicks || 0) > 0 ? 0.6 : 1)));
+    items.push({ name: utensilLabel, current: f.sanjiUtensilCooldown || 0, max: reloadMax });
+    // SANJI_COOK_PATCH: meal channel / cooldown.
+    if ((f.sanjiCookTicks || 0) > 0) {
+      items.push({ name: "COOKING", current: f.sanjiCookTicks, max: SANJI_COOK_CHANNEL_TICKS, mode: "active" });
+    } else {
+      items.push({ name: "MEAL", current: f.sanjiCookCooldown || 0, max: SANJI_COOK_COOLDOWN_TICKS });
+    }
     if ((f.sanjiUltTicks || 0) > 0) {
       items.push({ name: "IFRIT JAMBE", current: f.sanjiUltTicks, max: SANJI_ULT_TICKS, mode: "active" });
     }
@@ -5988,9 +6026,10 @@ function isThraggCommitted(f) {
   return Boolean(f && f.thraggGrabState && f.thraggGrabState !== "idle");
 }
 
-// SANJI_PATCH: mid-Diable-dash and mid-Mutton-flurry he is committed.
+// SANJI_PATCH: mid-Diable-dash, mid-Mutton-flurry, and mid-cook he is
+// committed / locked out of other actions.
 function isSanjiCommitted(f) {
-  return Boolean(f && ((f.sanjiDiableTicks || 0) > 0 || (f.sanjiMuttonTicks || 0) > 0));
+  return Boolean(f && ((f.sanjiDiableTicks || 0) > 0 || (f.sanjiMuttonTicks || 0) > 0 || (f.sanjiCookTicks || 0) > 0));
 }
 
 function isSpecialLocked(f) {
@@ -6005,7 +6044,7 @@ function isSpecialLocked(f) {
 function isMovementLocked(f) {
   const owner = getFighterOwner(f);
   const clashing = Boolean(owner && domainClash?.attempts?.[owner]);
-  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || (f?.sanjiMuttonTicks || 0) > 0 || clashing; // SANJI_PATCH: the flurry roots him, the dash doesn't
+  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || (f?.sanjiMuttonTicks || 0) > 0 || (f?.sanjiCookTicks || 0) > 0 || clashing; // SANJI_PATCH: flurry + cooking root him, the dash doesn't
 }
 
 function getMoveInputForFighter(f) {
@@ -6118,6 +6157,7 @@ function handleThrowInput(f, requireButtons = true) {
   }
   if (f.technique === "brawler") return startThraggGrab(f);
   if (f.technique === "hivemind") return startBoneSnap(f); // VECNA_PATCH
+  if (f.technique === "blackleg") return throwSanjiUtensil(f); // SANJI_UTENSIL_PATCH
   return startBackThrow(f, requireButtons);
 }
 
@@ -6822,6 +6862,114 @@ function updateSanjiSystems(f, opponent) {
   updateSanjiDiable(f, opponent);
   updateSanjiDiveKick(f, opponent);
   updateSanjiMutton(f, opponent);
+  updateSanjiUtensils(f);
+  updateSanjiCook(f);
+}
+
+// SANJI_UTENSIL_PATCH: cycle the loaded utensil (Ifrit doesn't change this).
+function switchSanjiUtensil(f) {
+  if (!isSanji(f) || gameOver || paused || f.ko) return false;
+  const idx = SANJI_UTENSIL_ORDER.indexOf(f.sanjiUtensil || "chopsticks");
+  f.sanjiUtensil = SANJI_UTENSIL_ORDER[(idx + 1) % SANJI_UTENSIL_ORDER.length];
+  showActionWarning(SANJI_UTENSILS[f.sanjiUtensil].label);
+  updateHud();
+  return true;
+}
+
+// Throw the currently loaded utensil as a projectile.
+function throwSanjiUtensil(f) {
+  if (!isSanji(f) || gameOver || paused || isSpecialLocked(f) || f.ko || f.stun > 0 ||
+    f.knockdown || f.dodging > 0 || f.attacking || (f.sanjiCookTicks || 0) > 0) return false;
+  if ((f.sanjiUtensilCooldown || 0) > 0) return false;
+  const spec = SANJI_UTENSILS[f.sanjiUtensil] || SANJI_UTENSILS.chopsticks;
+  const ult = (f.sanjiUltTicks || 0) > 0;
+  // Ifrit Jambe speeds the reload; empowered damage from full Heat.
+  f.sanjiUtensilCooldown = Math.round(spec.reload * (ult ? 0.6 : 1));
+  f.sanjiThrowTicks = 10;
+  const empowered = consumeSanjiHeatForFire(f);
+  const center = getFighterCenter(f);
+  const speed = spec.speed;
+  projectiles.push({
+    owner: f === player ? "player" : "enemy",
+    move: "utensil",
+    utensilKind: f.sanjiUtensil,
+    x: center.x + f.dir * (f.w * 0.5 + 4),
+    y: center.y - 6,
+    vx: f.dir * speed,
+    vy: 0,
+    baseVx: f.dir * speed,
+    baseVy: 0,
+    radius: 11,
+    damage: Math.ceil((spec.damage + (ult ? 3 : 0)) * (empowered ? 1.15 : 1) * getOutgoingDamageMultiplier(f)),
+    knockback: spec.knockback,
+    utensilRoot: spec.root,
+    utensilBurn: empowered || ult,
+    dir: f.dir,
+    aimX: f.dir,
+    aimY: 0,
+    angle: f.dir > 0 ? 0 : Math.PI,
+    spin: 0,
+    maxTravel: Infinity,
+    traveled: 0,
+    life: SANJI_UTENSIL_LIFE,
+    maxLife: SANJI_UTENSIL_LIFE,
+    hit: false
+  });
+  gainSanjiHeat(f, 3);
+  updateHud();
+  return true;
+}
+
+function updateSanjiUtensils(f) {
+  if ((f.sanjiUtensilCooldown || 0) > 0) f.sanjiUtensilCooldown -= 1;
+  if ((f.sanjiThrowTicks || 0) > 0) f.sanjiThrowTicks -= 1;
+}
+
+// SANJI_COOK_PATCH: cook a quick meal - stand still and channel to heal
+// back up to the current health bar ceiling. Vulnerable while cooking;
+// being hit cancels it.
+function startSanjiCook(f) {
+  if (!isSanji(f) || gameOver || paused || isSpecialLocked(f) || f.ko || f.stun > 0 ||
+    f.knockdown || f.dodging > 0 || f.attacking) return false;
+  if ((f.sanjiCookCooldown || 0) > 0 || (f.sanjiCookTicks || 0) > 0) return false;
+  if (f.health >= getCurrentHealthBarCeiling(f)) {
+    showActionWarning("BAR ALREADY FULL");
+    return false;
+  }
+  f.sanjiCookTicks = SANJI_COOK_CHANNEL_TICKS;
+  f.sanjiCookCooldown = SANJI_COOK_COOLDOWN_TICKS;
+  f.blocking = false;
+  f.vx = 0;
+  showActionWarning("COOKING");
+  return true;
+}
+
+function cancelSanjiCook(f, spent = true) {
+  if ((f.sanjiCookTicks || 0) <= 0) return;
+  f.sanjiCookTicks = 0;
+  if (!spent) f.sanjiCookCooldown = Math.min(f.sanjiCookCooldown || 0, Math.round(SANJI_COOK_COOLDOWN_TICKS * 0.4));
+}
+
+function updateSanjiCook(f) {
+  if ((f.sanjiCookCooldown || 0) > 0 && (f.sanjiCookTicks || 0) <= 0) f.sanjiCookCooldown -= 1;
+  if ((f.sanjiCookTicks || 0) <= 0) return;
+  // interrupted by hitstun/knockdown - no heal, shortened cooldown
+  if (f.stun > 0 || f.knockdown || f.ko || f.hurt > 4) {
+    cancelSanjiCook(f, false);
+    return;
+  }
+  f.sanjiCookTicks -= 1;
+  f.vx = 0;
+  const ceiling = getCurrentHealthBarCeiling(f);
+  f.health = Math.min(ceiling, f.health + SANJI_COOK_HEAL_PER_TICK);
+  f.delayedHealth = Math.max(f.delayedHealth || f.health, f.health);
+  if (frame % 6 === 0) {
+    spawnHitSpark(f.x + f.w / 2 + (Math.random() - 0.5) * 16, f.y + 30 + (Math.random() - 0.5) * 10, f.dir, "brown");
+  }
+  if (f.sanjiCookTicks <= 0 || f.health >= ceiling) {
+    f.sanjiCookTicks = 0;
+    updateHud();
+  }
 }
 
 // ==========================================================================
@@ -9860,6 +10008,17 @@ function applyProjectileHit(projectile, defender) {
     const owner = projectile.owner === "player" ? player : enemy;
     // Ryuk hit builds Info only. Name is Investigation-only.
     gainLightInfo(owner, 10);
+  } else if (projectile.move === "utensil" && !blocked) {
+    // SANJI_UTENSIL_PATCH: the fork pins the target (roots) in place;
+    // empowered/Ifrit utensils also burn. Landing utensils build Heat.
+    if ((projectile.utensilRoot || 0) > 0) {
+      defender.rootedTicks = Math.max(defender.rootedTicks || 0, projectile.utensilRoot);
+      defender.stun = Math.max(defender.stun, projectile.utensilRoot);
+      defender.vx = 0;
+    }
+    if (projectile.utensilBurn) applyBurn(defender);
+    const owner = projectile.owner === "player" ? player : enemy;
+    gainSanjiHeat(owner, 5);
   }
   hitStopTicks = Math.max(hitStopTicks, blocked ? 3 : (projectile.move === "purple" || projectile.move === "worldSlash") ? HITSTOP_HEAVY + 4 : projectile.move === "ryukStrike" ? HITSTOP_HEAVY + 1 : projectile.move === "cleave" || projectile.move === "fuga" ? HITSTOP_HEAVY : HITSTOP_LIGHT);
   shake = blocked ? 4 : (projectile.move === "purple" || projectile.move === "worldSlash") ? 15 : projectile.move === "ryukStrike" ? 14 : projectile.move === "fuga" ? 13 : 8;
@@ -11097,6 +11256,15 @@ function updateEnemyAi() {
       startMuttonShot(enemy);
     } else if (!enemy.grounded && player.y + player.h < enemy.y + enemy.h - 40 && Math.random() < getCpuDecisionChance(0.01, 0.025, 0.05)) {
       startSkyWalk(enemy);
+    } else if ((enemy.sanjiUtensilCooldown || 0) <= 0 && sGap > 150 && Math.random() < getCpuDecisionChance(0.02, 0.045, 0.08)) {
+      // SANJI_UTENSIL_PATCH: chuck utensils from range; occasionally swap
+      // to the fork to pin a fleeing opponent.
+      if (sGap > 280 && enemy.sanjiUtensil !== "fork" && Math.random() < 0.3) switchSanjiUtensil(enemy);
+      throwSanjiUtensil(enemy);
+    } else if ((enemy.sanjiCookCooldown || 0) <= 0 && (enemy.sanjiCookTicks || 0) <= 0 && sGap > 340 &&
+      enemy.health < getCurrentHealthBarCeiling(enemy) - 20 && Math.random() < getCpuDecisionChance(0.01, 0.02, 0.03)) {
+      // SANJI_COOK_PATCH: cook to top off the bar when safely spaced.
+      startSanjiCook(enemy);
     }
   }
 
@@ -14327,6 +14495,28 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.moveTo(18, 10.5);
     ctx.quadraticCurveTo(26, 8.5, 33, 11);
     ctx.stroke();
+    // SANJI_EYEBROW_PATCH: the trademark curly swirl brow on the visible
+    // (non-fringe) side of the face. It's an eyebrow, drawn as a spiral -
+    // no eye beneath it, matching the no-facial-features rule.
+    ctx.strokeStyle = skin.hair;
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    // brow bar sweeping in, then curling into a spiral
+    ctx.moveTo(15.5, 19.5);
+    ctx.quadraticCurveTo(19, 17.4, 22.5, 18.2);
+    ctx.quadraticCurveTo(25.6, 19, 24.6, 21.4);
+    ctx.quadraticCurveTo(23.8, 23.2, 22.1, 22.2);
+    ctx.quadraticCurveTo(21.2, 21.6, 21.9, 20.7);
+    ctx.stroke();
+    // thin dark accent so the swirl reads at small sizes
+    ctx.strokeStyle = "rgba(120, 84, 20, 0.7)";
+    ctx.lineWidth = 0.9;
+    ctx.beginPath();
+    ctx.moveTo(16, 19.4);
+    ctx.quadraticCurveTo(19, 17.6, 22.3, 18.4);
+    ctx.stroke();
     // chin stubble - a light scratchy patch, not a mouth
     ctx.strokeStyle = "rgba(120, 90, 40, 0.6)";
     ctx.lineWidth = 1.1;
@@ -14638,6 +14828,27 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     }
     }
     }
+  } else if (isSanji(f) && (f.sanjiCookTicks || 0) > 0) {
+    // SANJI_COOK_PATCH: both hands work together in front, stirring - a
+    // little wok bob and a rising food sparkle handled elsewhere.
+    const stir = Math.sin(frame * 0.4) * 3;
+    drawArmRig({ x: 40, y: 50 }, { x: 44, y: 62 }, { x: 34 + stir, y: 66 });
+    drawArmRig({ x: 12, y: 51 }, { x: 20, y: 62 }, { x: 30 - stir, y: 66 });
+    // the little pan
+    ctx.fillStyle = "#020617";
+    ctx.beginPath();
+    ctx.ellipse(31, 68, 12, 4.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#334155";
+    ctx.beginPath();
+    ctx.ellipse(31, 67, 9.5, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (isSanji(f) && (f.sanjiThrowTicks || 0) > 0) {
+    // SANJI_UTENSIL_PATCH: the throwing arm flicks out ahead just after
+    // the utensil leaves his hand.
+    const flick = (f.sanjiThrowTicks || 0) / 10;
+    drawArmRig({ x: 40, y: 50 }, { x: 52 + flick * 6, y: 50 }, { x: 62 + flick * 12, y: 48 });
+    drawArmRig({ x: 12, y: 51 }, { x: 6, y: 60 }, { x: 2, y: 70 });
   } else if (isSanji(f) && ((f.sanjiDiableTicks || 0) > 0 || (f.sanjiDiveKickTicks || 0) > 0)) {
     // SANJI_PATCH: arms swept back behind him through the flying kicks.
     drawArmRig({ x: 40, y: 48 }, { x: 28, y: 56 }, { x: 14, y: 64 });
@@ -16561,6 +16772,108 @@ function drawProjectiles() {
       ctx.lineTo(p.radius * 0.3, p.radius * 0.3);
       ctx.closePath();
       ctx.fill();
+    } else if (p.move === "utensil") {
+      // SANJI_UTENSIL_PATCH: a spinning thrown utensil. Each kind draws
+      // its own silhouette in steel, with an orange/blue heat glint when
+      // it's an empowered or Ifrit throw.
+      p.spin = (p.spin || 0) + 0.55 * (p.dir || 1);
+      ctx.rotate(p.spin);
+      const steel = "#d4d9e2";
+      const dark = "#020617";
+      const kind = p.utensilKind || "chopsticks";
+      ctx.strokeStyle = dark;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      if (p.utensilBurn) {
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.fillStyle = "rgba(249, 180, 90, 0.5)";
+        ctx.beginPath();
+        ctx.arc(0, 0, 15, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      if (kind === "chopsticks") {
+        ctx.strokeStyle = dark;
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(-13, -3); ctx.lineTo(13, -3);
+        ctx.moveTo(-13, 3); ctx.lineTo(13, 3);
+        ctx.stroke();
+        ctx.strokeStyle = "#c98a52";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(-13, -3); ctx.lineTo(13, -3);
+        ctx.moveTo(-13, 3); ctx.lineTo(13, 3);
+        ctx.stroke();
+      } else if (kind === "fork") {
+        ctx.strokeStyle = dark;
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(-12, 0); ctx.lineTo(9, 0);
+        ctx.stroke();
+        ctx.strokeStyle = steel;
+        ctx.lineWidth = 3.4;
+        ctx.beginPath();
+        ctx.moveTo(-12, 0); ctx.lineTo(8, 0);
+        ctx.stroke();
+        // tines
+        ctx.strokeStyle = dark;
+        ctx.lineWidth = 4.5;
+        ctx.beginPath();
+        ctx.moveTo(8, -5); ctx.lineTo(15, -5);
+        ctx.moveTo(8, 0); ctx.lineTo(16, 0);
+        ctx.moveTo(8, 5); ctx.lineTo(15, 5);
+        ctx.stroke();
+        ctx.strokeStyle = steel;
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.moveTo(8, -5); ctx.lineTo(15, -5);
+        ctx.moveTo(8, 0); ctx.lineTo(16, 0);
+        ctx.moveTo(8, 5); ctx.lineTo(15, 5);
+        ctx.stroke();
+      } else if (kind === "spoon") {
+        ctx.strokeStyle = dark;
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(-14, 0); ctx.lineTo(4, 0);
+        ctx.stroke();
+        ctx.strokeStyle = steel;
+        ctx.lineWidth = 3.4;
+        ctx.beginPath();
+        ctx.moveTo(-14, 0); ctx.lineTo(4, 0);
+        ctx.stroke();
+        ctx.fillStyle = dark;
+        ctx.beginPath();
+        ctx.ellipse(10, 0, 8, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = steel;
+        ctx.beginPath();
+        ctx.ellipse(10, 0, 6, 4.2, 0, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        // knife
+        ctx.fillStyle = dark;
+        ctx.beginPath();
+        ctx.moveTo(-15, -2);
+        ctx.lineTo(2, -4);
+        ctx.lineTo(17, 0);
+        ctx.lineTo(2, 4);
+        ctx.lineTo(-15, 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#8a6a3a";
+        ctx.fillRect(-15, -3, 8, 6);
+        ctx.fillStyle = steel;
+        ctx.beginPath();
+        ctx.moveTo(-6, -2.4);
+        ctx.lineTo(2, -2.6);
+        ctx.lineTo(15, 0);
+        ctx.lineTo(2, 2.6);
+        ctx.lineTo(-6, 2.4);
+        ctx.closePath();
+        ctx.fill();
+      }
     } else {
       if (hasProjectileAngle) ctx.rotate(projectileAngle);
       else ctx.scale(p.dir, 1);
@@ -17114,6 +17427,15 @@ window.addEventListener("keydown", (event) => {
       sendOnlineInput("backThrow");
       return;
     }
+    // SANJI_UTENSIL_PATCH + SANJI_COOK_PATCH: R switches, F cooks.
+    if ((key === "r" || code === "keyr") && !event.repeat && enemy?.technique === "blackleg") {
+      if (switchSanjiUtensil(enemy)) sendOnlineInput("sanji-utensil-switch");
+      return;
+    }
+    if ((key === "f" || code === "keyf") && !event.repeat && enemy?.technique === "blackleg") {
+      if (startSanjiCook(enemy)) sendOnlineInput("sanji-cook");
+      return;
+    }
     const action = getOnlineAction(key, code, event.repeat);
     if (action === "light") startAttack(enemy, "light");
     if (action === "heavy") startAttack(enemy, "heavy");
@@ -17136,6 +17458,16 @@ window.addEventListener("keydown", (event) => {
   if (!event.repeat && isEventForAction("heavy", key, code)) startAttack(player, "heavy");
   if ((key === "f" || code === "keyf") && !event.repeat) {
     if (player.technique === "limitless") toggleInfinity(player);
+    // SANJI_COOK_PATCH: F cooks a healing meal.
+    else if (player.technique === "blackleg") {
+      if (startSanjiCook(player) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("sanji-cook");
+      return;
+    }
+  }
+  if ((key === "r" || code === "keyr") && !event.repeat && player.technique === "blackleg") {
+    // SANJI_UTENSIL_PATCH: R cycles the loaded utensil.
+    if (switchSanjiUtensil(player) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("sanji-utensil-switch");
+    return;
   }
   if ((key === "t" || code === "keyt") && !event.repeat && player.technique === "shrine") {
     openBindingVowChoice(player);
