@@ -1842,6 +1842,57 @@ const VECNA_SPIDER_SLAM_RADIUS = 62;
 const VECNA_SPIDER_SLAM_DAMAGE = 10;
 const VECNA_SPIDER_PIN_TICKS = 60;
 
+// ZEALOT_PATCH: Protoss Zealot - fast melee rushdown with a regenerating
+// energy shield, no ranged attacks. Cyan/gold theme.
+const ZEALOT_MOVE_MULTIPLIER = 1.16;
+const ZEALOT_SHIELD_FRACTION = 0.25;
+const ZEALOT_SHIELD_REGEN_DELAY = 5 * 60;
+const ZEALOT_SHIELD_REGEN_RATE = 0.5;
+const ZEALOT_CHARGE_COOLDOWN_TICKS = 10 * 60;
+const ZEALOT_CHARGE_TICKS = 20;
+const ZEALOT_CHARGE_SPEED = 16;
+const ZEALOT_CHARGE_DAMAGE = 20;
+const ZEALOT_CHARGE_STUN = 30;
+const ZEALOT_FLURRY_COOLDOWN_TICKS = 8 * 60;
+const ZEALOT_FLURRY_TICKS = 40;
+const ZEALOT_FLURRY_HITS = 5;
+const ZEALOT_FLURRY_HIT_DAMAGE = 6;
+const ZEALOT_FLURRY_RANGE = 78;
+const ZEALOT_FLURRY_LAUNCH_KNOCKBACK = 34;
+const ZEALOT_WHIRL_COOLDOWN_TICKS = 14 * 60;
+const ZEALOT_WHIRL_TICKS = 54;
+const ZEALOT_WHIRL_HIT_INTERVAL = 8;
+const ZEALOT_WHIRL_HIT_DAMAGE = 5;
+const ZEALOT_WHIRL_RADIUS = 76;
+const ZEALOT_ULT_TICKS = 15 * 60;
+const ZEALOT_WARP_INTERVAL = 3 * 60;
+const ZEALOT_UNIT_LIFE = 6 * 60;
+const ZEALOT_ORBITAL_BEAMS = 6;
+const ZEALOT_ORBITAL_DAMAGE = 16;
+const ZEALOT_ORBITAL_RADIUS = 54;
+
+// SPIDER_PATCH: Spider-Man - high-mobility combo/rushdown, web tools.
+const SPIDER_MOVE_MULTIPLIER = 1.14;
+const SPIDER_WEBSHOT_COOLDOWN_TICKS = 3 * 60;
+const SPIDER_MARK_TICKS = 6 * 60;
+const SPIDER_MARK_MAX_TICKS = 8 * 60;
+const SPIDER_WEBSHOT_DAMAGE = 4;
+const SPIDER_WEBSHOT_ROOT = 40;
+const SPIDER_SWING_COOLDOWN_TICKS = 9 * 60;
+const SPIDER_SWING_TICKS = 34;
+const SPIDER_SWING_KICK_DAMAGE = 16;
+const SPIDER_BARRAGE_COOLDOWN_TICKS = 14 * 60;
+const SPIDER_BARRAGE_DAMAGE = 8;
+const SPIDER_BARRAGE_SLOW_TICKS = 90;
+const SPIDER_COCOON_TICKS = 90;
+const SPIDER_RUSH_COOLDOWN_TICKS = 12 * 60;
+const SPIDER_RUSH_TICKS = 42;
+const SPIDER_RUSH_HITS = 6;
+const SPIDER_RUSH_HIT_DAMAGE = 5;
+const SPIDER_RUSH_LAUNCH = 32;
+const SPIDER_ULT_TICKS = 18 * 60;
+const SPIDER_MARK_COMBO_BONUS = 0.1;
+
 const TECHNIQUE_STATS = {
   limitless: {
     maxHealth: 540,
@@ -1898,6 +1949,26 @@ const TECHNIQUE_STATS = {
     maxCe: 100,
     damageTakenMultiplier: 0.98,
     knockbackTakenMultiplier: 0.96,
+    ceRegenRate: CE_REGEN_RATE,
+    ceLowRegenBonus: CE_LOW_REGEN_BONUS
+  },
+  // ZEALOT_PATCH: bruiser HP plus a 25% absorbing shield on top.
+  zealot: {
+    maxHealth: 540,
+    healthBars: 5,
+    maxCe: 100,
+    damageTakenMultiplier: 1,
+    knockbackTakenMultiplier: 0.95,
+    ceRegenRate: CE_REGEN_RATE,
+    ceLowRegenBonus: CE_LOW_REGEN_BONUS
+  },
+  // SPIDER_PATCH: agile, lower HP - wins by not being hit.
+  spider: {
+    maxHealth: 470,
+    healthBars: 5,
+    maxCe: 100,
+    damageTakenMultiplier: 1.05,
+    knockbackTakenMultiplier: 1.02,
     ceRegenRate: CE_REGEN_RATE,
     ceLowRegenBonus: CE_LOW_REGEN_BONUS
   }
@@ -2564,6 +2635,8 @@ function getTechniqueCharacterName(technique) {
   if (technique === "brawler") return "Thragg";
   if (technique === "blackleg") return "Sanji"; // SANJI_PATCH
   if (technique === "hivemind") return "Vecna"; // VECNA_PATCH
+  if (technique === "zealot") return "Zealot"; // ZEALOT_PATCH
+  if (technique === "spider") return "Spider-Man"; // SPIDER_PATCH
   return "Gojo";
 }
 
@@ -2814,7 +2887,12 @@ const techniqueMoves = {
   muttonShot: { cost: 0, damage: 0, speed: 0, radius: 1, knockback: 0, life: 1 },
   // VECNA_PATCH: melee-spawned summons, handled in startTechnique.
   demobatSwarm: { cost: 0, damage: 0, speed: 0, radius: 1, knockback: 0, life: 1 },
-  demodogHunt: { cost: 0, damage: 0, speed: 0, radius: 1, knockback: 0, life: 1 }
+  demodogHunt: { cost: 0, damage: 0, speed: 0, radius: 1, knockback: 0, life: 1 },
+  // ZEALOT_PATCH: melee specials handled in startTechnique.
+  charge: { cost: 0, damage: ZEALOT_CHARGE_DAMAGE, speed: 0, radius: 1, knockback: 0, life: 1 },
+  psiFlurry: { cost: 0, damage: 0, speed: 0, radius: 1, knockback: 0, life: 1 },
+  // ZEALOT_PATCH: Stalker unit's ranged shot (spawned by the ultimate).
+  stalkerShot: { cost: 0, damage: 7, speed: 9, radius: 9, knockback: 8, life: 70 }
 };
 
 function getTechniqueMoveKey(f, slot) {
@@ -2824,6 +2902,7 @@ function getTechniqueMoveKey(f, slot) {
   // THRAGG_BRAWLER_PATCH: only one ranged tool, mapped to both mouse buttons.
   if (f.technique === "brawler") return "groundBreak";
   if (f.technique === "blackleg") return slot === 2 ? "muttonShot" : "diableJambe"; // SANJI_PATCH
+  if (f.technique === "zealot") return slot === 2 ? "psiFlurry" : "charge"; // ZEALOT_PATCH
   if (f.technique === "hivemind") return slot === 2 ? "demodogHunt" : "demobatSwarm"; // VECNA_PATCH
   return "blue";
 }
@@ -2841,6 +2920,9 @@ function getTechniqueDisplayName(move) {
   if (move === "demobatSwarm") return "DEMOBATS"; // VECNA_PATCH
   if (move === "demodogHunt") return "DEMODOG"; // VECNA_PATCH
   if (move === "upsideDownSlip") return "SLIP"; // VECNA_PATCH
+  if (move === "charge") return "CHARGE"; // ZEALOT_PATCH
+  if (move === "psiFlurry") return "PSI FLURRY"; // ZEALOT_PATCH
+  if (move === "whirlwind") return "WHIRLWIND"; // ZEALOT_PATCH
   return move.toUpperCase();
 }
 
@@ -2861,6 +2943,10 @@ function getTechniqueCooldownTicks(move, f = null) {
   if (move === "demobatSwarm") return VECNA_BAT_COOLDOWN_TICKS;
   if (move === "demodogHunt") return VECNA_DOG_COOLDOWN_TICKS;
   if (move === "upsideDownSlip") return VECNA_SLIP_COOLDOWN_TICKS;
+  // ZEALOT_PATCH:
+  if (move === "charge") return ZEALOT_CHARGE_COOLDOWN_TICKS;
+  if (move === "psiFlurry") return ZEALOT_FLURRY_COOLDOWN_TICKS;
+  if (move === "whirlwind") return ZEALOT_WHIRL_COOLDOWN_TICKS;
   let base = move === "red" || move === "cleave" ? TECHNIQUE_HEAVY_COOLDOWN : TECHNIQUE_FAST_COOLDOWN;
   if (move === "cleave" && hasBindingVow(f, "cleave")) base = Math.max(10, Math.ceil(base * 0.55));
   return base;
@@ -2902,16 +2988,18 @@ function getAffordableChargeRatio(f, move, chargeRatio) {
 
 function pickRandomTechnique() {
   const roll = Math.random();
-  if (roll < 0.22) return "limitless";
-  if (roll < 0.44) return "shrine";
-  if (roll < 0.62) return "deathnote";
-  if (roll < 0.76) return "brawler";
-  if (roll < 0.89) return "blackleg"; // SANJI_PATCH
-  return "hivemind"; // VECNA_PATCH
+  if (roll < 0.16) return "limitless";
+  if (roll < 0.32) return "shrine";
+  if (roll < 0.46) return "deathnote";
+  if (roll < 0.60) return "brawler";
+  if (roll < 0.72) return "blackleg"; // SANJI_PATCH
+  if (roll < 0.84) return "hivemind"; // VECNA_PATCH
+  if (roll < 0.92) return "zealot"; // ZEALOT_PATCH
+  return "spider"; // SPIDER_PATCH
 }
 
 function isValidTechnique(technique) {
-  return technique === "limitless" || technique === "shrine" || technique === "deathnote" || technique === "brawler" || technique === "blackleg" || technique === "hivemind"; // SANJI_PATCH + VECNA_PATCH
+  return technique === "limitless" || technique === "shrine" || technique === "deathnote" || technique === "brawler" || technique === "blackleg" || technique === "hivemind" || technique === "zealot" || technique === "spider"; // SANJI + VECNA + ZEALOT + SPIDER
 }
 
 function rollCpuOpponentTechnique(reason = "") {
@@ -2997,6 +3085,9 @@ let projectiles = [];
 // VECNA_PATCH: live summons (demobats/demodogs) and the ultimate arena state.
 let vecnaMinions = [];
 let upsideDown = null;
+// ZEALOT_PATCH: warped-in Protoss units and falling orbital-strike beams.
+let zealotUnits = [];
+let orbitalBeams = [];
 let hitSparks = [];
 let projectileDisperses = [];
 let teleportEffects = [];
@@ -3162,6 +3253,39 @@ function makeFighter(config) {
     vecnaSlipTicks: 0,
     vecnaBoneSnapCooldown: 0,
     rootedTicks: 0,
+    // ZEALOT_PATCH: Protoss shield + ability state.
+    zealotShield: 0,
+    zealotShieldMax: 0,
+    zealotShieldRegenTimer: 0,
+    zealotShieldBrokenFlash: 0,
+    zealotChargeCooldown: 0,
+    zealotChargeTicks: 0,
+    zealotChargeHit: false,
+    zealotFlurryCooldown: 0,
+    zealotFlurryTicks: 0,
+    zealotFlurryNextHit: 0,
+    zealotWhirlCooldown: 0,
+    zealotWhirlTicks: 0,
+    zealotWhirlNextHit: 0,
+    zealotUltTicks: 0,
+    zealotWarpTimer: 0,
+    // SPIDER_PATCH: web/mark/mobility state.
+    spiderWebShotCooldown: 0,
+    spiderMarkTicks: 0,
+    spiderSwingCooldown: 0,
+    spiderSwingTicks: 0,
+    spiderSwingKickArmed: false,
+    spiderBarrageCooldown: 0,
+    spiderRushCooldown: 0,
+    spiderRushTicks: 0,
+    spiderRushNextHit: 0,
+    spiderRushTarget: null,
+    spiderUltTicks: 0,
+    spiderUltFinisherUsed: false,
+    spiderSenseFlash: 0,
+    spiderDodgeBoostTicks: 0,
+    webbedTicks: 0,
+    cocoonTicks: 0,
     blocking: false,
     shieldTicks: SHIELD_MAX_TICKS,
     shieldCooldown: 0,
@@ -3214,7 +3338,7 @@ function applyTechniqueStats(f, preserveMeters = false) {
   const stats = TECHNIQUE_STATS[f.technique] || TECHNIQUE_STATS.limitless;
   const healthRatio = f.maxHealth > 0 ? f.health / f.maxHealth : 1;
   const ceRatio = f.maxCe > 0 ? f.ce / f.maxCe : 1;
-  f.speed = BASE_MOVE_SPEED * (f.technique === "limitless" ? LIMITLESS_MOVE_MULTIPLIER : f.technique === "deathnote" ? 0.94 : f.technique === "brawler" ? THRAGG_MOVE_MULTIPLIER : f.technique === "blackleg" ? SANJI_MOVE_MULTIPLIER : f.technique === "hivemind" ? VECNA_MOVE_MULTIPLIER : 1); // SANJI_PATCH + VECNA_PATCH
+  f.speed = BASE_MOVE_SPEED * (f.technique === "limitless" ? LIMITLESS_MOVE_MULTIPLIER : f.technique === "deathnote" ? 0.94 : f.technique === "brawler" ? THRAGG_MOVE_MULTIPLIER : f.technique === "blackleg" ? SANJI_MOVE_MULTIPLIER : f.technique === "hivemind" ? VECNA_MOVE_MULTIPLIER : f.technique === "zealot" ? ZEALOT_MOVE_MULTIPLIER : f.technique === "spider" ? SPIDER_MOVE_MULTIPLIER : 1); // SANJI + VECNA + ZEALOT + SPIDER
   f.maxHealth = stats.maxHealth;
   f.healthBars = stats.healthBars || 3;
   f.maxCe = stats.maxCe;
@@ -3231,6 +3355,15 @@ function applyTechniqueStats(f, preserveMeters = false) {
   const shieldMax = getShieldMaxTicks(f);
   f.shieldTicks = preserveMeters ? Math.min(shieldMax, Math.max(0, f.shieldTicks || shieldMax)) : shieldMax;
   f.shieldCooldown = preserveMeters ? Math.max(0, f.shieldCooldown || 0) : 0;
+  // ZEALOT_PATCH: Protoss shield sized to 25% of max HP, starts full.
+  if (f.technique === "zealot") {
+    f.zealotShieldMax = Math.round(f.maxHealth * ZEALOT_SHIELD_FRACTION);
+    f.zealotShield = preserveMeters ? Math.min(f.zealotShieldMax, Math.max(0, f.zealotShield || f.zealotShieldMax)) : f.zealotShieldMax;
+    f.zealotShieldRegenTimer = 0;
+  } else {
+    f.zealotShield = 0;
+    f.zealotShieldMax = 0;
+  }
   if (f.technique !== "limitless") f.infinityActive = false;
   if (f.technique !== "shrine") {
     f.fugaAiming = false;
@@ -3259,6 +3392,14 @@ function applyTechniqueStats(f, preserveMeters = false) {
     f.vecnaSlipCooldown = 0;
     f.vecnaSlipTicks = 0;
     f.vecnaBoneSnapCooldown = 0;
+  }
+  // ZEALOT_PATCH: clear the Protoss kit when switching off Zealot.
+  if (f.technique !== "zealot") {
+    f.zealotChargeTicks = 0;
+    f.zealotChargeCooldown = 0;
+    f.zealotFlurryTicks = 0;
+    f.zealotWhirlTicks = 0;
+    f.zealotUltTicks = 0;
   }
   // SANJI_PATCH: clear the Black Leg kit when switching off Sanji.
   if (f.technique !== "blackleg") {
@@ -3309,6 +3450,7 @@ function getTechniqueHudMoves(f) {
   if (f.technique === "brawler") return ["groundBreak", "flyingDash"];
   if (f.technique === "blackleg") return ["diableJambe", "muttonShot", "skyWalk"]; // SANJI_PATCH
   if (f.technique === "hivemind") return ["demobatSwarm", "demodogHunt", "upsideDownSlip"]; // VECNA_PATCH
+  if (f.technique === "zealot") return ["charge", "psiFlurry", "whirlwind"]; // ZEALOT_PATCH
   return ["blue", "red", "teleport"];
 }
 
@@ -3366,13 +3508,16 @@ function getTechniqueHudState(f, move) {
     };
   }
   // SANJI_PATCH + VECNA_PATCH: these specials are free - pure cooldown gates.
-  if (move === "diableJambe" || move === "muttonShot" || move === "skyWalk" || move === "demobatSwarm" || move === "demodogHunt" || move === "upsideDownSlip") {
+  if (move === "diableJambe" || move === "muttonShot" || move === "skyWalk" || move === "demobatSwarm" || move === "demodogHunt" || move === "upsideDownSlip" || move === "charge" || move === "psiFlurry" || move === "whirlwind") {
     const cooldown = move === "diableJambe" ? (f.sanjiDiableCooldown || 0)
       : move === "muttonShot" ? (f.sanjiMuttonCooldown || 0)
       : move === "skyWalk" ? (f.sanjiSkyWalkCooldown || 0)
       : move === "demobatSwarm" ? (f.vecnaBatCooldown || 0)
       : move === "demodogHunt" ? (f.vecnaDogCooldown || 0)
-      : (f.vecnaSlipCooldown || 0);
+      : move === "upsideDownSlip" ? (f.vecnaSlipCooldown || 0)
+      : move === "charge" ? (f.zealotChargeCooldown || 0)
+      : move === "psiFlurry" ? (f.zealotFlurryCooldown || 0)
+      : (f.zealotWhirlCooldown || 0);
     return {
       cost: 0,
       cooling: cooldown > 0,
@@ -3431,6 +3576,7 @@ function updateTechniqueCooldownHud(f, slots) {
     hud.slot.classList.toggle("thragg-cooldown", f.technique === "brawler");
     hud.slot.classList.toggle("sanji-cooldown", f.technique === "blackleg"); // SANJI_PATCH
     hud.slot.classList.toggle("vecna-cooldown", f.technique === "hivemind"); // VECNA_PATCH
+    hud.slot.classList.toggle("zealot-cooldown", f.technique === "zealot"); // ZEALOT_PATCH
   });
 }
 
@@ -3531,6 +3677,10 @@ function pinStationaryPracticeDummy(f = enemy) {
   // VECNA_PATCH: clear mid-move Hive Mind state.
   f.vecnaSlipTicks = 0;
   f.rootedTicks = 0;
+  // ZEALOT_PATCH: clear mid-move Protoss state.
+  f.zealotChargeTicks = 0;
+  f.zealotFlurryTicks = 0;
+  f.zealotWhirlTicks = 0;
   // SANJI_PATCH: clear mid-move Black Leg state.
   f.sanjiDiableTicks = 0;
   f.sanjiDiveKickTicks = 0;
@@ -3576,7 +3726,18 @@ function applyFighterDamage(defender, damage) {
     pinStationaryPracticeDummy(defender);
     return amount;
   }
-  defender.health = Math.max(0, defender.health - amount);
+  // ZEALOT_PATCH: Protoss shields soak damage before HP and delay regen.
+  let remaining = amount;
+  if (isZealot(defender) && (defender.zealotShield || 0) > 0) {
+    defender.zealotShieldRegenTimer = ZEALOT_SHIELD_REGEN_DELAY;
+    const absorbed = Math.min(defender.zealotShield, remaining);
+    defender.zealotShield -= absorbed;
+    remaining -= absorbed;
+    if (defender.zealotShield <= 0) defender.zealotShieldBrokenFlash = 12;
+  } else if (isZealot(defender)) {
+    defender.zealotShieldRegenTimer = ZEALOT_SHIELD_REGEN_DELAY;
+  }
+  defender.health = Math.max(0, defender.health - remaining);
   damageLightInformationOnHeavyHit(defender, amount);
   return amount;
 }
@@ -3950,6 +4111,65 @@ function installVecnaMaroonHudStyle() {
 window.addEventListener("DOMContentLoaded", installVecnaMaroonHudStyle);
 window.setTimeout(installVecnaMaroonHudStyle, 0);
 
+// ZEALOT_PATCH: Zealot's cooldown HUD in Protoss cyan/gold.
+function installZealotCyanHudStyle() {
+  if (document.getElementById("zealotCyanEffectsStyle")) return;
+  const style = document.createElement("style");
+  style.id = "zealotCyanEffectsStyle";
+  style.textContent = `
+    .ct-slot.zealot-cooldown,
+    .extra-cooldown.zealot-cooldown,
+    .ct-slot.zealot-cooldown.ready,
+    .ct-slot.zealot-cooldown.cooling,
+    .extra-cooldown.zealot-cooldown.ready,
+    .extra-cooldown.zealot-cooldown.cooling {
+      background: linear-gradient(180deg, rgba(12, 34, 40, 0.92), rgba(6, 16, 20, 0.95)) !important;
+      border: 3px solid #38e0f0 !important;
+      box-shadow: 0 3px 0 #b8860b, 0 0 14px rgba(56, 224, 240, 0.4) !important;
+    }
+    .ct-slot.zealot-cooldown .ct-label,
+    .ct-slot.zealot-cooldown .ct-status,
+    .extra-cooldown.zealot-cooldown .ct-label,
+    .extra-cooldown.zealot-cooldown .ct-status,
+    .extra-cooldown.zealot-cooldown .extra-cooldown-label,
+    .extra-cooldown.zealot-cooldown .extra-cooldown-status {
+      color: #a5f3fc !important;
+      text-shadow: 0 0 6px rgba(56, 224, 240, 0.75) !important;
+    }
+    .ct-slot.zealot-cooldown .ct-meter,
+    .extra-cooldown.zealot-cooldown .ct-meter {
+      background: rgba(9, 26, 30, 0.75) !important;
+      border-color: rgba(56, 224, 240, 0.4) !important;
+    }
+    .ct-slot.zealot-cooldown .ct-fill,
+    .ct-slot.zealot-cooldown.ready .ct-fill,
+    .ct-slot.zealot-cooldown.low-ce .ct-fill,
+    .ct-slot.zealot-cooldown.blocked .ct-fill,
+    .extra-cooldown.zealot-cooldown .ct-fill,
+    .extra-cooldown.zealot-cooldown.ready .ct-fill,
+    .extra-cooldown.zealot-cooldown .extra-cooldown-fill {
+      background: linear-gradient(90deg, #0891b2, #38e0f0, #a5f3fc) !important;
+      box-shadow: 0 0 12px rgba(56, 224, 240, 0.5), inset 0 1px 0 rgba(224, 255, 255, 0.3) !important;
+    }
+    /* gold shield gauge, distinct from the cyan ability fills */
+    .extra-cooldown.zealot-cooldown.zealot-shield-meter .ct-fill,
+    .extra-cooldown.zealot-cooldown.zealot-shield-meter .extra-cooldown-fill {
+      background: linear-gradient(90deg, #b8860b, #f0c94a, #fde68a) !important;
+      box-shadow: 0 0 12px rgba(240, 201, 74, 0.55) !important;
+    }
+    .ct-slot.zealot-cooldown.cooling .ct-fill,
+    .ct-slot.zealot-cooldown.charging .ct-fill,
+    .extra-cooldown.zealot-cooldown.cooling .ct-fill,
+    .extra-cooldown.zealot-cooldown.cooling .extra-cooldown-fill {
+      background: linear-gradient(90deg, #083344, #0e5566, #0891b2) !important;
+      opacity: 0.92 !important;
+    }
+  `;
+  document.head.appendChild(style);
+}
+window.addEventListener("DOMContentLoaded", installZealotCyanHudStyle);
+window.setTimeout(installZealotCyanHudStyle, 0);
+
 
 function installLightTechniqueOption() {
   installUniversalBrawlRename();
@@ -4039,6 +4259,10 @@ function getTechniqueControlHtml(technique) {
     // VECNA_PATCH: summoner kit, no JJK controls.
     return '<span><kbd>Left Click</kbd> Demobat Swarm</span><span><kbd>Right Click</kbd> Demodog Hunt</span><span><kbd>S</kbd> Upside Down Slip (recast to erupt)</span><span><kbd>Tab</kbd> Bone Snap</span><span><kbd>C</kbd> The Upside Down</span>';
   }
+  if (technique === "zealot") {
+    // ZEALOT_PATCH: melee-only Protoss kit, no JJK controls.
+    return '<span><kbd>Left Click</kbd> Charge</span><span><kbd>Right Click</kbd> Psi Blade Flurry</span><span><kbd>S</kbd> Whirlwind</span><span><kbd>C</kbd> Warp Reinforcements</span>';
+  }
   return '<span><kbd>Left Click</kbd> Blue</span><span><kbd>Right Click</kbd> Red</span><span><kbd>Hold S</kbd> Teleport</span><span><kbd>Hold T</kbd> Blue Punch</span><span><kbd>F</kbd> Infinity</span><span><kbd>Hold C</kbd> Aim Ultimate</span><span><kbd>R</kbd> hold RCT</span>';
 }
 
@@ -4052,6 +4276,7 @@ function getExtraBattleControlHtml(technique) {
   if (technique === "brawler") return ''; // THRAGG_NO_JJK_PATCH: nothing JJK down here
   if (technique === "blackleg") return '<span><kbd>Heat 100%</kbd> next fire attack +15% and burns</span><span><kbd>Chopsticks</kbd> fast reload · <kbd>Fork</kbd> pins · <kbd>Spoon</kbd> knockback · <kbd>Knife</kbd> damage</span>'; // SANJI_PATCH
   if (technique === "hivemind") return '<span><kbd>Corruption 100%</kbd> next summon/ability is enhanced</span>'; // VECNA_PATCH
+  if (technique === "zealot") return '<span><kbd>Shields</kbd> soak 25% HP, regen after 5s undamaged · no HP regen</span>'; // ZEALOT_PATCH
   return '<span><kbd>X</kbd> Domain Expansion</span><span><kbd>Z</kbd> Simple Domain</span>';
 }
 
@@ -4416,7 +4641,9 @@ function applyJoinerFighterStateOnHost(remoteFighter) {
     // SANJI_PATCH
     "sanjiHeat", "sanjiDiableTicks", "sanjiDiableAir", "sanjiDiableCooldown", "sanjiSkyWalkJumps", "sanjiSkyWalkCooldown", "sanjiDiveKickTicks", "sanjiMuttonTicks", "sanjiMuttonCooldown", "sanjiUltTicks", "sanjiBoeufUsed", "sanjiUtensil", "sanjiUtensilCooldown", "sanjiThrowTicks", "sanjiCookTicks", "sanjiCookCooldown", "burnTicks",
     // VECNA_PATCH
-    "vecnaCorruption", "vecnaBatCooldown", "vecnaDogCooldown", "vecnaSlipCooldown", "vecnaSlipTicks", "vecnaBoneSnapCooldown", "rootedTicks"
+    "vecnaCorruption", "vecnaBatCooldown", "vecnaDogCooldown", "vecnaSlipCooldown", "vecnaSlipTicks", "vecnaBoneSnapCooldown", "rootedTicks",
+    // ZEALOT_PATCH
+    "zealotShield", "zealotShieldMax", "zealotChargeCooldown", "zealotChargeTicks", "zealotFlurryCooldown", "zealotFlurryTicks", "zealotWhirlCooldown", "zealotWhirlTicks", "zealotUltTicks"
   ];
 
   fields.forEach((field) => {
@@ -4514,6 +4741,7 @@ if (data.type === "role") {
       if (data.action === "sanji-utensil-switch") switchSanjiUtensil(enemy); // SANJI_UTENSIL_PATCH
       if (data.action === "sanji-cook") startSanjiCook(enemy); // SANJI_COOK_PATCH
       if (data.action === "upside-slip") startUpsideDownSlip(enemy); // VECNA_PATCH
+      if (data.action === "zealot-whirl") startZealotWhirlwind(enemy); // ZEALOT_PATCH
       if (data.action === "dodge") startDodge(enemy, getVectorFromInput(remoteInput));
       if (data.action === "jump") jumpFighterWithMove(enemy, (remoteInput.right ? 1 : 0) - (remoteInput.left ? 1 : 0));
       if (data.action === "infinity" && !hasCtLock(enemy)) toggleInfinity(enemy);
@@ -5035,6 +5263,8 @@ function resetRoundActors() {
   projectiles = [];
   vecnaMinions = []; // VECNA_PATCH
   endUpsideDown(); // VECNA_PATCH
+  zealotUnits = []; // ZEALOT_PATCH
+  orbitalBeams = []; // ZEALOT_PATCH
   hitSparks = [];
   projectileDisperses = [];
   teleportEffects = [];
@@ -5394,6 +5624,15 @@ function getExtraCooldownItems(f) {
     return items;
   }
 
+  // ZEALOT_PATCH: Protoss shield gauge + ultimate timer, nothing JJK.
+  if (f.technique === "zealot") {
+    items.push({ name: "SHIELDS", current: f.zealotShield || 0, max: f.zealotShieldMax || 1, mode: "resource", style: "zealot-shield-meter" });
+    if ((f.zealotUltTicks || 0) > 0) {
+      items.push({ name: "WARP", current: f.zealotUltTicks, max: ZEALOT_ULT_TICKS, mode: "active" });
+    }
+    return items;
+  }
+
   // VECNA_PATCH: Corruption meter + ultimate timer, nothing JJK.
   if (f.technique === "hivemind") {
     items.push({ name: "CORRUPTION", current: f.vecnaCorruption || 0, max: VECNA_CORRUPTION_MAX, mode: "resource" });
@@ -5478,7 +5717,7 @@ function updateExtraCooldownHud(container, f) {
       : ready ? 100 : Math.max(4, ratio * 100);
 
     const row = document.createElement("div");
-    row.className = `extra-cooldown ct-slot ${ready ? "ready" : "cooling"} ${f.technique === "shrine" ? "sukuna-cooldown" : f.technique === "deathnote" ? "light-cooldown" : f.technique === "brawler" ? "thragg-cooldown" : f.technique === "blackleg" ? "sanji-cooldown" : f.technique === "hivemind" ? "vecna-cooldown" : "gojo-cooldown"} ${item.style || ""}`;
+    row.className = `extra-cooldown ct-slot ${ready ? "ready" : "cooling"} ${f.technique === "shrine" ? "sukuna-cooldown" : f.technique === "deathnote" ? "light-cooldown" : f.technique === "brawler" ? "thragg-cooldown" : f.technique === "blackleg" ? "sanji-cooldown" : f.technique === "hivemind" ? "vecna-cooldown" : f.technique === "zealot" ? "zealot-cooldown" : "gojo-cooldown"} ${item.style || ""}`;
 
     const label = document.createElement("span");
     label.className = "extra-cooldown-label ct-label";
@@ -5541,7 +5780,7 @@ function updateResourceBarLabels() {
   const playerUltFrame = playerUltimateEl ? playerUltimateEl.closest(".ultimate-frame") : null;
   const enemyUltFrame = enemyUltimateEl ? enemyUltimateEl.closest(".ultimate-frame") : null;
 
-  ensureResourceBarLabel(playerCeFrame, isLight(player) ? "Information" : player?.technique === "brawler" || player?.technique === "blackleg" || player?.technique === "hivemind" ? "" : "Cursed Energy", "ce"); // SANJI_PATCH + VECNA_PATCH
+  ensureResourceBarLabel(playerCeFrame, isLight(player) ? "Information" : player?.technique === "brawler" || player?.technique === "blackleg" || player?.technique === "hivemind" || player?.technique === "zealot" ? "" : "Cursed Energy", "ce"); // + ZEALOT
   ensureResourceBarLabel(playerUltFrame, isLight(player) ? "Name" : "Ultimate", "ultimate");
 
   // DUMMY_HUD_NO_WORDS_PATCH:
@@ -5552,7 +5791,7 @@ function updateResourceBarLabels() {
     return;
   }
 
-  ensureResourceBarLabel(enemyCeFrame, isLight(enemy) ? "Information" : enemy?.technique === "brawler" || enemy?.technique === "blackleg" || enemy?.technique === "hivemind" ? "" : "Cursed Energy", "ce"); // SANJI_PATCH + VECNA_PATCH
+  ensureResourceBarLabel(enemyCeFrame, isLight(enemy) ? "Information" : enemy?.technique === "brawler" || enemy?.technique === "blackleg" || enemy?.technique === "hivemind" || enemy?.technique === "zealot" ? "" : "Cursed Energy", "ce"); // + ZEALOT
   ensureResourceBarLabel(enemyUltFrame, isLight(enemy) ? "Name" : "Ultimate", "ultimate");
 }
 
@@ -5593,11 +5832,11 @@ function updateLightHudVisibility() {
   // Light uses the CE slot as INFO and the Ultimate slot as NAME.
   // THRAGG_NO_JJK_PATCH: Thragg has no Cursed Energy at all - his CE bar
   // is hidden outright (abilities are cooldown-gated).
-  setHudElementHidden(playerCeFrame, player?.technique === "brawler" || player?.technique === "blackleg" || player?.technique === "hivemind"); // SANJI_PATCH + VECNA_PATCH
+  setHudElementHidden(playerCeFrame, player?.technique === "brawler" || player?.technique === "blackleg" || player?.technique === "hivemind" || player?.technique === "zealot"); // + ZEALOT
   setHudElementHidden(playerUltFrame, false);
 
   if (gameMode !== "practice") {
-    setHudElementHidden(enemyCeFrame, enemy?.technique === "brawler" || enemy?.technique === "blackleg" || enemy?.technique === "hivemind"); // SANJI_PATCH + VECNA_PATCH
+    setHudElementHidden(enemyCeFrame, enemy?.technique === "brawler" || enemy?.technique === "blackleg" || enemy?.technique === "hivemind" || enemy?.technique === "zealot"); // + ZEALOT
     setHudElementHidden(enemyUltFrame, false);
   } else {
     setHudElementHidden(enemyCeFrame, true);
@@ -6032,10 +6271,15 @@ function isSanjiCommitted(f) {
   return Boolean(f && ((f.sanjiDiableTicks || 0) > 0 || (f.sanjiMuttonTicks || 0) > 0 || (f.sanjiCookTicks || 0) > 0));
 }
 
+// ZEALOT_PATCH: mid-flurry/whirlwind he is committed (charge steers freely).
+function isZealotCommitted(f) {
+  return Boolean(f && ((f.zealotFlurryTicks || 0) > 0 || (f.zealotWhirlTicks || 0) > 0));
+}
+
 function isSpecialLocked(f) {
   const owner = getFighterOwner(f);
   const clashing = Boolean(owner && domainClash?.attempts?.[owner]);
-  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || isSanjiCommitted(f) || (f?.vecnaSlipTicks || 0) > 0 || (f?.domainStartup || 0) > 0 || clashing || (f?.potatoVulnerableTicks || 0) > 0; // VECNA_PATCH: no attacking from underground
+  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || isSanjiCommitted(f) || isZealotCommitted(f) || (f?.vecnaSlipTicks || 0) > 0 || (f?.domainStartup || 0) > 0 || clashing || (f?.potatoVulnerableTicks || 0) > 0; // + ZEALOT
 }
 
 // DOMAIN_MOVEMENT_FIX
@@ -6044,7 +6288,7 @@ function isSpecialLocked(f) {
 function isMovementLocked(f) {
   const owner = getFighterOwner(f);
   const clashing = Boolean(owner && domainClash?.attempts?.[owner]);
-  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || (f?.sanjiMuttonTicks || 0) > 0 || (f?.sanjiCookTicks || 0) > 0 || clashing; // SANJI_PATCH: flurry + cooking root him, the dash doesn't
+  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || (f?.sanjiMuttonTicks || 0) > 0 || (f?.sanjiCookTicks || 0) > 0 || (f?.zealotFlurryTicks || 0) > 0 || (f?.zealotWhirlTicks || 0) > 0 || clashing; // + ZEALOT roots
 }
 
 function getMoveInputForFighter(f) {
@@ -7430,6 +7674,387 @@ function updateVecnaSystems(f) {
   }
 }
 
+// ==========================================================================
+// ZEALOT_PATCH: Protoss Zealot. Regenerating shield, Charge, Psi Blade
+// Flurry, Whirlwind, and Warp Reinforcements with the orbital strike.
+// ==========================================================================
+
+function isZealot(f) {
+  return Boolean(f && f.technique === "zealot");
+}
+
+function zealotUltActive(f) {
+  return isZealot(f) && (f.zealotUltTicks || 0) > 0;
+}
+
+function canStartZealotSpecial(f) {
+  return Boolean(
+    f && !gameOver && !paused && !isSpecialLocked(f) && !f.ko &&
+    f.stun <= 0 && f.dodging <= 0 && !f.knockdown && !f.attacking &&
+    (f.zealotChargeTicks || 0) <= 0 && (f.zealotFlurryTicks || 0) <= 0 && (f.zealotWhirlTicks || 0) <= 0
+  );
+}
+
+// Shields regenerate after 5s of not taking damage; HP never regenerates.
+function updateZealotShield(f) {
+  if (!isZealot(f)) return;
+  if ((f.zealotShieldBrokenFlash || 0) > 0) f.zealotShieldBrokenFlash -= 1;
+  if ((f.zealotShieldRegenTimer || 0) > 0) {
+    f.zealotShieldRegenTimer -= 1;
+    return;
+  }
+  if ((f.zealotShield || 0) < (f.zealotShieldMax || 0)) {
+    f.zealotShield = Math.min(f.zealotShieldMax, (f.zealotShield || 0) + ZEALOT_SHIELD_REGEN_RATE * (zealotUltActive(f) ? 2 : 1));
+  }
+}
+
+function startZealotCharge(f) {
+  if (!isZealot(f) || !canStartZealotSpecial(f) || (f.zealotChargeCooldown || 0) > 0) return false;
+  const opponent = getOpponent(f);
+  if (!opponent || opponent.ko) return false;
+  f.zealotChargeCooldown = ZEALOT_CHARGE_COOLDOWN_TICKS;
+  f.zealotChargeTicks = ZEALOT_CHARGE_TICKS;
+  f.zealotChargeHit = false;
+  f.dir = getFighterCenter(opponent).x >= getFighterCenter(f).x ? 1 : -1;
+  f.blocking = false;
+  f.vx = f.dir * ZEALOT_CHARGE_SPEED;
+  return true;
+}
+
+function updateZealotCharge(f, opponent) {
+  if ((f.zealotChargeTicks || 0) <= 0) return;
+  if (f.ko || f.stun > 0 || f.knockdown) { f.zealotChargeTicks = 0; return; }
+  f.zealotChargeTicks -= 1;
+  f.vx = f.dir * ZEALOT_CHARGE_SPEED * (zealotUltActive(f) ? 1.15 : 1);
+  if (frame % 2 === 0) spawnHitSpark(f.x + f.w / 2 - f.dir * 14, f.y + f.h - 16, -f.dir, "blue");
+  if (!f.zealotChargeHit && opponent && !opponent.ko && opponent.dodging <= 0 && !isUntargetable(opponent) && rectsOverlap(expandRect(f, 10), opponent)) {
+    f.zealotChargeHit = true;
+    const blocked = isBlockingAttack(opponent, f.dir);
+    const damage = blocked ? 0 : getTakenDamage(opponent, Math.ceil(ZEALOT_CHARGE_DAMAGE * getOutgoingDamageMultiplier(f)));
+    if (blocked) {
+      damageShield(opponent, ZEALOT_CHARGE_DAMAGE);
+    } else {
+      applyFighterDamage(opponent, damage);
+      // bonus first-hit stun - the combo starter
+      opponent.stun = Math.max(opponent.stun, ZEALOT_CHARGE_STUN);
+      opponent.hurt = 16;
+      gainUltimate(f, damage * ULT_DAMAGE_GAIN_SCALE);
+    }
+    opponent.vx = f.dir * getTakenKnockback(opponent, blocked ? 8 : 14);
+    const center = getFighterCenter(opponent);
+    spawnHitSpark(center.x, center.y, f.dir, "heavy");
+    hitStopTicks = Math.max(hitStopTicks, HITSTOP_HEAVY);
+    shake = Math.max(shake, 9);
+    f.vx *= 0.3;
+    f.zealotChargeTicks = 0;
+    updateHud();
+  }
+}
+
+function startZealotFlurry(f) {
+  if (!isZealot(f) || !canStartZealotSpecial(f) || (f.zealotFlurryCooldown || 0) > 0) return false;
+  const opponent = getOpponent(f);
+  if (!opponent || opponent.ko) return false;
+  const gap = Math.abs(getFighterCenter(opponent).x - getFighterCenter(f).x);
+  if (gap > ZEALOT_FLURRY_RANGE) return false;
+  f.zealotFlurryCooldown = ZEALOT_FLURRY_COOLDOWN_TICKS;
+  f.zealotFlurryTicks = ZEALOT_FLURRY_TICKS;
+  f.zealotFlurryNextHit = 3;
+  f.dir = getFighterCenter(opponent).x >= getFighterCenter(f).x ? 1 : -1;
+  f.blocking = false;
+  f.vx = 0;
+  opponent.blocking = false;
+  return true;
+}
+
+function updateZealotFlurry(f, opponent) {
+  if ((f.zealotFlurryTicks || 0) <= 0) return;
+  if (f.ko || f.stun > 0 || f.knockdown || !opponent || opponent.ko) { f.zealotFlurryTicks = 0; return; }
+  f.zealotFlurryTicks -= 1;
+  f.vx = 0;
+  const ult = zealotUltActive(f);
+  const hitsPerTick = ult ? 1.4 : 1;
+  const inRange = Math.abs(getFighterCenter(opponent).x - getFighterCenter(f).x) <= ZEALOT_FLURRY_RANGE + 14;
+  f.zealotFlurryNextHit -= hitsPerTick;
+  if (f.zealotFlurryNextHit <= 0 && f.zealotFlurryTicks > 5 && inRange && opponent.dodging <= 0 && !isUntargetable(opponent)) {
+    f.zealotFlurryNextHit = Math.round(ZEALOT_FLURRY_TICKS / (ZEALOT_FLURRY_HITS + 1));
+    const blocked = isBlockingAttack(opponent, f.dir);
+    const damage = blocked ? 0 : getTakenDamage(opponent, Math.ceil(ZEALOT_FLURRY_HIT_DAMAGE * (ult ? 1.3 : 1) * getOutgoingDamageMultiplier(f)));
+    if (blocked) damageShield(opponent, ZEALOT_FLURRY_HIT_DAMAGE);
+    else {
+      applyFighterDamage(opponent, damage);
+      opponent.hurt = Math.max(opponent.hurt, 6);
+      opponent.stun = Math.max(opponent.stun, 8);
+      gainUltimate(f, damage * ULT_DAMAGE_GAIN_SCALE * 0.7);
+    }
+    const c = getFighterCenter(opponent);
+    spawnHitSpark(c.x + (Math.random() - 0.5) * 16, c.y + (Math.random() - 0.5) * 24, f.dir, "blue");
+    hitStopTicks = Math.max(hitStopTicks, 1);
+    updateHud();
+  }
+  if (f.zealotFlurryTicks <= 0 && !opponent.ko && Math.abs(getFighterCenter(opponent).x - getFighterCenter(f).x) <= ZEALOT_FLURRY_RANGE + 20) {
+    // final hit launches
+    const damage = getTakenDamage(opponent, Math.ceil((ZEALOT_FLURRY_HIT_DAMAGE + 4) * getOutgoingDamageMultiplier(f)));
+    applyFighterDamage(opponent, damage);
+    opponent.vx = f.dir * getTakenKnockback(opponent, ZEALOT_FLURRY_LAUNCH_KNOCKBACK);
+    opponent.vy = -8;
+    opponent.grounded = false;
+    opponent.knockdown = true;
+    opponent.knockdownTimer = 22;
+    opponent.stun = Math.max(opponent.stun, 20);
+    const c = getFighterCenter(opponent);
+    spawnHitSpark(c.x, c.y, f.dir, "heavy");
+    shake = Math.max(shake, 10);
+    hitStopTicks = Math.max(hitStopTicks, HITSTOP_HEAVY);
+    updateHud();
+  }
+}
+
+function startZealotWhirlwind(f) {
+  if (!isZealot(f) || !canStartZealotSpecial(f) || (f.zealotWhirlCooldown || 0) > 0) return false;
+  f.zealotWhirlCooldown = ZEALOT_WHIRL_COOLDOWN_TICKS;
+  f.zealotWhirlTicks = ZEALOT_WHIRL_TICKS;
+  f.zealotWhirlNextHit = ZEALOT_WHIRL_HIT_INTERVAL;
+  f.blocking = false;
+  showActionWarning("WHIRLWIND");
+  return true;
+}
+
+function updateZealotWhirlwind(f, opponent) {
+  if ((f.zealotWhirlTicks || 0) <= 0) return;
+  if (f.ko || f.stun > 0 || f.knockdown) { f.zealotWhirlTicks = 0; return; }
+  f.zealotWhirlTicks -= 1;
+  // reflect weak projectiles that get close
+  const center = getFighterCenter(f);
+  for (const p of projectiles) {
+    if (p.hit || p.visualOnly || (p.startup || 0) > 0) continue;
+    if (p.owner === (f === player ? "player" : "enemy")) continue;
+    if ((p.damage || 0) > 14) continue; // only weak projectiles
+    if (Math.hypot(p.x - center.x, p.y - center.y) < ZEALOT_WHIRL_RADIUS) {
+      p.owner = f === player ? "player" : "enemy";
+      p.vx = -p.vx; p.baseVx = -(p.baseVx || p.vx); p.dir = -p.dir; p.aimX = -(p.aimX || 0);
+      p.hit = false;
+      spawnHitSpark(p.x, p.y, p.dir, "block");
+    }
+  }
+  f.zealotWhirlNextHit -= 1;
+  if (f.zealotWhirlNextHit <= 0) {
+    f.zealotWhirlNextHit = ZEALOT_WHIRL_HIT_INTERVAL;
+    if (opponent && !opponent.ko && opponent.dodging <= 0 && !isUntargetable(opponent) &&
+      Math.abs(getFighterCenter(opponent).x - center.x) < ZEALOT_WHIRL_RADIUS &&
+      Math.abs(getFighterCenter(opponent).y - center.y) < 70) {
+      const blocked = isBlockingAttack(opponent, Math.sign(getFighterCenter(opponent).x - center.x) || f.dir);
+      const damage = blocked ? 0 : getTakenDamage(opponent, Math.ceil(ZEALOT_WHIRL_HIT_DAMAGE * getOutgoingDamageMultiplier(f)));
+      if (blocked) damageShield(opponent, ZEALOT_WHIRL_HIT_DAMAGE);
+      else {
+        applyFighterDamage(opponent, damage);
+        opponent.hurt = Math.max(opponent.hurt, 5);
+        opponent.stun = Math.max(opponent.stun, 6);
+        opponent.vx = Math.sign(getFighterCenter(opponent).x - center.x || 1) * getTakenKnockback(opponent, 10);
+        gainUltimate(f, damage * ULT_DAMAGE_GAIN_SCALE * 0.6);
+      }
+      const c = getFighterCenter(opponent);
+      spawnHitSpark(c.x, c.y, f.dir, "blue");
+      updateHud();
+    }
+  }
+}
+
+function spawnZealotUnit(owner, kind) {
+  const ownerFighter = owner === "player" ? player : enemy;
+  const center = getFighterCenter(ownerFighter);
+  const side = ownerFighter.dir || 1;
+  zealotUnits.push({
+    kind,
+    owner,
+    x: center.x + side * (40 + Math.random() * 20),
+    y: GROUND - 30,
+    vx: 0,
+    vy: 0,
+    life: ZEALOT_UNIT_LIFE,
+    warpFlash: 18,
+    hitCooldown: 0,
+    shootCooldown: kind === "stalker" ? 40 : 0,
+    barrierTicks: kind === "sentry" ? 4 * 60 : 0
+  });
+  spawnHitSpark(center.x + side * 44, GROUND - 24, side, "blue");
+}
+
+function startZealotUltimate(f) {
+  if (zealotUltActive(f)) return false;
+  if (!canStartUltimate(f)) {
+    const warning = getUltimateFailureMessage(f);
+    if (warning) showActionWarning(warning);
+    return false;
+  }
+  f.ultimateMeter = 0;
+  f.zealotUltTicks = ZEALOT_ULT_TICKS;
+  f.zealotWarpTimer = 40;
+  // shields instantly refill
+  f.zealotShield = f.zealotShieldMax;
+  f.zealotShieldRegenTimer = 0;
+  const c = getFighterCenter(f);
+  spawnHitSpark(c.x, c.y, f.dir, "blue");
+  shake = Math.max(shake, 10);
+  showActionWarning("WARP REINFORCEMENTS");
+  updateHud();
+  return true;
+}
+
+function updateZealotUnits() {
+  if (!zealotUnits.length) return;
+  for (const u of zealotUnits) {
+    u.life -= 1;
+    if (u.warpFlash > 0) u.warpFlash -= 1;
+    if (u.hitCooldown > 0) u.hitCooldown -= 1;
+    const ownerFighter = u.owner === "player" ? player : enemy;
+    const target = u.owner === "player" ? enemy : player;
+    if (!target || target.ko || !ownerFighter || ownerFighter.ko) { u.life = Math.min(u.life, 0); continue; }
+    if (u.warpFlash > 0) continue; // still warping in
+    const tCenter = getFighterCenter(target);
+    const targetable = target.dodging <= 0 && !isUntargetable(target);
+    // gravity
+    u.vy += GRAVITY; u.y += u.vy;
+    if (u.y >= GROUND - 15) { u.y = GROUND - 15; u.vy = 0; }
+    if (u.kind === "zealot") {
+      const dir = Math.sign(tCenter.x - u.x) || 1;
+      u.vx = dir * 5.6; u.x += u.vx;
+      if (targetable && u.hitCooldown <= 0 && Math.abs(tCenter.x - u.x) < 34 && Math.abs(tCenter.y - u.y) < 60) {
+        u.hitCooldown = 26;
+        const dmg = getTakenDamage(target, Math.ceil(6 * getOutgoingDamageMultiplier(ownerFighter)));
+        if (!isBlockingAttack(target, dir)) {
+          applyFighterDamage(target, dmg);
+          target.hurt = Math.max(target.hurt, 6);
+          target.stun = Math.max(target.stun, 8);
+          target.vx = dir * getTakenKnockback(target, 10);
+        } else damageShield(target, dmg);
+        spawnHitSpark(tCenter.x, tCenter.y, dir, "blue");
+        updateHud();
+      }
+    } else if (u.kind === "stalker") {
+      // holds mid-range and fires
+      const dir = Math.sign(tCenter.x - u.x) || 1;
+      const desired = 240;
+      if (Math.abs(tCenter.x - u.x) < desired - 30) u.x -= dir * 2.2;
+      else if (Math.abs(tCenter.x - u.x) > desired + 30) u.x += dir * 2.6;
+      u.shootCooldown -= 1;
+      if (u.shootCooldown <= 0) {
+        u.shootCooldown = 66;
+        projectiles.push({
+          owner: u.owner, move: "stalkerShot", x: u.x + dir * 14, y: u.y - 4,
+          vx: dir * 9, vy: 0, baseVx: dir * 9, baseVy: 0, radius: 9,
+          damage: Math.ceil(7 * getOutgoingDamageMultiplier(ownerFighter)), knockback: 8,
+          dir, aimX: dir, aimY: 0, angle: dir > 0 ? 0 : Math.PI,
+          maxTravel: Infinity, traveled: 0, life: 70, maxLife: 70, hit: false
+        });
+      }
+    } else {
+      // sentry: stays near owner, its barrier blocks projectiles (handled
+      // in projectile update via barrierTicks), and slows a nearby enemy
+      if (u.barrierTicks > 0) u.barrierTicks -= 1;
+      else u.life = Math.min(u.life, 0);
+      const homeX = getFighterCenter(ownerFighter).x + (ownerFighter.dir || 1) * 30;
+      u.x += (homeX - u.x) * 0.08;
+      if (targetable && Math.abs(tCenter.x - u.x) < 90) {
+        target.spiderSlowExternal = 4; // reuse a light slow flag
+        if (target.grounded) target.vx *= 0.96;
+      }
+    }
+    // units can be destroyed by the target's attacks
+    if (u.hitCooldown <= 0 && target.attacking && !target.ko) {
+      const attack = getAttackSpec(target);
+      if (attack) {
+        const activeStart = attack.windup, activeEnd = attack.windup + attack.active;
+        if (target.attackFrame >= activeStart && target.attackFrame <= activeEnd &&
+          rectsOverlap(getHitbox(target), { x: u.x - 16, y: u.y - 26, w: 32, h: 40 })) {
+          u.life = 0;
+          spawnHitSpark(u.x, u.y - 12, target.dir, "block");
+        }
+      }
+    }
+  }
+  zealotUnits = zealotUnits.filter((u) => u.life > 0);
+}
+
+function triggerOrbitalStrike(owner) {
+  const ownerFighter = owner === "player" ? player : enemy;
+  const target = owner === "player" ? enemy : player;
+  const baseX = target && !target.ko ? getFighterCenter(target).x : getFighterCenter(ownerFighter).x;
+  for (let i = 0; i < ZEALOT_ORBITAL_BEAMS; i += 1) {
+    orbitalBeams.push({
+      owner,
+      x: clampStageX(baseX + (i - ZEALOT_ORBITAL_BEAMS / 2) * 70 + (Math.random() - 0.5) * 40, 0),
+      warnTicks: 28 + i * 5,
+      struck: false,
+      flash: 0
+    });
+  }
+  showActionWarning("ORBITAL STRIKE");
+}
+
+function updateOrbitalBeams() {
+  if (!orbitalBeams.length) return;
+  for (const b of orbitalBeams) {
+    if (b.flash > 0) b.flash -= 1;
+    if (b.struck) continue;
+    b.warnTicks -= 1;
+    if (b.warnTicks <= 0) {
+      b.struck = true;
+      b.flash = 14;
+      const ownerFighter = b.owner === "player" ? player : enemy;
+      const target = b.owner === "player" ? enemy : player;
+      if (target && !target.ko && target.dodging <= 0 && !isUntargetable(target) &&
+        Math.abs(getFighterCenter(target).x - b.x) < ZEALOT_ORBITAL_RADIUS) {
+        const blocked = isBlockingAttack(target, 1);
+        const damage = blocked ? 0 : getTakenDamage(target, Math.ceil(ZEALOT_ORBITAL_DAMAGE * getOutgoingDamageMultiplier(ownerFighter)));
+        if (blocked) damageShield(target, ZEALOT_ORBITAL_DAMAGE);
+        else {
+          applyFighterDamage(target, damage);
+          target.stun = Math.max(target.stun, 22);
+          target.hurt = Math.max(target.hurt, 12);
+          target.vy = -6; target.grounded = false;
+          if (!pacifistBot && target.health <= 0) startKnockout(ownerFighter, target);
+        }
+        const c = getFighterCenter(target);
+        spawnHitSpark(c.x, c.y, 1, "blue");
+      }
+      spawnHitSpark(b.x, GROUND - 10, 1, "blue");
+      shake = Math.max(shake, 9);
+    }
+  }
+  orbitalBeams = orbitalBeams.filter((b) => !b.struck || b.flash > 0);
+}
+
+function updateZealotSystems(f, opponent) {
+  updateZealotShield(f);
+  if (!isZealot(f)) return;
+  const ult = zealotUltActive(f);
+  if ((f.zealotChargeCooldown || 0) > 0) f.zealotChargeCooldown -= ult ? 2 : 1;
+  if ((f.zealotFlurryCooldown || 0) > 0 && (f.zealotFlurryTicks || 0) <= 0) f.zealotFlurryCooldown -= ult ? 2 : 1;
+  if ((f.zealotWhirlCooldown || 0) > 0 && (f.zealotWhirlTicks || 0) <= 0) f.zealotWhirlCooldown -= ult ? 2 : 1;
+  // ultimate: +30% move speed, warp units in, orbital strike at the end
+  const wantBoost = ult;
+  if (wantBoost && !f.zealotSpeedBoosted) { f.speed *= 1.3; f.zealotSpeedBoosted = true; }
+  else if (!wantBoost && f.zealotSpeedBoosted) { f.speed /= 1.3; f.zealotSpeedBoosted = false; }
+  if (ult) {
+    f.zealotUltTicks -= 1;
+    f.zealotShieldRegenTimer = 0; // shields stay topped during the ult
+    f.zealotWarpTimer -= 1;
+    if (f.zealotWarpTimer <= 0) {
+      f.zealotWarpTimer = ZEALOT_WARP_INTERVAL;
+      const kinds = ["zealot", "stalker", "sentry"];
+      spawnZealotUnit(f === player ? "player" : "enemy", kinds[Math.floor(Math.random() * kinds.length)]);
+    }
+    if (f.zealotUltTicks <= 0) {
+      triggerOrbitalStrike(f === player ? "player" : "enemy");
+      f.zealotSpeedBoosted && (f.speed /= 1.3, f.zealotSpeedBoosted = false);
+    }
+  }
+  updateZealotCharge(f, opponent);
+  updateZealotFlurry(f, opponent);
+  updateZealotWhirlwind(f, opponent);
+}
+
 function startKnockout(attacker, defender) {
   if (roundEnding || roundResolved) return;
   gameOver = true;
@@ -7717,6 +8342,13 @@ function startTechnique(f, slot, chargeRatio = 0, aimPoint = null, releasingChar
     return;
   }
 
+  // ZEALOT_PATCH: both mouse specials are melee.
+  if (f.technique === "zealot") {
+    if (move === "charge") startZealotCharge(f);
+    if (move === "psiFlurry") startZealotFlurry(f);
+    return;
+  }
+
   if (f.technique === "deathnote") {
     if (move === "ryukStrike") {
       if ((f.lightRyukCooldown || 0) > 0) return;
@@ -7988,7 +8620,7 @@ function getRctHealPerTick(f) {
 }
 
 function canStartRct(f) {
-  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind") return false; // THRAGG_NO_JJK_PATCH + SANJI_PATCH + VECNA_PATCH
+  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider") return false; // NO_JJK all custom chars
   if (!f || gameOver || paused || isSpecialLocked(f) || f.ko || f.knockdown || f.dodging > 0) return false;
   if (f.health >= getCurrentHealthBarCeiling(f) || f.rctCooldown > 0) return false;
   return f.ce >= f.maxCe * RCT_MIN_CE_RATIO;
@@ -8010,7 +8642,7 @@ function cancelRct(f, startCooldown = true) {
 }
 
 function setRctHealing(f, wantsRct) {
-  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind") { // THRAGG_NO_JJK_PATCH + SANJI_PATCH + VECNA_PATCH
+  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider") { // NO_JJK all custom chars
     cancelRct(f, false);
     return;
   }
@@ -8259,6 +8891,7 @@ function startUltimate(f, aimPoint = null) {
   if (f.technique === "brawler") return startThraggUltimate(f); // THRAGG_NO_JJK_PATCH
   if (f.technique === "blackleg") return startSanjiUltimate(f); // SANJI_PATCH
   if (f.technique === "hivemind") return startVecnaUltimate(f); // VECNA_PATCH
+  if (f.technique === "zealot") return startZealotUltimate(f); // ZEALOT_PATCH
   return beginUltimateAim(f, aimPoint);
 }
 
@@ -8268,6 +8901,7 @@ function beginUltimateAim(f, aimPoint = null) {
   if (f.technique === "brawler") return startThraggUltimate(f); // THRAGG_NO_JJK_PATCH
   if (f.technique === "blackleg") return startSanjiUltimate(f); // SANJI_PATCH
   if (f.technique === "hivemind") return startVecnaUltimate(f); // VECNA_PATCH
+  if (f.technique === "zealot") return startZealotUltimate(f); // ZEALOT_PATCH
   if (!canStartUltimate(f)) {
     const warning = getUltimateFailureMessage(f);
     if (warning) showActionWarning(warning);
@@ -8683,7 +9317,7 @@ function canStartSimpleDomain(f) {
 }
 
 function startSimpleDomain(f) {
-  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind") return false; // THRAGG_NO_JJK_PATCH + SANJI_PATCH + VECNA_PATCH
+  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider") return false; // NO_JJK all custom chars
   if (!canStartSimpleDomain(f)) {
     showActionWarning(f && f.ce < Math.ceil(f.maxCe * SIMPLE_DOMAIN_CE_COST_RATIO) ? "Not Enough Cursed Energy" : "Can't Use Simple Domain");
     return false;
@@ -8778,7 +9412,7 @@ function getDomainAttemptForFighter(f) {
 }
 
 function canStartDomain(f) {
-  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind") return false; // THRAGG_NO_JJK_PATCH + SANJI_PATCH + VECNA_PATCH
+  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider") return false; // NO_JJK all custom chars
   if (!f || gameState !== "playing" || gameOver || paused || f.ko || f.knockdown || f.stun > 0) return false;
   if (isSpecialLocked(f) || f.attacking || f.dodging > 0 || f.rctHealing || hasCtLock(f)) return false;
   if (activeDomain || domainClash) return false;
@@ -11244,6 +11878,19 @@ function updateEnemyAi() {
     }
   }
 
+  // ZEALOT_PATCH: CPU Zealot rushes - Charge to close, Flurry up close,
+  // Whirlwind when pressured.
+  if (enemy.technique === "zealot" && !pacifistBot && enemy.stun <= 0 && !enemy.knockdown && !gameOver) {
+    const zGap = Math.abs((player.x + player.w / 2) - (enemy.x + enemy.w / 2));
+    if ((enemy.zealotChargeCooldown || 0) <= 0 && zGap > 140 && Math.random() < getCpuDecisionChance(0.01, 0.024, 0.05)) {
+      startZealotCharge(enemy);
+    } else if ((enemy.zealotFlurryCooldown || 0) <= 0 && zGap < ZEALOT_FLURRY_RANGE - 8 && Math.random() < getCpuDecisionChance(0.01, 0.026, 0.05)) {
+      startZealotFlurry(enemy);
+    } else if ((enemy.zealotWhirlCooldown || 0) <= 0 && zGap < ZEALOT_WHIRL_RADIUS && Math.random() < getCpuDecisionChance(0.006, 0.014, 0.03)) {
+      startZealotWhirlwind(enemy);
+    }
+  }
+
   // SANJI_PATCH: CPU Sanji plays rushdown - Diable Jambe to close space,
   // Mutton Shot up close, Sky Walk to chase in the air, Boeuf on cue.
   if (enemy.technique === "blackleg" && !pacifistBot && enemy.stun <= 0 && !enemy.knockdown && !gameOver) {
@@ -11306,7 +11953,7 @@ function updateEnemyAi() {
 
   if (enemy.ultimateMeter >= MAX_ULTIMATE && enemy.aiCooldown <= 0) {
     const ultimateChance = cpuDifficulty === "hard" ? 0.18 : cpuDifficulty === "medium" ? 0.08 : 0.025;
-    const goodRange = enemy.technique === "blackleg" || enemy.technique === "hivemind" ? true : enemy.technique === "shrine" ? distance > 120 : distance > 260; // SANJI_PATCH + VECNA_PATCH: self-buff ults work anywhere
+    const goodRange = enemy.technique === "blackleg" || enemy.technique === "hivemind" || enemy.technique === "zealot" || enemy.technique === "spider" ? true : enemy.technique === "shrine" ? distance > 120 : distance > 260; // custom self-buff ults work anywhere
     if (goodRange && Math.random() < ultimateChance && startUltimate(enemy)) {
       enemy.aiGoal = "ultimate";
       enemy.aiCooldown = cpu.attackCooldown + 48;
@@ -11457,6 +12104,8 @@ function updateFighter(f, opponent) {
   updateSanjiSystems(f, opponent);
   // VECNA_PATCH
   updateVecnaSystems(f);
+  // ZEALOT_PATCH
+  updateZealotSystems(f, opponent);
 
   if (f.ko) {
     f.attacking = null;
@@ -12333,6 +12982,20 @@ function getTechniqueSkin(f, flash) {
       hair: "#101114",
       eye: "#0b0705",
       mark: "#dc2626"
+    };
+  }
+
+  // ZEALOT_PATCH: gold-plated Protoss armor with cyan energy trim.
+  if (f.technique === "zealot") {
+    return {
+      body: "#c8a13a",
+      skin: "#8a6f3a",
+      accent: "#38e0f0",
+      pants: "#7c5c1e",
+      shoe: "#4a3712",
+      hair: "#0b1420",
+      eye: "#38e0f0",
+      mark: "#38e0f0"
     };
   }
 
@@ -14247,6 +14910,45 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.moveTo(30, 46);
     ctx.lineTo(28, 58);
     ctx.stroke();
+  } else if (f.technique === "zealot") {
+    // ZEALOT_PATCH: layered gold armor plates with cyan energy trim and a
+    // glowing chest crystal.
+    ctx.fillStyle = "#a5820f";
+    ctx.beginPath();
+    ctx.moveTo(14, 40);
+    ctx.lineTo(40, 41);
+    ctx.lineTo(37, 54);
+    ctx.lineTo(27, 58);
+    ctx.lineTo(17, 54);
+    ctx.closePath();
+    ctx.fill();
+    // shoulder pauldrons
+    ctx.fillStyle = "#d8b23e";
+    ctx.beginPath();
+    ctx.moveTo(11, 40); ctx.lineTo(20, 39); ctx.lineTo(18, 49); ctx.lineTo(10, 48); ctx.closePath();
+    ctx.moveTo(43, 40); ctx.lineTo(34, 39); ctx.lineTo(36, 49); ctx.lineTo(44, 48); ctx.closePath();
+    ctx.fill();
+    // cyan energy trim
+    ctx.strokeStyle = skin.accent;
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(16, 43); ctx.lineTo(20, 55);
+    ctx.moveTo(38, 43); ctx.lineTo(34, 55);
+    ctx.moveTo(20, 62); ctx.lineTo(34, 62);
+    ctx.stroke();
+    // chest crystal
+    ctx.fillStyle = "#0e3b44";
+    ctx.beginPath();
+    ctx.moveTo(27, 44); ctx.lineTo(31, 49); ctx.lineTo(27, 55); ctx.lineTo(23, 49); ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = skin.accent;
+    ctx.beginPath();
+    ctx.moveTo(27, 46); ctx.lineTo(29.5, 49); ctx.lineTo(27, 53); ctx.lineTo(24.5, 49); ctx.closePath();
+    ctx.fill();
+    // waist plate
+    ctx.fillStyle = "#8a6d10";
+    ctx.fillRect(16, 66, 22, 6);
   } else if (isPracticeDummy(f)) {
     ctx.strokeStyle = "#111827";
     ctx.lineWidth = 3;
@@ -14546,6 +15248,45 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.beginPath();
     ctx.ellipse(26, 12, 6, 3.4, 0, 0, Math.PI * 2);
     ctx.fill();
+  } else if (f.technique === "zealot") {
+    // ZEALOT_PATCH: Protoss nerve cords hanging behind the head plus a
+    // gold headdress crest. No face - the cords read as "hair".
+    const sway = idle * 0.6;
+    ctx.strokeStyle = "#0b1420";
+    ctx.lineWidth = 5;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(20, 30);
+    ctx.quadraticCurveTo(13, 40 + sway, 16, 52 + sway);
+    ctx.moveTo(32, 30);
+    ctx.quadraticCurveTo(39, 40 - sway, 36, 52 - sway);
+    ctx.moveTo(24, 32);
+    ctx.quadraticCurveTo(20, 42 + sway, 22, 50 + sway);
+    ctx.moveTo(28, 32);
+    ctx.quadraticCurveTo(32, 42 - sway, 30, 50 - sway);
+    ctx.stroke();
+    // cyan cord tips
+    ctx.fillStyle = skin.accent;
+    ctx.beginPath();
+    ctx.arc(16, 52 + sway, 2, 0, Math.PI * 2);
+    ctx.arc(36, 52 - sway, 2, 0, Math.PI * 2);
+    ctx.fill();
+    // gold headdress crest
+    ctx.fillStyle = "#d8b23e";
+    ctx.beginPath();
+    ctx.moveTo(18, 15);
+    ctx.lineTo(26, 5);
+    ctx.lineTo(34, 15);
+    ctx.lineTo(30, 18);
+    ctx.lineTo(26, 12);
+    ctx.lineTo(22, 18);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "#020617";
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+    ctx.fillStyle = skin.accent;
+    ctx.fillRect(24.5, 9, 3, 5);
   }
   ctx.restore();
 
@@ -15034,6 +15775,67 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     }
   }
 
+  // ZEALOT_PATCH: psi blades - twin cyan energy blades from the forearms
+  // while Charging / Flurrying / Whirlwinding / attacking.
+  if (isZealot(f)) {
+    const bladesOut = (f.zealotChargeTicks || 0) > 0 || (f.zealotFlurryTicks || 0) > 0 ||
+      (f.zealotWhirlTicks || 0) > 0 || Boolean(f.attacking && f.attacking !== "backThrow");
+    if ((f.zealotWhirlTicks || 0) > 0) {
+      // whirlwind: sweeping ring of blade light around the body
+      const spin = frame * 0.9;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      for (let i = 0; i < 3; i += 1) {
+        const a = spin + i * (Math.PI * 2 / 3);
+        ctx.strokeStyle = "rgba(56, 224, 240, 0.6)";
+        ctx.lineWidth = 5;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(26 + Math.cos(a) * 14, 60 + Math.sin(a) * 8);
+        ctx.lineTo(26 + Math.cos(a) * 40, 60 + Math.sin(a) * 22);
+        ctx.stroke();
+      }
+      ctx.restore();
+    } else if (bladesOut) {
+      const flick = Math.sin(frame * 0.6) * 2;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      const drawBlade = (bx, by, len, ang) => {
+        ctx.strokeStyle = "rgba(56, 224, 240, 0.35)";
+        ctx.lineWidth = 9;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(bx, by);
+        ctx.lineTo(bx + Math.cos(ang) * len, by + Math.sin(ang) * len);
+        ctx.stroke();
+        ctx.strokeStyle = "rgba(224, 255, 255, 0.95)";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(bx, by);
+        ctx.lineTo(bx + Math.cos(ang) * len, by + Math.sin(ang) * len);
+        ctx.stroke();
+      };
+      drawBlade(50, 58, 30 + flick, -0.12);
+      drawBlade(46, 68, 26 + flick, 0.05);
+      ctx.restore();
+    }
+  }
+
+  // ZEALOT_PATCH: the passive Protoss energy shield - a faint cyan bubble
+  // that fades as the shield is depleted (separate from the block shield).
+  if (isZealot(f) && (f.zealotShield || 0) > 0 && !f.ko) {
+    const sp = (f.zealotShield || 0) / Math.max(1, f.zealotShieldMax || 1);
+    const brk = (f.zealotShieldBrokenFlash || 0) / 12;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.strokeStyle = `rgba(56, 224, 240, ${0.12 + sp * 0.22 + brk * 0.3})`;
+    ctx.lineWidth = 2.5 + brk * 3;
+    ctx.beginPath();
+    ctx.ellipse(f.w / 2, 66, 34 * (1 + Math.sin(frame * 0.15) * 0.03), 62, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   if (f.blocking) {
     const shieldPower = Math.max(0, Math.min(1, f.shieldTicks / getShieldMaxTicks(f)));
     const hitFlash = Math.max(0, Math.min(1, (f.shieldHitFlash || 0) / 8));
@@ -15156,8 +15958,8 @@ function drawTechniquePreview(canvasEl, technique) {
     w: technique === "shrine" ? 52 : technique === "brawler" ? 54 : 50,
     h: 128,
     dir: 1,
-    color: technique === "shrine" ? "#dc2626" : technique === "deathnote" ? "#111827" : technique === "brawler" ? "#eceef2" : technique === "blackleg" ? "#16181f" : technique === "hivemind" ? "#54322c" : "#2563eb",
-    accent: technique === "shrine" ? "#991b1b" : technique === "deathnote" ? "#b91c1c" : technique === "brawler" ? "#dc2626" : technique === "blackleg" ? "#facc15" : technique === "hivemind" ? "#7f1d1d" : "#1d4ed8"
+    color: technique === "shrine" ? "#dc2626" : technique === "deathnote" ? "#111827" : technique === "brawler" ? "#eceef2" : technique === "blackleg" ? "#16181f" : technique === "hivemind" ? "#54322c" : technique === "zealot" ? "#c8a13a" : "#2563eb",
+    accent: technique === "shrine" ? "#991b1b" : technique === "deathnote" ? "#b91c1c" : technique === "brawler" ? "#dc2626" : technique === "blackleg" ? "#facc15" : technique === "hivemind" ? "#7f1d1d" : technique === "zealot" ? "#38e0f0" : "#1d4ed8"
   });
   previewFighter.technique = technique;
   previewFighter.y = GROUND - previewFighter.h;
@@ -15166,7 +15968,7 @@ function drawTechniquePreview(canvasEl, technique) {
   ctx = previewCtx;
   ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
   const backdrop = ctx.createLinearGradient(0, 0, 0, canvasEl.height);
-  backdrop.addColorStop(0, technique === "shrine" ? "#2b1420" : technique === "deathnote" ? "#180b12" : technique === "brawler" ? "#141822" : technique === "blackleg" ? "#221208" : technique === "hivemind" ? "#1c0a10" : "#142033");
+  backdrop.addColorStop(0, technique === "shrine" ? "#2b1420" : technique === "deathnote" ? "#180b12" : technique === "brawler" ? "#141822" : technique === "blackleg" ? "#221208" : technique === "hivemind" ? "#1c0a10" : technique === "zealot" ? "#0a1a1f" : "#142033");
   backdrop.addColorStop(1, "#050814");
   ctx.fillStyle = backdrop;
   ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
@@ -15192,6 +15994,7 @@ function renderTechniquePreviews() {
   drawTechniquePreview(techniquePreviewCanvases.brawler, "brawler");
   drawTechniquePreview(techniquePreviewCanvases.blackleg, "blackleg"); // SANJI_PATCH
   drawTechniquePreview(techniquePreviewCanvases.hivemind, "hivemind"); // VECNA_PATCH
+  drawTechniquePreview(techniquePreviewCanvases.zealot, "zealot"); // ZEALOT_PATCH
 }
 
 // THRAGG_BRAWLER_PATCH: install his character-select card the same way
@@ -15301,6 +16104,37 @@ function installVecnaTechniqueOption() {
 }
 
 window.addEventListener("DOMContentLoaded", installVecnaTechniqueOption);
+
+// ZEALOT_PATCH: Zealot's character-select card, cloned at runtime.
+function installZealotTechniqueOption() {
+  if (!techniqueScreen) return;
+  const existing = techniqueScreen.querySelector('[data-technique="zealot"]');
+  if (!existing) {
+    const sample = techniqueScreen.querySelector(".technique-button");
+    const button = sample ? sample.cloneNode(true) : document.createElement("button");
+    button.type = "button";
+    button.className = sample ? sample.className : "technique-button";
+    button.dataset.technique = "zealot";
+    button.innerHTML = `
+      <canvas id="zealotPreview" width="320" height="180" aria-hidden="true"></canvas>
+      <strong>Zealot</strong>
+      <span>Protoss rushdown - psi blades, shields, no ranged</span>
+      <small>Charge · Psi Blade Flurry · Whirlwind · Warp Reinforcements</small>
+    `;
+    const holder = sample?.parentNode || techniqueScreen;
+    holder.appendChild(button);
+  }
+  const canvas = document.getElementById("zealotPreview");
+  if (canvas) techniquePreviewCanvases.zealot = canvas;
+  techniqueButtons = Array.from(document.querySelectorAll(".technique-button"));
+  techniqueButtons.forEach((button) => {
+    if (button.dataset.zealotBound === "1") return;
+    button.dataset.zealotBound = "1";
+    button.addEventListener("click", () => finishTechniqueSelect(button.dataset.technique));
+  });
+  renderTechniquePreviews();
+}
+window.addEventListener("DOMContentLoaded", installZealotTechniqueOption);
 
 
 function drawSukunaModelCleanup(f) {
@@ -15605,8 +16439,101 @@ function drawUpsideDownBackdrop() {
   ctx.restore();
 }
 
+// ZEALOT_PATCH: warped-in Protoss units - gold/cyan, no faces.
+function drawZealotUnits() {
+  for (const u of zealotUnits) {
+    ctx.save();
+    ctx.translate(u.x, u.y);
+    const dir = u.owner === "player" ? 1 : -1;
+    // warp-in shimmer
+    if (u.warpFlash > 0) {
+      ctx.globalAlpha = 0.4 + 0.6 * (1 - u.warpFlash / 18);
+      ctx.globalCompositeOperation = "lighter";
+      ctx.fillStyle = "rgba(56, 224, 240, 0.5)";
+      ctx.beginPath();
+      ctx.ellipse(0, -12, 20, 30 * (u.warpFlash / 18 + 0.2), 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = 1 - u.warpFlash / 22;
+    }
+    ctx.scale(dir, 1);
+    if (u.kind === "zealot") {
+      // small gold zealot with cyan blades
+      ctx.fillStyle = "#c8a13a"; ctx.strokeStyle = "#020617"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.roundRect(-11, -26, 22, 26, 5); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = "#0b1420"; ctx.lineWidth = 5; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(-8, 0); ctx.lineTo(-9, 12); ctx.moveTo(8, 0); ctx.lineTo(9, 12); ctx.stroke();
+      // head + nerve cords
+      ctx.fillStyle = "#8a6f3a"; ctx.beginPath(); ctx.arc(0, -32, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = "#0b1420"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(-4, -28); ctx.lineTo(-8, -18); ctx.moveTo(4, -28); ctx.lineTo(8, -18); ctx.stroke();
+      // psi blades
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = "rgba(56, 224, 240, 0.9)"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(11, -8); ctx.lineTo(28, -14); ctx.stroke();
+      ctx.globalCompositeOperation = "source-over";
+    } else if (u.kind === "stalker") {
+      // four-legged strider on cyan-jointed legs
+      ctx.strokeStyle = "#0b1420"; ctx.lineWidth = 4; ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(-8, -14); ctx.lineTo(-16, 0); ctx.lineTo(-14, 14);
+      ctx.moveTo(-2, -14); ctx.lineTo(-6, 2); ctx.lineTo(-4, 14);
+      ctx.moveTo(6, -14); ctx.lineTo(10, 2); ctx.lineTo(8, 14);
+      ctx.moveTo(10, -14); ctx.lineTo(18, 0); ctx.lineTo(16, 14);
+      ctx.stroke();
+      ctx.fillStyle = "#5a4a86"; ctx.strokeStyle = "#020617"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.ellipse(0, -18, 13, 9, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#38e0f0"; ctx.beginPath(); ctx.arc(6, -18, 2.4, 0, Math.PI * 2); ctx.fill();
+    } else {
+      // sentry: floating orb + barrier shimmer
+      ctx.fillStyle = "#b98b2e"; ctx.strokeStyle = "#020617"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0, -16, 11, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#38e0f0"; ctx.beginPath(); ctx.arc(0, -16, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = `rgba(56, 224, 240, ${0.3 + Math.sin(frame * 0.2) * 0.15})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(0, -14, 22, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalCompositeOperation = "source-over";
+    }
+    ctx.restore();
+  }
+}
+
+// ZEALOT_PATCH: orbital-strike beams - warning ring, then a blue pillar.
+function drawOrbitalBeams() {
+  for (const b of orbitalBeams) {
+    ctx.save();
+    if (!b.struck) {
+      const t = 1 - b.warnTicks / 40;
+      ctx.globalAlpha = 0.4 + t * 0.4;
+      ctx.strokeStyle = "rgba(56, 224, 240, 0.85)";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.ellipse(b.x, GROUND - 3, ZEALOT_ORBITAL_RADIUS * (0.5 + t * 0.5), 9, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 0.3;
+      ctx.fillStyle = "rgba(56, 224, 240, 0.5)";
+      ctx.fillRect(b.x - 3, 0, 6, GROUND);
+    } else if (b.flash > 0) {
+      ctx.globalAlpha = b.flash / 14;
+      ctx.globalCompositeOperation = "lighter";
+      const grad = ctx.createLinearGradient(b.x, 0, b.x, GROUND);
+      grad.addColorStop(0, "rgba(224, 255, 255, 0.95)");
+      grad.addColorStop(0.5, "rgba(56, 224, 240, 0.9)");
+      grad.addColorStop(1, "rgba(8, 145, 178, 0.7)");
+      ctx.fillStyle = grad;
+      ctx.fillRect(b.x - ZEALOT_ORBITAL_RADIUS * 0.4, 0, ZEALOT_ORBITAL_RADIUS * 0.8, GROUND);
+      ctx.fillStyle = "rgba(224, 255, 255, 0.9)";
+      ctx.fillRect(b.x - 6, 0, 12, GROUND);
+    }
+    ctx.restore();
+  }
+}
+
 function drawEffects() {
   drawVecnaMinions(); // VECNA_PATCH
+  drawZealotUnits(); // ZEALOT_PATCH
+  drawOrbitalBeams(); // ZEALOT_PATCH
   drawGroundEraseEffects();
   drawWorldSlashEffects();
   drawUltimateChargeEffects();
@@ -16772,6 +17699,19 @@ function drawProjectiles() {
       ctx.lineTo(p.radius * 0.3, p.radius * 0.3);
       ctx.closePath();
       ctx.fill();
+    } else if (p.move === "stalkerShot") {
+      // ZEALOT_PATCH: the Stalker's particle-disruptor bolt - a cyan dart.
+      ctx.scale(p.dir, 1);
+      ctx.globalCompositeOperation = "lighter";
+      ctx.fillStyle = "rgba(56, 224, 240, 0.4)";
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 16, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(224, 255, 255, 0.95)";
+      ctx.beginPath();
+      ctx.moveTo(-10, 0); ctx.lineTo(4, -3.5); ctx.lineTo(12, 0); ctx.lineTo(4, 3.5); ctx.closePath();
+      ctx.fill();
+      ctx.globalCompositeOperation = "source-over";
     } else if (p.move === "utensil") {
       // SANJI_UTENSIL_PATCH: a spinning thrown utensil. Each kind draws
       // its own silhouette in steel, with an orange/blue heat glint when
@@ -17325,6 +18265,8 @@ function fixedUpdate() {
     updateProjectiles();
     updateVecnaMinions(); // VECNA_PATCH
     updateUpsideDown(); // VECNA_PATCH
+    updateZealotUnits(); // ZEALOT_PATCH
+    updateOrbitalBeams(); // ZEALOT_PATCH
     updateHitSparks();
   } else if (!gameOver && !paused && !(gameMode === "online" && onlineRole !== "p1")) {
     updatePlayer();
@@ -17347,6 +18289,8 @@ function fixedUpdate() {
     updateProjectiles();
     updateVecnaMinions(); // VECNA_PATCH
     updateUpsideDown(); // VECNA_PATCH
+    updateZealotUnits(); // ZEALOT_PATCH
+    updateOrbitalBeams(); // ZEALOT_PATCH
     updateHitSparks();
   } else if (roundEnding && !paused) {
     updateFighter(player, enemy);
@@ -17499,6 +18443,9 @@ window.addEventListener("keydown", (event) => {
     } else if (fighter?.technique === "hivemind") {
       // VECNA_PATCH: S melts into the ground / erupts back out.
       if (startUpsideDownSlip(fighter) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("upside-slip");
+    } else if (fighter?.technique === "zealot") {
+      // ZEALOT_PATCH: S spins up Whirlwind.
+      if (startZealotWhirlwind(fighter) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("zealot-whirl");
     }
   }
   if (isEventForAction("ultimate", key, code) && !event.repeat) beginUltimateAim(player, mouseAimWorld);
