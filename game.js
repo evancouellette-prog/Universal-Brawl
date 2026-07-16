@@ -16070,7 +16070,12 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
 
   ctx.save();
   ctx.translate(lean, 0);
+  // ARTANIS_HANDBLADE_PATCH: record each arm's elbow+hand as it's drawn so
+  // the Zealot's psi blades can emit from the actual hands and follow the
+  // hand movement, instead of fixed torso positions.
+  const zealotHands = [];
   const drawArmRig = (shoulder, elbow, hand, color = f.technique === "shrine" ? skinColor : bodyColor, handColor = skinColor) => {
+    if (isZealot(f)) zealotHands.push({ elbow: { x: elbow.x, y: elbow.y }, hand: { x: hand.x, y: hand.y } });
     const useOutline = f.technique !== "shrine";
     const isShrineArm = f.technique === "shrine";
     const strokeArm = (strokeColor, width) => {
@@ -16623,51 +16628,32 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       }
       ctx.restore();
     } else {
-      // ARTANIS_DETAIL_PATCH: blades project STRAIGHT OUT (horizontal) from
-      // the top of each forearm - never on a downward angle. At rest the
-      // front blade points forward and the rear blade points back so both
-      // are always visible; during an attack both SWING forward through a
-      // slash arc.
-      let swing = 0;     // slash offset (radians)
-      let attacking = false;
-      if (f.attacking === "light" || f.attacking === "heavy") {
-        const spec = getAttackSpec(f);
-        if (spec) {
-          const total = spec.windup + spec.active + spec.recovery;
-          const t = Math.min(1, (f.attackFrame || 0) / Math.max(1, total));
-          swing = -0.9 + t * 1.8; // wind up (-) then slash down (+)
-        }
-        attacking = true;
-      } else if ((f.zealotFlurryTicks || 0) > 0) {
-        swing = Math.sin(frame * 0.9) * 0.9; // rapid alternating slashes
-        attacking = true;
-      } else if ((f.zealotChargeTicks || 0) > 0) {
-        swing = -0.2;
-        attacking = true;
-      }
-      // front / lead arm blade points forward (and swings when attacking)
-      drawPsiBlade(46, 62, swing + flick, 40);
-      // rear arm blade: points back at rest (so it clears the body and is
-      // visible), sweeps forward with the front during an attack
-      if (attacking) drawPsiBlade(12, 58, swing * 0.85 + flick, 36);
-      else drawPsiBlade(9, 62, Math.PI - flick, 34);
+      // ARTANIS_HANDBLADE_PATCH: a psi blade grows from each HAND, aimed
+      // along the forearm (elbow -> hand) and running out past the hand,
+      // so the swords come from the hands and follow the hand movement
+      // exactly - raising and swinging with the arms during attacks.
+      // A little extra oscillation layers on during Flurry/Charge.
+      let extra = flick;
+      if ((f.zealotFlurryTicks || 0) > 0) extra += Math.sin(frame * 0.9) * 0.5;
+      else if ((f.zealotChargeTicks || 0) > 0) extra += -0.2;
+      zealotHands.slice(0, 2).forEach((a) => {
+        const dx = a.hand.x - a.elbow.x;
+        const dy = a.hand.y - a.elbow.y;
+        const ang = Math.atan2(dy, dx) + extra;
+        const len = 38;
+        const ux = Math.cos(ang);
+        const uy = Math.sin(ang);
+        // start the hilt a little above the hand (toward the elbow) so
+        // roughly half the base sits above the hand
+        const bx = a.hand.x - ux * (len * 0.14);
+        const by = a.hand.y - uy * (len * 0.14);
+        drawPsiBlade(bx, by, ang, len);
+      });
     }
   }
 
-  // ZEALOT_PATCH: the passive Protoss energy shield - a faint cyan bubble
-  // that fades as the shield is depleted (separate from the block shield).
-  if (isZealot(f) && (f.zealotShield || 0) > 0 && !f.ko) {
-    const sp = (f.zealotShield || 0) / Math.max(1, f.zealotShieldMax || 1);
-    const brk = (f.zealotShieldBrokenFlash || 0) / 12;
-    ctx.save();
-    ctx.globalCompositeOperation = "lighter";
-    ctx.strokeStyle = `rgba(56, 224, 240, ${0.12 + sp * 0.22 + brk * 0.3})`;
-    ctx.lineWidth = 2.5 + brk * 3;
-    ctx.beginPath();
-    ctx.ellipse(f.w / 2, 66, 34 * (1 + Math.sin(frame * 0.15) * 0.03), 62, 0, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
-  }
+  // ZEALOT_PATCH: the Protoss energy shield is no longer drawn on the
+  // model - only the SHIELDS gauge in the HUD shows it now.
 
   if (f.blocking) {
     const shieldPower = Math.max(0, Math.min(1, f.shieldTicks / getShieldMaxTicks(f)));
