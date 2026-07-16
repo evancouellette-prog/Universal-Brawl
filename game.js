@@ -15476,44 +15476,87 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.moveTo(30, 50); ctx.lineTo(34, 53);
     ctx.stroke();
   } else if (f.technique === "zealot") {
-    // ZEALOT_PATCH: layered gold armor plates with cyan energy trim and a
-    // glowing chest crystal.
-    ctx.fillStyle = "#a5820f";
+    // ZEALOT_PATCH + ARTANIS_DETAIL_PATCH: ornate gold hero armor studded
+    // with glowing blue khaydarin gems - layered chest plates, big
+    // gem-set pauldrons, an ab guard, and a hip gem, matching the ref art.
+    const gem = (gx, gy, rx, ry) => {
+      // teardrop-ish blue gem set in a gold bezel
+      ctx.fillStyle = "#020617";
+      ctx.beginPath();
+      ctx.ellipse(gx, gy, rx + 1.1, ry + 1.1, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#0a2f5c";
+      ctx.beginPath();
+      ctx.ellipse(gx, gy, rx, ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#3b82f6";
+      ctx.beginPath();
+      ctx.ellipse(gx, gy, rx * 0.6, ry * 0.6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#bfe3ff";
+      ctx.beginPath();
+      ctx.ellipse(gx - rx * 0.22, gy - ry * 0.28, rx * 0.24, ry * 0.28, 0, 0, Math.PI * 2);
+      ctx.fill();
+    };
+    // upper chest plate (darker gold)
+    ctx.fillStyle = "#9a7a10";
     ctx.beginPath();
-    ctx.moveTo(14, 40);
-    ctx.lineTo(40, 41);
-    ctx.lineTo(37, 54);
-    ctx.lineTo(27, 58);
-    ctx.lineTo(17, 54);
+    ctx.moveTo(13, 39);
+    ctx.lineTo(41, 40);
+    ctx.lineTo(38, 55);
+    ctx.lineTo(27, 60);
+    ctx.lineTo(16, 55);
     ctx.closePath();
     ctx.fill();
-    // shoulder pauldrons
-    ctx.fillStyle = "#d8b23e";
-    ctx.beginPath();
-    ctx.moveTo(11, 40); ctx.lineTo(20, 39); ctx.lineTo(18, 49); ctx.lineTo(10, 48); ctx.closePath();
-    ctx.moveTo(43, 40); ctx.lineTo(34, 39); ctx.lineTo(36, 49); ctx.lineTo(44, 48); ctx.closePath();
-    ctx.fill();
-    // cyan energy trim
-    ctx.strokeStyle = skin.accent;
-    ctx.lineWidth = 2;
+    // bright bevel highlight along the collar
+    ctx.strokeStyle = "#e8c85a";
+    ctx.lineWidth = 2.2;
     ctx.lineCap = "round";
+    ctx.lineJoin = "round";
     ctx.beginPath();
-    ctx.moveTo(16, 43); ctx.lineTo(20, 55);
-    ctx.moveTo(38, 43); ctx.lineTo(34, 55);
-    ctx.moveTo(20, 62); ctx.lineTo(34, 62);
+    ctx.moveTo(15, 41); ctx.lineTo(27, 45); ctx.lineTo(39, 41);
     ctx.stroke();
-    // chest crystal
-    ctx.fillStyle = "#0e3b44";
+    // central chest ridge splitting the pecs
+    ctx.strokeStyle = "#6f5608";
+    ctx.lineWidth = 1.6;
     ctx.beginPath();
-    ctx.moveTo(27, 44); ctx.lineTo(31, 49); ctx.lineTo(27, 55); ctx.lineTo(23, 49); ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = skin.accent;
+    ctx.moveTo(27, 45); ctx.lineTo(27, 60);
+    ctx.stroke();
+    // big shoulder pauldrons with a gem each
+    ctx.fillStyle = "#d8b23e";
+    ctx.strokeStyle = "#7a5f08";
+    ctx.lineWidth = 1.4;
     ctx.beginPath();
-    ctx.moveTo(27, 46); ctx.lineTo(29.5, 49); ctx.lineTo(27, 53); ctx.lineTo(24.5, 49); ctx.closePath();
+    ctx.moveTo(9, 41); ctx.lineTo(21, 38); ctx.lineTo(19, 51); ctx.lineTo(8, 50); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(45, 41); ctx.lineTo(33, 38); ctx.lineTo(35, 51); ctx.lineTo(46, 50); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    gem(13.5, 45, 2.4, 3);
+    gem(40.5, 45, 2.4, 3);
+    // ab guard with vertical segments
+    ctx.fillStyle = "#b8942e";
+    ctx.beginPath();
+    ctx.moveTo(18, 60); ctx.lineTo(36, 60); ctx.lineTo(34, 73); ctx.lineTo(27, 76); ctx.lineTo(20, 73); ctx.closePath();
     ctx.fill();
-    // waist plate
-    ctx.fillStyle = "#8a6d10";
-    ctx.fillRect(16, 66, 22, 6);
+    ctx.strokeStyle = "#6f5608";
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    ctx.moveTo(23, 61); ctx.lineTo(22, 74);
+    ctx.moveTo(31, 61); ctx.lineTo(32, 74);
+    ctx.stroke();
+    // the signature big chest gem + a hip gem
+    gem(27, 52, 3.4, 4.4);
+    gem(27, 69, 2.6, 3.2);
+    // cyan energy seams
+    ctx.strokeStyle = skin.accent;
+    ctx.lineWidth = 1.4;
+    ctx.globalAlpha = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(19, 46); ctx.lineTo(22, 57);
+    ctx.moveTo(35, 46); ctx.lineTo(32, 57);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
   } else if (isPracticeDummy(f)) {
     ctx.strokeStyle = "#111827";
     ctx.lineWidth = 3;
@@ -15888,59 +15931,90 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     // down the SIDES/back of the head (clear of the face) plus the gold
     // headdress. No face.
     const sway = idle * 0.6;
-    ctx.strokeStyle = "#0b1420";
-    ctx.lineWidth = 5;
-    ctx.lineCap = "round";
+    // ARTANIS_DETAIL_PATCH: small tucked nerve cords + an ornate gold
+    // horned headdress studded with a glowing blue khaydarin gem, matching
+    // the reference art. Face stays a dark visor recess (no eyes).
+    const headGem = (gx, gy, rx, ry) => {
+      ctx.fillStyle = "#020617";
+      ctx.beginPath(); ctx.ellipse(gx, gy, rx + 1, ry + 1, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#0a2f5c";
+      ctx.beginPath(); ctx.ellipse(gx, gy, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#3b82f6";
+      ctx.beginPath(); ctx.ellipse(gx, gy, rx * 0.58, ry * 0.58, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#cfe8ff";
+      ctx.beginPath(); ctx.ellipse(gx - rx * 0.2, gy - ry * 0.28, rx * 0.22, ry * 0.26, 0, 0, Math.PI * 2); ctx.fill();
+    };
+    // dark visor recess over the eye band (no eyes drawn)
+    ctx.fillStyle = "#0a1420";
     ctx.beginPath();
-    // outer cords - down past the jaw at the sides
-    ctx.moveTo(14, 22);
-    ctx.quadraticCurveTo(8, 36 + sway, 11, 54 + sway);
-    ctx.moveTo(38, 22);
-    ctx.quadraticCurveTo(44, 36 - sway, 41, 54 - sway);
-    // inner cords - just inside the outer, still off the face center
-    ctx.moveTo(16, 26);
-    ctx.quadraticCurveTo(12, 40 + sway, 15, 52 + sway);
-    ctx.moveTo(36, 26);
-    ctx.quadraticCurveTo(40, 40 - sway, 37, 52 - sway);
-    ctx.stroke();
-    // segment ridges on the cords
-    ctx.strokeStyle = "#1a2838";
-    ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    for (let i = 0; i < 3; i += 1) {
-      const yy = 34 + i * 7;
-      ctx.moveTo(9 + i * 0.5, yy + sway); ctx.lineTo(13 + i * 0.5, yy + sway);
-      ctx.moveTo(39 - i * 0.5, yy - sway); ctx.lineTo(43 - i * 0.5, yy - sway);
-    }
-    ctx.stroke();
-    // cyan cord tips
-    ctx.fillStyle = skin.accent;
-    ctx.beginPath();
-    ctx.arc(11, 54 + sway, 2, 0, Math.PI * 2);
-    ctx.arc(41, 54 - sway, 2, 0, Math.PI * 2);
-    ctx.fill();
-    // gold headdress crest across the brow
-    ctx.fillStyle = "#d8b23e";
-    ctx.beginPath();
-    ctx.moveTo(16, 16);
-    ctx.lineTo(26, 4);
-    ctx.lineTo(36, 16);
-    ctx.lineTo(32, 19);
-    ctx.lineTo(26, 11);
-    ctx.lineTo(20, 19);
+    ctx.moveTo(17, 21);
+    ctx.quadraticCurveTo(26, 18, 35, 21);
+    ctx.quadraticCurveTo(33, 26, 26, 26);
+    ctx.quadraticCurveTo(19, 26, 17, 21);
     ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = "#020617";
-    ctx.lineWidth = 1.6;
+    // small tucked nerve cords - short, close to the head
+    ctx.strokeStyle = "#0b1420";
+    ctx.lineWidth = 3.4;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(16, 28);
+    ctx.quadraticCurveTo(13, 33 + sway, 15, 38 + sway);
+    ctx.moveTo(36, 28);
+    ctx.quadraticCurveTo(39, 33 - sway, 37, 38 - sway);
+    ctx.moveTo(19, 30);
+    ctx.quadraticCurveTo(17, 34 + sway, 19, 38 + sway);
+    ctx.moveTo(33, 30);
+    ctx.quadraticCurveTo(35, 34 - sway, 33, 38 - sway);
     ctx.stroke();
-    // side brow plates framing the temples
+    ctx.fillStyle = skin.accent;
+    ctx.beginPath();
+    ctx.arc(15, 38 + sway, 1.6, 0, Math.PI * 2);
+    ctx.arc(37, 38 - sway, 1.6, 0, Math.PI * 2);
+    ctx.fill();
+    // ornate horned headdress - two curved horns sweeping up and outward
+    ctx.fillStyle = "#d8b23e";
+    ctx.strokeStyle = "#020617";
+    ctx.lineWidth = 1.5;
+    ctx.lineJoin = "round";
+    // left horn
+    ctx.beginPath();
+    ctx.moveTo(20, 14);
+    ctx.quadraticCurveTo(12, 8, 9, -4);
+    ctx.quadraticCurveTo(15, 2, 18, 6);
+    ctx.quadraticCurveTo(17, 0, 19, -3);
+    ctx.quadraticCurveTo(23, 6, 24, 13);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // right horn
+    ctx.beginPath();
+    ctx.moveTo(32, 14);
+    ctx.quadraticCurveTo(40, 8, 43, -4);
+    ctx.quadraticCurveTo(37, 2, 34, 6);
+    ctx.quadraticCurveTo(35, 0, 33, -3);
+    ctx.quadraticCurveTo(29, 6, 28, 13);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // central crown fin
+    ctx.beginPath();
+    ctx.moveTo(22, 15);
+    ctx.lineTo(26, 1);
+    ctx.lineTo(30, 15);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // bright bevel on the crown
+    ctx.strokeStyle = "#f0d878";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(24, 12); ctx.lineTo(26, 4); ctx.lineTo(28, 12);
+    ctx.stroke();
+    // brow band + temple plates
     ctx.fillStyle = "#b8942e";
     ctx.beginPath();
-    ctx.moveTo(15, 18); ctx.lineTo(19, 20); ctx.lineTo(17, 26); ctx.lineTo(14, 24); ctx.closePath();
-    ctx.moveTo(37, 18); ctx.lineTo(33, 20); ctx.lineTo(35, 26); ctx.lineTo(38, 24); ctx.closePath();
+    ctx.moveTo(15, 17); ctx.lineTo(37, 17); ctx.lineTo(35, 21); ctx.lineTo(17, 21); ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = skin.accent;
-    ctx.fillRect(24.5, 8, 3, 5);
+    // the forehead khaydarin gem
+    headGem(26, 12, 2.3, 3);
   }
   ctx.restore();
 
@@ -16429,11 +16503,53 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     }
   }
 
-  // ZEALOT_PATCH: psi blades - twin cyan energy blades from the forearms
-  // while Charging / Flurrying / Whirlwinding / attacking.
-  if (isZealot(f)) {
-    const bladesOut = (f.zealotChargeTicks || 0) > 0 || (f.zealotFlurryTicks || 0) > 0 ||
-      (f.zealotWhirlTicks || 0) > 0 || Boolean(f.attacking && f.attacking !== "backThrow");
+  // ZEALOT_PATCH + ARTANIS_DETAIL_PATCH: the psi blades are ALWAYS out now
+  // - twin curved blue energy swords projecting from the forearm emitters,
+  // like the reference. They angle forward while attacking and become a
+  // sweeping ring during Whirlwind.
+  if (isZealot(f) && !f.ko) {
+    const flick = Math.sin(frame * 0.5) * 0.06;
+    // a tapered, slightly-curved energy blade from (bx,by) toward ang
+    const drawPsiBlade = (bx, by, ang, len) => {
+      const tipX = bx + Math.cos(ang) * len;
+      const tipY = by + Math.sin(ang) * len;
+      const nx = Math.cos(ang + Math.PI / 2);
+      const ny = Math.sin(ang + Math.PI / 2);
+      const w0 = 5.5; // base half-width
+      const bow = 3.4; // curve bow
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      // outer glow
+      ctx.fillStyle = "rgba(56, 189, 248, 0.32)";
+      ctx.beginPath();
+      ctx.moveTo(bx + nx * (w0 + 3), by + ny * (w0 + 3));
+      ctx.quadraticCurveTo(bx + Math.cos(ang) * len * 0.5 + nx * (bow + 4), by + Math.sin(ang) * len * 0.5 + ny * (bow + 4), tipX, tipY);
+      ctx.quadraticCurveTo(bx + Math.cos(ang) * len * 0.5 - nx * (bow - 1), by + Math.sin(ang) * len * 0.5 - ny * (bow - 1), bx - nx * (w0 + 3), by - ny * (w0 + 3));
+      ctx.closePath();
+      ctx.fill();
+      // blade body
+      ctx.fillStyle = "rgba(125, 211, 252, 0.85)";
+      ctx.beginPath();
+      ctx.moveTo(bx + nx * w0, by + ny * w0);
+      ctx.quadraticCurveTo(bx + Math.cos(ang) * len * 0.5 + nx * bow, by + Math.sin(ang) * len * 0.5 + ny * bow, tipX, tipY);
+      ctx.quadraticCurveTo(bx + Math.cos(ang) * len * 0.5 - nx * (bow - 1.5), by + Math.sin(ang) * len * 0.5 - ny * (bow - 1.5), bx - nx * w0, by - ny * w0);
+      ctx.closePath();
+      ctx.fill();
+      // hot white core
+      ctx.strokeStyle = "rgba(235, 250, 255, 0.95)";
+      ctx.lineWidth = 2;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(bx, by);
+      ctx.quadraticCurveTo(bx + Math.cos(ang) * len * 0.5 + nx * bow * 0.5, by + Math.sin(ang) * len * 0.5 + ny * bow * 0.5, tipX, tipY);
+      ctx.stroke();
+      // emitter flare at the wrist
+      ctx.fillStyle = "rgba(224, 255, 255, 0.9)";
+      ctx.beginPath();
+      ctx.arc(bx, by, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    };
     if ((f.zealotWhirlTicks || 0) > 0) {
       // whirlwind: sweeping ring of blade light around the body
       const spin = frame * 0.9;
@@ -16441,37 +16557,33 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       ctx.globalCompositeOperation = "lighter";
       for (let i = 0; i < 3; i += 1) {
         const a = spin + i * (Math.PI * 2 / 3);
-        ctx.strokeStyle = "rgba(56, 224, 240, 0.6)";
-        ctx.lineWidth = 5;
+        ctx.strokeStyle = "rgba(125, 211, 252, 0.7)";
+        ctx.lineWidth = 6;
         ctx.lineCap = "round";
         ctx.beginPath();
         ctx.moveTo(26 + Math.cos(a) * 14, 60 + Math.sin(a) * 8);
-        ctx.lineTo(26 + Math.cos(a) * 40, 60 + Math.sin(a) * 22);
+        ctx.lineTo(26 + Math.cos(a) * 44, 60 + Math.sin(a) * 24);
+        ctx.stroke();
+        ctx.strokeStyle = "rgba(235, 250, 255, 0.9)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(26 + Math.cos(a) * 16, 60 + Math.sin(a) * 9);
+        ctx.lineTo(26 + Math.cos(a) * 42, 60 + Math.sin(a) * 23);
         ctx.stroke();
       }
       ctx.restore();
-    } else if (bladesOut) {
-      const flick = Math.sin(frame * 0.6) * 2;
-      ctx.save();
-      ctx.globalCompositeOperation = "lighter";
-      const drawBlade = (bx, by, len, ang) => {
-        ctx.strokeStyle = "rgba(56, 224, 240, 0.35)";
-        ctx.lineWidth = 9;
-        ctx.lineCap = "round";
-        ctx.beginPath();
-        ctx.moveTo(bx, by);
-        ctx.lineTo(bx + Math.cos(ang) * len, by + Math.sin(ang) * len);
-        ctx.stroke();
-        ctx.strokeStyle = "rgba(224, 255, 255, 0.95)";
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(bx, by);
-        ctx.lineTo(bx + Math.cos(ang) * len, by + Math.sin(ang) * len);
-        ctx.stroke();
-      };
-      drawBlade(50, 58, 30 + flick, -0.12);
-      drawBlade(46, 68, 26 + flick, 0.05);
-      ctx.restore();
+    } else {
+      const attacking = (f.zealotChargeTicks || 0) > 0 || (f.zealotFlurryTicks || 0) > 0 ||
+        Boolean(f.attacking && f.attacking !== "backThrow");
+      if (attacking) {
+        // thrust both blades forward
+        drawPsiBlade(48, 58, -0.16 + flick, 40);
+        drawPsiBlade(44, 70, 0.05 + flick, 36);
+      } else {
+        // at rest: blades sweep down-and-outward from each forearm
+        drawPsiBlade(48, 72, 0.68 + flick, 38);   // front / lead side
+        drawPsiBlade(5, 72, Math.PI - 0.68 - flick, 38); // rear side
+      }
     }
   }
 
