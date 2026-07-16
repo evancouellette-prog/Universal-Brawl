@@ -1893,6 +1893,39 @@ const SPIDER_RUSH_LAUNCH = 32;
 const SPIDER_ULT_TICKS = 18 * 60;
 const SPIDER_MARK_COMBO_BONUS = 0.1;
 
+// INOSUKE_PATCH: Beast Breathing - relentless dual-blade rushdown.
+const BEAST_MOVE_MULTIPLIER = 1.15;
+const BEAST_COMBO_SPEED_TICKS = 120; // speed boost window after a combo
+const BEAST_PIERCE_COOLDOWN_TICKS = 7 * 60;
+const BEAST_PIERCE_TICKS = 16;
+const BEAST_PIERCE_SPEED = 17;
+const BEAST_PIERCE_DAMAGE = 16;
+const BEAST_DEVOUR_COOLDOWN_TICKS = 10 * 60;
+const BEAST_DEVOUR_TICKS = 34;
+const BEAST_DEVOUR_HIT_INTERVAL = 5;
+const BEAST_DEVOUR_HIT_DAMAGE = 4;
+const BEAST_DEVOUR_KNOCKBACK = 30;
+const BEAST_DEVOUR_RANGE = 84;
+const BEAST_CRAZY_COOLDOWN_TICKS = 12 * 60;
+const BEAST_CRAZY_TICKS = 40;
+const BEAST_CRAZY_HIT_INTERVAL = 5;
+const BEAST_CRAZY_HIT_DAMAGE = 4;
+const BEAST_CRAZY_RADIUS = 74;
+const BEAST_SPATIAL_COOLDOWN_TICKS = 16 * 60;
+const BEAST_SPATIAL_TICKS = 6 * 60;
+const BEAST_EXPLOSIVE_COOLDOWN_TICKS = 14 * 60;
+const BEAST_EXPLOSIVE_TICKS = 22;
+const BEAST_EXPLOSIVE_SPEED = 15;
+const BEAST_EXPLOSIVE_DAMAGE = 22;
+const BEAST_EXPLOSIVE_KNOCKBACK = 40;
+const BEAST_WHIRL_COOLDOWN_TICKS = 15 * 60;
+const BEAST_WHIRL_TICKS = 48;
+const BEAST_WHIRL_HIT_INTERVAL = 7;
+const BEAST_WHIRL_HIT_DAMAGE = 4;
+const BEAST_WHIRL_RADIUS = 92;
+const BEAST_ULT_TICKS = 18 * 60;
+const BEAST_PALISADE_DAMAGE = 46;
+
 const TECHNIQUE_STATS = {
   limitless: {
     maxHealth: 540,
@@ -1969,6 +2002,16 @@ const TECHNIQUE_STATS = {
     maxCe: 100,
     damageTakenMultiplier: 1.05,
     knockbackTakenMultiplier: 1.02,
+    ceRegenRate: CE_REGEN_RATE,
+    ceLowRegenBonus: CE_LOW_REGEN_BONUS
+  },
+  // INOSUKE_PATCH: aggressive rushdown - decent HP, low knockback taken.
+  beast: {
+    maxHealth: 500,
+    healthBars: 5,
+    maxCe: 100,
+    damageTakenMultiplier: 1.02,
+    knockbackTakenMultiplier: 0.9,
     ceRegenRate: CE_REGEN_RATE,
     ceLowRegenBonus: CE_LOW_REGEN_BONUS
   }
@@ -2637,6 +2680,7 @@ function getTechniqueCharacterName(technique) {
   if (technique === "hivemind") return "Vecna"; // VECNA_PATCH
   if (technique === "zealot") return "Zealot"; // ZEALOT_PATCH
   if (technique === "spider") return "Spider-Man"; // SPIDER_PATCH
+  if (technique === "beast") return "Inosuke"; // INOSUKE_PATCH
   return "Gojo";
 }
 
@@ -2896,7 +2940,10 @@ const techniqueMoves = {
   // SPIDER_PATCH: melee/mobility specials handled in startTechnique; web is
   // the only real projectile.
   webShot: { cost: 0, damage: SPIDER_WEBSHOT_DAMAGE, speed: 0, radius: 1, knockback: 0, life: 1 },
-  webBarrage: { cost: 0, damage: 0, speed: 0, radius: 1, knockback: 0, life: 1 }
+  webBarrage: { cost: 0, damage: 0, speed: 0, radius: 1, knockback: 0, life: 1 },
+  // INOSUKE_PATCH: melee specials handled in startTechnique.
+  beastPierce: { cost: 0, damage: BEAST_PIERCE_DAMAGE, speed: 0, radius: 1, knockback: 0, life: 1 },
+  beastDevour: { cost: 0, damage: 0, speed: 0, radius: 1, knockback: 0, life: 1 }
 };
 
 function getTechniqueMoveKey(f, slot) {
@@ -2908,6 +2955,7 @@ function getTechniqueMoveKey(f, slot) {
   if (f.technique === "blackleg") return slot === 2 ? "muttonShot" : "diableJambe"; // SANJI_PATCH
   if (f.technique === "zealot") return slot === 2 ? "psiFlurry" : "charge"; // ZEALOT_PATCH
   if (f.technique === "spider") return slot === 2 ? "webBarrage" : "webShot"; // SPIDER_PATCH
+  if (f.technique === "beast") return slot === 2 ? "beastDevour" : "beastPierce"; // INOSUKE_PATCH
   if (f.technique === "hivemind") return slot === 2 ? "demodogHunt" : "demobatSwarm"; // VECNA_PATCH
   return "blue";
 }
@@ -2931,6 +2979,9 @@ function getTechniqueDisplayName(move) {
   if (move === "webShot") return "WEB SHOT"; // SPIDER_PATCH
   if (move === "webBarrage") return "WEB BARRAGE"; // SPIDER_PATCH
   if (move === "webSwing") return "WEB SWING"; // SPIDER_PATCH
+  if (move === "beastPierce") return "PIERCE"; // INOSUKE_PATCH
+  if (move === "beastDevour") return "DEVOUR"; // INOSUKE_PATCH
+  if (move === "beastCrazy") return "CRAZY CUT"; // INOSUKE_PATCH
   return move.toUpperCase();
 }
 
@@ -2959,6 +3010,10 @@ function getTechniqueCooldownTicks(move, f = null) {
   if (move === "webShot") return SPIDER_WEBSHOT_COOLDOWN_TICKS;
   if (move === "webBarrage") return SPIDER_BARRAGE_COOLDOWN_TICKS;
   if (move === "webSwing") return SPIDER_SWING_COOLDOWN_TICKS;
+  // INOSUKE_PATCH:
+  if (move === "beastPierce") return BEAST_PIERCE_COOLDOWN_TICKS;
+  if (move === "beastDevour") return BEAST_DEVOUR_COOLDOWN_TICKS;
+  if (move === "beastCrazy") return BEAST_CRAZY_COOLDOWN_TICKS;
   let base = move === "red" || move === "cleave" ? TECHNIQUE_HEAVY_COOLDOWN : TECHNIQUE_FAST_COOLDOWN;
   if (move === "cleave" && hasBindingVow(f, "cleave")) base = Math.max(10, Math.ceil(base * 0.55));
   return base;
@@ -3000,18 +3055,19 @@ function getAffordableChargeRatio(f, move, chargeRatio) {
 
 function pickRandomTechnique() {
   const roll = Math.random();
-  if (roll < 0.16) return "limitless";
-  if (roll < 0.32) return "shrine";
-  if (roll < 0.46) return "deathnote";
-  if (roll < 0.60) return "brawler";
-  if (roll < 0.72) return "blackleg"; // SANJI_PATCH
-  if (roll < 0.84) return "hivemind"; // VECNA_PATCH
-  if (roll < 0.92) return "zealot"; // ZEALOT_PATCH
-  return "spider"; // SPIDER_PATCH
+  if (roll < 0.14) return "limitless";
+  if (roll < 0.28) return "shrine";
+  if (roll < 0.41) return "deathnote";
+  if (roll < 0.54) return "brawler";
+  if (roll < 0.65) return "blackleg"; // SANJI_PATCH
+  if (roll < 0.76) return "hivemind"; // VECNA_PATCH
+  if (roll < 0.85) return "zealot"; // ZEALOT_PATCH
+  if (roll < 0.93) return "spider"; // SPIDER_PATCH
+  return "beast"; // INOSUKE_PATCH
 }
 
 function isValidTechnique(technique) {
-  return technique === "limitless" || technique === "shrine" || technique === "deathnote" || technique === "brawler" || technique === "blackleg" || technique === "hivemind" || technique === "zealot" || technique === "spider"; // SANJI + VECNA + ZEALOT + SPIDER
+  return technique === "limitless" || technique === "shrine" || technique === "deathnote" || technique === "brawler" || technique === "blackleg" || technique === "hivemind" || technique === "zealot" || technique === "spider" || technique === "beast"; // + INOSUKE
 }
 
 function rollCpuOpponentTechnique(reason = "") {
@@ -3298,6 +3354,28 @@ function makeFighter(config) {
     spiderDodgeBoostTicks: 0,
     webbedTicks: 0,
     cocoonTicks: 0,
+    // INOSUKE_PATCH: Beast Breathing kit state.
+    beastPierceCooldown: 0,
+    beastPierceTicks: 0,
+    beastPierceHit: false,
+    beastDevourCooldown: 0,
+    beastDevourTicks: 0,
+    beastDevourNextHit: 0,
+    beastCrazyCooldown: 0,
+    beastCrazyTicks: 0,
+    beastCrazyNextHit: 0,
+    beastSpatialCooldown: 0,
+    beastSpatialTicks: 0,
+    beastExplosiveCooldown: 0,
+    beastExplosiveTicks: 0,
+    beastExplosiveHit: false,
+    beastWhirlCooldown: 0,
+    beastWhirlTicks: 0,
+    beastWhirlNextHit: 0,
+    beastUltTicks: 0,
+    beastComboSpeedTicks: 0,
+    bleedTicks: 0,
+    bleedTickCounter: 0,
     blocking: false,
     shieldTicks: SHIELD_MAX_TICKS,
     shieldCooldown: 0,
@@ -3350,7 +3428,7 @@ function applyTechniqueStats(f, preserveMeters = false) {
   const stats = TECHNIQUE_STATS[f.technique] || TECHNIQUE_STATS.limitless;
   const healthRatio = f.maxHealth > 0 ? f.health / f.maxHealth : 1;
   const ceRatio = f.maxCe > 0 ? f.ce / f.maxCe : 1;
-  f.speed = BASE_MOVE_SPEED * (f.technique === "limitless" ? LIMITLESS_MOVE_MULTIPLIER : f.technique === "deathnote" ? 0.94 : f.technique === "brawler" ? THRAGG_MOVE_MULTIPLIER : f.technique === "blackleg" ? SANJI_MOVE_MULTIPLIER : f.technique === "hivemind" ? VECNA_MOVE_MULTIPLIER : f.technique === "zealot" ? ZEALOT_MOVE_MULTIPLIER : f.technique === "spider" ? SPIDER_MOVE_MULTIPLIER : 1); // SANJI + VECNA + ZEALOT + SPIDER
+  f.speed = BASE_MOVE_SPEED * (f.technique === "limitless" ? LIMITLESS_MOVE_MULTIPLIER : f.technique === "deathnote" ? 0.94 : f.technique === "brawler" ? THRAGG_MOVE_MULTIPLIER : f.technique === "blackleg" ? SANJI_MOVE_MULTIPLIER : f.technique === "hivemind" ? VECNA_MOVE_MULTIPLIER : f.technique === "zealot" ? ZEALOT_MOVE_MULTIPLIER : f.technique === "spider" ? SPIDER_MOVE_MULTIPLIER : f.technique === "beast" ? BEAST_MOVE_MULTIPLIER : 1); // + INOSUKE
   f.maxHealth = stats.maxHealth;
   f.healthBars = stats.healthBars || 3;
   f.maxCe = stats.maxCe;
@@ -3420,6 +3498,16 @@ function applyTechniqueStats(f, preserveMeters = false) {
     f.spiderRushTicks = 0;
     f.spiderUltTicks = 0;
   }
+  // INOSUKE_PATCH: clear the Beast kit when switching off Inosuke.
+  if (f.technique !== "beast") {
+    f.beastPierceTicks = 0;
+    f.beastDevourTicks = 0;
+    f.beastCrazyTicks = 0;
+    f.beastSpatialTicks = 0;
+    f.beastExplosiveTicks = 0;
+    f.beastWhirlTicks = 0;
+    f.beastUltTicks = 0;
+  }
   // SANJI_PATCH: clear the Black Leg kit when switching off Sanji.
   if (f.technique !== "blackleg") {
     f.sanjiHeat = 0;
@@ -3471,6 +3559,7 @@ function getTechniqueHudMoves(f) {
   if (f.technique === "hivemind") return ["demobatSwarm", "demodogHunt", "upsideDownSlip"]; // VECNA_PATCH
   if (f.technique === "zealot") return ["charge", "psiFlurry", "whirlwind"]; // ZEALOT_PATCH
   if (f.technique === "spider") return ["webShot", "webBarrage", "webSwing"]; // SPIDER_PATCH
+  if (f.technique === "beast") return ["beastPierce", "beastDevour", "beastCrazy"]; // INOSUKE_PATCH
   return ["blue", "red", "teleport"];
 }
 
@@ -3528,7 +3617,7 @@ function getTechniqueHudState(f, move) {
     };
   }
   // SANJI_PATCH + VECNA_PATCH: these specials are free - pure cooldown gates.
-  if (move === "diableJambe" || move === "muttonShot" || move === "skyWalk" || move === "demobatSwarm" || move === "demodogHunt" || move === "upsideDownSlip" || move === "charge" || move === "psiFlurry" || move === "whirlwind" || move === "webShot" || move === "webBarrage" || move === "webSwing") {
+  if (move === "diableJambe" || move === "muttonShot" || move === "skyWalk" || move === "demobatSwarm" || move === "demodogHunt" || move === "upsideDownSlip" || move === "charge" || move === "psiFlurry" || move === "whirlwind" || move === "webShot" || move === "webBarrage" || move === "webSwing" || move === "beastPierce" || move === "beastDevour" || move === "beastCrazy") {
     const cooldown = move === "diableJambe" ? (f.sanjiDiableCooldown || 0)
       : move === "muttonShot" ? (f.sanjiMuttonCooldown || 0)
       : move === "skyWalk" ? (f.sanjiSkyWalkCooldown || 0)
@@ -3540,7 +3629,10 @@ function getTechniqueHudState(f, move) {
       : move === "whirlwind" ? (f.zealotWhirlCooldown || 0)
       : move === "webShot" ? (f.spiderWebShotCooldown || 0)
       : move === "webBarrage" ? (f.spiderBarrageCooldown || 0)
-      : (f.spiderSwingCooldown || 0);
+      : move === "webSwing" ? (f.spiderSwingCooldown || 0)
+      : move === "beastPierce" ? (f.beastPierceCooldown || 0)
+      : move === "beastDevour" ? (f.beastDevourCooldown || 0)
+      : (f.beastCrazyCooldown || 0);
     return {
       cost: 0,
       cooling: cooldown > 0,
@@ -3601,6 +3693,7 @@ function updateTechniqueCooldownHud(f, slots) {
     hud.slot.classList.toggle("vecna-cooldown", f.technique === "hivemind"); // VECNA_PATCH
     hud.slot.classList.toggle("zealot-cooldown", f.technique === "zealot"); // ZEALOT_PATCH
     hud.slot.classList.toggle("spider-cooldown", f.technique === "spider"); // SPIDER_PATCH
+    hud.slot.classList.toggle("beast-cooldown", f.technique === "beast"); // INOSUKE_PATCH
   });
 }
 
@@ -3712,6 +3805,15 @@ function pinStationaryPracticeDummy(f = enemy) {
   f.spiderMarkTicks = 0;
   f.webbedTicks = 0;
   f.cocoonTicks = 0;
+  // INOSUKE_PATCH: clear mid-move Beast state + bleed.
+  f.beastPierceTicks = 0;
+  f.beastDevourTicks = 0;
+  f.beastCrazyTicks = 0;
+  f.beastExplosiveTicks = 0;
+  f.beastWhirlTicks = 0;
+  f.beastSpatialTicks = 0;
+  f.beastUltTicks = 0;
+  f.bleedTicks = 0;
   // SANJI_PATCH: clear mid-move Black Leg state.
   f.sanjiDiableTicks = 0;
   f.sanjiDiveKickTicks = 0;
@@ -4254,6 +4356,59 @@ function installSpiderRedHudStyle() {
 window.addEventListener("DOMContentLoaded", installSpiderRedHudStyle);
 window.setTimeout(installSpiderRedHudStyle, 0);
 
+// INOSUKE_PATCH: Beast Breathing HUD in slate-blue with a teal edge.
+function installBeastHudStyle() {
+  if (document.getElementById("beastEffectsStyle")) return;
+  const style = document.createElement("style");
+  style.id = "beastEffectsStyle";
+  style.textContent = `
+    .ct-slot.beast-cooldown,
+    .extra-cooldown.beast-cooldown,
+    .ct-slot.beast-cooldown.ready,
+    .ct-slot.beast-cooldown.cooling,
+    .extra-cooldown.beast-cooldown.ready,
+    .extra-cooldown.beast-cooldown.cooling {
+      background: linear-gradient(180deg, rgba(20, 30, 40, 0.92), rgba(10, 16, 22, 0.95)) !important;
+      border: 3px solid #38b2ac !important;
+      box-shadow: 0 3px 0 #2c3a4a, 0 0 14px rgba(56, 178, 172, 0.4) !important;
+    }
+    .ct-slot.beast-cooldown .ct-label,
+    .ct-slot.beast-cooldown .ct-status,
+    .extra-cooldown.beast-cooldown .ct-label,
+    .extra-cooldown.beast-cooldown .ct-status,
+    .extra-cooldown.beast-cooldown .extra-cooldown-label,
+    .extra-cooldown.beast-cooldown .extra-cooldown-status {
+      color: #99f6e4 !important;
+      text-shadow: 0 0 6px rgba(56, 178, 172, 0.75) !important;
+    }
+    .ct-slot.beast-cooldown .ct-meter,
+    .extra-cooldown.beast-cooldown .ct-meter {
+      background: rgba(14, 22, 30, 0.75) !important;
+      border-color: rgba(56, 178, 172, 0.4) !important;
+    }
+    .ct-slot.beast-cooldown .ct-fill,
+    .ct-slot.beast-cooldown.ready .ct-fill,
+    .ct-slot.beast-cooldown.low-ce .ct-fill,
+    .ct-slot.beast-cooldown.blocked .ct-fill,
+    .extra-cooldown.beast-cooldown .ct-fill,
+    .extra-cooldown.beast-cooldown.ready .ct-fill,
+    .extra-cooldown.beast-cooldown .extra-cooldown-fill {
+      background: linear-gradient(90deg, #0d9488, #38b2ac, #99f6e4) !important;
+      box-shadow: 0 0 12px rgba(56, 178, 172, 0.5), inset 0 1px 0 rgba(200, 255, 250, 0.25) !important;
+    }
+    .ct-slot.beast-cooldown.cooling .ct-fill,
+    .ct-slot.beast-cooldown.charging .ct-fill,
+    .extra-cooldown.beast-cooldown.cooling .ct-fill,
+    .extra-cooldown.beast-cooldown.cooling .extra-cooldown-fill {
+      background: linear-gradient(90deg, #1e2a38, #334155, #475569) !important;
+      opacity: 0.92 !important;
+    }
+  `;
+  document.head.appendChild(style);
+}
+window.addEventListener("DOMContentLoaded", installBeastHudStyle);
+window.setTimeout(installBeastHudStyle, 0);
+
 
 function installLightTechniqueOption() {
   installUniversalBrawlRename();
@@ -4351,6 +4506,10 @@ function getTechniqueControlHtml(technique) {
     // SPIDER_PATCH: web-based mobility kit, no JJK controls.
     return '<span><kbd>Left Click</kbd> Web Shot (recast to zip to mark)</span><span><kbd>Right Click</kbd> Web Barrage (cocoons a webbed foe)</span><span><kbd>S</kbd> Web Swing (attack to flying-kick)</span><span><kbd>Tab</kbd> Spider Rush</span><span><kbd>C</kbd> Friendly Neighborhood</span>';
   }
+  if (technique === "beast") {
+    // INOSUKE_PATCH: Beast Breathing kit, no JJK controls.
+    return '<span><kbd>Left Click</kbd> First Fang: Pierce</span><span><kbd>Right Click</kbd> Third Fang: Devour</span><span><kbd>S</kbd> Fifth Fang: Crazy Cutting</span><span><kbd>Tab</kbd> Eighth Form: Explosive Rush</span><span><kbd>R</kbd> Seventh Form: Spatial Awareness</span><span><kbd>F</kbd> Tenth Fang: Whirling Fangs</span><span><kbd>C</kbd> Rampaging Beast / Palisade Bite</span>';
+  }
   return '<span><kbd>Left Click</kbd> Blue</span><span><kbd>Right Click</kbd> Red</span><span><kbd>Hold S</kbd> Teleport</span><span><kbd>Hold T</kbd> Blue Punch</span><span><kbd>F</kbd> Infinity</span><span><kbd>Hold C</kbd> Aim Ultimate</span><span><kbd>R</kbd> hold RCT</span>';
 }
 
@@ -4366,6 +4525,7 @@ function getExtraBattleControlHtml(technique) {
   if (technique === "hivemind") return '<span><kbd>Corruption 100%</kbd> next summon/ability is enhanced</span>'; // VECNA_PATCH
   if (technique === "zealot") return '<span><kbd>Shields</kbd> soak 25% HP, regen after 5s undamaged · no HP regen</span>'; // ZEALOT_PATCH
   if (technique === "spider") return '<span><kbd>Spider Sense</kbd> perfect dodge = speed boost + cooldown refund</span><span><kbd>Marked</kbd> +10% combo damage, full combos extend the mark</span>'; // SPIDER_PATCH
+  if (technique === "beast") return '<span><kbd>Beast Instinct</kbd> -10% hitstun, speed burst after combos, resists DoT</span>'; // INOSUKE_PATCH
   return '<span><kbd>X</kbd> Domain Expansion</span><span><kbd>Z</kbd> Simple Domain</span>';
 }
 
@@ -4738,7 +4898,9 @@ function applyJoinerFighterStateOnHost(remoteFighter) {
     // ZEALOT_PATCH
     "zealotShield", "zealotShieldMax", "zealotChargeCooldown", "zealotChargeTicks", "zealotFlurryCooldown", "zealotFlurryTicks", "zealotWhirlCooldown", "zealotWhirlTicks", "zealotUltTicks",
     // SPIDER_PATCH
-    "spiderWebShotCooldown", "spiderMarkTicks", "spiderMarkedBy", "spiderSwingCooldown", "spiderSwingTicks", "spiderBarrageCooldown", "spiderRushCooldown", "spiderRushTicks", "spiderUltTicks", "webbedTicks", "cocoonTicks"
+    "spiderWebShotCooldown", "spiderMarkTicks", "spiderMarkedBy", "spiderSwingCooldown", "spiderSwingTicks", "spiderBarrageCooldown", "spiderRushCooldown", "spiderRushTicks", "spiderUltTicks", "webbedTicks", "cocoonTicks",
+    // INOSUKE_PATCH
+    "beastPierceCooldown", "beastPierceTicks", "beastDevourCooldown", "beastDevourTicks", "beastCrazyCooldown", "beastCrazyTicks", "beastSpatialCooldown", "beastSpatialTicks", "beastExplosiveCooldown", "beastExplosiveTicks", "beastWhirlCooldown", "beastWhirlTicks", "beastUltTicks", "beastComboSpeedTicks", "bleedTicks"
   ];
 
   fields.forEach((field) => {
@@ -4839,6 +5001,10 @@ if (data.type === "role") {
       if (data.action === "zealot-whirl") startZealotWhirlwind(enemy); // ZEALOT_PATCH
       if (data.action === "spider-swing") startWebSwing(enemy); // SPIDER_PATCH
       if (data.action === "spider-rush") startSpiderRush(enemy); // SPIDER_PATCH
+      if (data.action === "beast-crazy") startBeastCrazy(enemy); // INOSUKE_PATCH
+      if (data.action === "beast-spatial") startBeastSpatial(enemy); // INOSUKE_PATCH
+      if (data.action === "beast-whirl") startBeastWhirl(enemy); // INOSUKE_PATCH
+      if (data.action === "beast-explosive") startBeastExplosive(enemy); // INOSUKE_PATCH
       if (data.action === "dodge") startDodge(enemy, getVectorFromInput(remoteInput));
       if (data.action === "jump") jumpFighterWithMove(enemy, (remoteInput.right ? 1 : 0) - (remoteInput.left ? 1 : 0));
       if (data.action === "infinity" && !hasCtLock(enemy)) toggleInfinity(enemy);
@@ -5721,6 +5887,16 @@ function getExtraCooldownItems(f) {
     return items;
   }
 
+  // INOSUKE_PATCH: the extra Fang/Form cooldowns + buff timers.
+  if (f.technique === "beast") {
+    if ((f.beastSpatialTicks || 0) > 0) items.push({ name: "SPATIAL", current: f.beastSpatialTicks, max: BEAST_SPATIAL_TICKS, mode: "active" });
+    else items.push({ name: "SPATIAL", current: f.beastSpatialCooldown || 0, max: BEAST_SPATIAL_COOLDOWN_TICKS });
+    items.push({ name: "EXPLOSIVE", current: f.beastExplosiveCooldown || 0, max: BEAST_EXPLOSIVE_COOLDOWN_TICKS });
+    items.push({ name: "WHIRLING", current: f.beastWhirlCooldown || 0, max: BEAST_WHIRL_COOLDOWN_TICKS });
+    if ((f.beastUltTicks || 0) > 0) items.push({ name: "RAMPAGE", current: f.beastUltTicks, max: BEAST_ULT_TICKS, mode: "active" });
+    return items;
+  }
+
   // SPIDER_PATCH: Spider Rush + ultimate timer, nothing JJK.
   if (f.technique === "spider") {
     const opp = getOpponent(f);
@@ -5825,7 +6001,7 @@ function updateExtraCooldownHud(container, f) {
       : ready ? 100 : Math.max(4, ratio * 100);
 
     const row = document.createElement("div");
-    row.className = `extra-cooldown ct-slot ${ready ? "ready" : "cooling"} ${f.technique === "shrine" ? "sukuna-cooldown" : f.technique === "deathnote" ? "light-cooldown" : f.technique === "brawler" ? "thragg-cooldown" : f.technique === "blackleg" ? "sanji-cooldown" : f.technique === "hivemind" ? "vecna-cooldown" : f.technique === "zealot" ? "zealot-cooldown" : f.technique === "spider" ? "spider-cooldown" : "gojo-cooldown"} ${item.style || ""}`;
+    row.className = `extra-cooldown ct-slot ${ready ? "ready" : "cooling"} ${f.technique === "shrine" ? "sukuna-cooldown" : f.technique === "deathnote" ? "light-cooldown" : f.technique === "brawler" ? "thragg-cooldown" : f.technique === "blackleg" ? "sanji-cooldown" : f.technique === "hivemind" ? "vecna-cooldown" : f.technique === "zealot" ? "zealot-cooldown" : f.technique === "spider" ? "spider-cooldown" : f.technique === "beast" ? "beast-cooldown" : "gojo-cooldown"} ${item.style || ""}`;
 
     const label = document.createElement("span");
     label.className = "extra-cooldown-label ct-label";
@@ -5888,7 +6064,7 @@ function updateResourceBarLabels() {
   const playerUltFrame = playerUltimateEl ? playerUltimateEl.closest(".ultimate-frame") : null;
   const enemyUltFrame = enemyUltimateEl ? enemyUltimateEl.closest(".ultimate-frame") : null;
 
-  ensureResourceBarLabel(playerCeFrame, isLight(player) ? "Information" : player?.technique === "brawler" || player?.technique === "blackleg" || player?.technique === "hivemind" || player?.technique === "zealot" || player?.technique === "spider" ? "" : "Cursed Energy", "ce"); // + SPIDER
+  ensureResourceBarLabel(playerCeFrame, isLight(player) ? "Information" : player?.technique === "brawler" || player?.technique === "blackleg" || player?.technique === "hivemind" || player?.technique === "zealot" || player?.technique === "spider" || player?.technique === "beast" ? "" : "Cursed Energy", "ce"); // + INOSUKE
   ensureResourceBarLabel(playerUltFrame, isLight(player) ? "Name" : "Ultimate", "ultimate");
 
   // DUMMY_HUD_NO_WORDS_PATCH:
@@ -5899,7 +6075,7 @@ function updateResourceBarLabels() {
     return;
   }
 
-  ensureResourceBarLabel(enemyCeFrame, isLight(enemy) ? "Information" : enemy?.technique === "brawler" || enemy?.technique === "blackleg" || enemy?.technique === "hivemind" || enemy?.technique === "zealot" || enemy?.technique === "spider" ? "" : "Cursed Energy", "ce"); // + SPIDER
+  ensureResourceBarLabel(enemyCeFrame, isLight(enemy) ? "Information" : enemy?.technique === "brawler" || enemy?.technique === "blackleg" || enemy?.technique === "hivemind" || enemy?.technique === "zealot" || enemy?.technique === "spider" || enemy?.technique === "beast" ? "" : "Cursed Energy", "ce"); // + INOSUKE
   ensureResourceBarLabel(enemyUltFrame, isLight(enemy) ? "Name" : "Ultimate", "ultimate");
 }
 
@@ -5940,11 +6116,11 @@ function updateLightHudVisibility() {
   // Light uses the CE slot as INFO and the Ultimate slot as NAME.
   // THRAGG_NO_JJK_PATCH: Thragg has no Cursed Energy at all - his CE bar
   // is hidden outright (abilities are cooldown-gated).
-  setHudElementHidden(playerCeFrame, player?.technique === "brawler" || player?.technique === "blackleg" || player?.technique === "hivemind" || player?.technique === "zealot" || player?.technique === "spider"); // + SPIDER
+  setHudElementHidden(playerCeFrame, player?.technique === "brawler" || player?.technique === "blackleg" || player?.technique === "hivemind" || player?.technique === "zealot" || player?.technique === "spider" || player?.technique === "beast"); // + INOSUKE
   setHudElementHidden(playerUltFrame, false);
 
   if (gameMode !== "practice") {
-    setHudElementHidden(enemyCeFrame, enemy?.technique === "brawler" || enemy?.technique === "blackleg" || enemy?.technique === "hivemind" || enemy?.technique === "zealot" || enemy?.technique === "spider"); // + SPIDER
+    setHudElementHidden(enemyCeFrame, enemy?.technique === "brawler" || enemy?.technique === "blackleg" || enemy?.technique === "hivemind" || enemy?.technique === "zealot" || enemy?.technique === "spider" || enemy?.technique === "beast"); // + INOSUKE
     setHudElementHidden(enemyUltFrame, false);
   } else {
     setHudElementHidden(enemyCeFrame, true);
@@ -6392,7 +6568,7 @@ function isSpiderCommitted(f) {
 function isSpecialLocked(f) {
   const owner = getFighterOwner(f);
   const clashing = Boolean(owner && domainClash?.attempts?.[owner]);
-  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || isSanjiCommitted(f) || isZealotCommitted(f) || isSpiderCommitted(f) || (f?.vecnaSlipTicks || 0) > 0 || (f?.domainStartup || 0) > 0 || clashing || (f?.potatoVulnerableTicks || 0) > 0; // + SPIDER
+  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || isSanjiCommitted(f) || isZealotCommitted(f) || isSpiderCommitted(f) || isBeastCommitted(f) || (f?.vecnaSlipTicks || 0) > 0 || (f?.domainStartup || 0) > 0 || clashing || (f?.potatoVulnerableTicks || 0) > 0; // + INOSUKE
 }
 
 // DOMAIN_MOVEMENT_FIX
@@ -6401,7 +6577,7 @@ function isSpecialLocked(f) {
 function isMovementLocked(f) {
   const owner = getFighterOwner(f);
   const clashing = Boolean(owner && domainClash?.attempts?.[owner]);
-  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || (f?.sanjiMuttonTicks || 0) > 0 || (f?.sanjiCookTicks || 0) > 0 || (f?.zealotFlurryTicks || 0) > 0 || (f?.zealotWhirlTicks || 0) > 0 || (f?.spiderRushTicks || 0) > 0 || (f?.cocoonTicks || 0) > 0 || clashing; // + SPIDER roots
+  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || (f?.sanjiMuttonTicks || 0) > 0 || (f?.sanjiCookTicks || 0) > 0 || (f?.zealotFlurryTicks || 0) > 0 || (f?.zealotWhirlTicks || 0) > 0 || (f?.spiderRushTicks || 0) > 0 || (f?.cocoonTicks || 0) > 0 || (f?.beastCrazyTicks || 0) > 0 || (f?.beastWhirlTicks || 0) > 0 || (f?.beastDevourTicks || 0) > 0 || clashing; // + INOSUKE roots
 }
 
 function getMoveInputForFighter(f) {
@@ -6516,6 +6692,7 @@ function handleThrowInput(f, requireButtons = true) {
   if (f.technique === "hivemind") return startBoneSnap(f); // VECNA_PATCH
   if (f.technique === "blackleg") return throwSanjiUtensil(f); // SANJI_UTENSIL_PATCH
   if (f.technique === "spider") return startSpiderRush(f); // SPIDER_PATCH
+  if (f.technique === "beast") return startBeastExplosive(f); // INOSUKE_PATCH
   return startBackThrow(f, requireButtons);
 }
 
@@ -6880,6 +7057,8 @@ function consumeSanjiHeatForFire(f) {
 
 function applyBurn(defender, ticks = SANJI_BURN_TICKS) {
   if (!defender || defender.ko) return;
+  // INOSUKE_PATCH: Beast Instinct - resistant to poison/DoT effects.
+  if (defender.technique === "beast") ticks = Math.round(ticks * 0.4);
   defender.burnTicks = Math.max(defender.burnTicks || 0, ticks);
 }
 
@@ -8508,6 +8687,403 @@ function updateSpiderSystems(f, opponent) {
   updateSpiderRush(f, opponent);
 }
 
+// ==========================================================================
+// INOSUKE_PATCH: Beast Breathing. Beast Instinct passive plus six Fang/Form
+// techniques and the Rampaging Beast ultimate with the Palisade Bite
+// finisher. Relentless dual-blade rushdown.
+// ==========================================================================
+
+function isBeast(f) {
+  return Boolean(f && f.technique === "beast");
+}
+
+function beastUltActive(f) {
+  return isBeast(f) && (f.beastUltTicks || 0) > 0;
+}
+
+// Super armor during Explosive Rush (halves non-ultimate damage, no stun).
+function isBeastSuperArmor(f) {
+  return isBeast(f) && (f.beastExplosiveTicks || 0) > 0;
+}
+
+// Spatial Awareness / Rampaging Beast damage boosts on outgoing hits.
+function beastOutgoing(f) {
+  let m = getOutgoingDamageMultiplier(f);
+  if ((f.beastSpatialTicks || 0) > 0) m *= 1.1;
+  return m;
+}
+
+function isBeastCommitted(f) {
+  return Boolean(f && ((f.beastPierceTicks || 0) > 0 || (f.beastDevourTicks || 0) > 0 ||
+    (f.beastCrazyTicks || 0) > 0 || (f.beastExplosiveTicks || 0) > 0 || (f.beastWhirlTicks || 0) > 0));
+}
+
+function applyBleed(defender, ticks = 150) {
+  if (!defender || defender.ko) return;
+  if (isBeast(defender)) ticks = Math.round(ticks * 0.35); // Beast Instinct resist
+  defender.bleedTicks = Math.max(defender.bleedTicks || 0, ticks);
+}
+
+function updateBleed(f) {
+  if (f.ko) { f.bleedTicks = 0; return; }
+  if ((f.bleedTicks || 0) <= 0) return;
+  f.bleedTicks -= 1;
+  f.bleedTickCounter = (f.bleedTickCounter || 0) + 1;
+  if (f.bleedTickCounter >= 30) {
+    f.bleedTickCounter = 0;
+    if (f.health > 3) { applyFighterDamage(f, 2); updateHud(); }
+    const c = getFighterCenter(f);
+    spawnHitSpark(c.x + (Math.random() - 0.5) * 16, c.y + (Math.random() - 0.5) * 22, 1, "heavy");
+  }
+}
+
+function canStartBeastSpecial(f) {
+  return Boolean(
+    f && !gameOver && !paused && !isSpecialLocked(f) && !f.ko &&
+    f.stun <= 0 && f.dodging <= 0 && !f.knockdown && !f.attacking &&
+    !isBeastCommitted(f)
+  );
+}
+
+// Ability 1 - First Fang: Pierce. A fast cross-through dash thrust.
+function startBeastPierce(f) {
+  if (!isBeast(f) || !canStartBeastSpecial(f) || (f.beastPierceCooldown || 0) > 0) return false;
+  const opponent = getOpponent(f);
+  if (opponent) f.dir = getFighterCenter(opponent).x >= getFighterCenter(f).x ? 1 : -1;
+  f.beastPierceCooldown = BEAST_PIERCE_COOLDOWN_TICKS;
+  f.beastPierceTicks = BEAST_PIERCE_TICKS;
+  f.beastPierceHit = false;
+  f.blocking = false;
+  f.vx = f.dir * BEAST_PIERCE_SPEED;
+  return true;
+}
+
+function updateBeastPierce(f, opponent) {
+  if ((f.beastPierceTicks || 0) <= 0) return;
+  if (f.ko || f.stun > 0 || f.knockdown) { f.beastPierceTicks = 0; return; }
+  f.beastPierceTicks -= 1;
+  f.vx = f.dir * BEAST_PIERCE_SPEED * (beastUltActive(f) ? 1.15 : 1);
+  if (frame % 2 === 0) spawnHitSpark(getFighterCenter(f).x - f.dir * 16, getFighterCenter(f).y, -f.dir, "heavy");
+  // cross-through hit: damages but does NOT stop, so he passes through
+  if (!f.beastPierceHit && opponent && !opponent.ko && opponent.dodging <= 0 && !isUntargetable(opponent) && rectsOverlap(expandRect(f, 8), opponent)) {
+    f.beastPierceHit = true;
+    const blocked = isBlockingAttack(opponent, f.dir);
+    const damage = blocked ? 0 : getTakenDamage(opponent, Math.ceil(BEAST_PIERCE_DAMAGE * beastOutgoing(f)));
+    if (blocked) damageShield(opponent, BEAST_PIERCE_DAMAGE);
+    else {
+      applyFighterDamage(opponent, damage);
+      opponent.hurt = 12; opponent.stun = Math.max(opponent.stun, 16);
+      applyBleed(opponent, 120);
+      gainUltimate(f, damage * ULT_DAMAGE_GAIN_SCALE);
+    }
+    const c = getFighterCenter(opponent);
+    spawnHitSpark(c.x, c.y, f.dir, "heavy");
+    hitStopTicks = Math.max(hitStopTicks, HITSTOP_LIGHT);
+    shake = Math.max(shake, 7);
+    updateHud();
+  }
+}
+
+// Ability 2 - Third Fang: Devour. Multi-hit rush that carries the enemy.
+function startBeastDevour(f) {
+  if (!isBeast(f) || !canStartBeastSpecial(f) || (f.beastDevourCooldown || 0) > 0) return false;
+  const opponent = getOpponent(f);
+  if (!opponent || opponent.ko) return false;
+  if (Math.abs(getFighterCenter(opponent).x - getFighterCenter(f).x) > BEAST_DEVOUR_RANGE) return false;
+  f.beastDevourCooldown = BEAST_DEVOUR_COOLDOWN_TICKS;
+  f.beastDevourTicks = BEAST_DEVOUR_TICKS;
+  f.beastDevourNextHit = 2;
+  f.dir = getFighterCenter(opponent).x >= getFighterCenter(f).x ? 1 : -1;
+  f.blocking = false;
+  opponent.blocking = false;
+  return true;
+}
+
+function updateBeastDevour(f, opponent) {
+  if ((f.beastDevourTicks || 0) <= 0) return;
+  if (f.ko || f.stun > 0 || f.knockdown || !opponent || opponent.ko) { f.beastDevourTicks = 0; return; }
+  f.beastDevourTicks -= 1;
+  // carry both forward
+  const carry = f.dir * 3.2;
+  f.vx = carry;
+  opponent.x = clampStageX(f.x + f.dir * (f.w * 0.5 + 14), opponent.w);
+  opponent.vx = 0; opponent.stun = Math.max(opponent.stun, 6); opponent.hurt = Math.max(opponent.hurt, 4);
+  f.beastDevourNextHit -= 1;
+  if (f.beastDevourNextHit <= 0 && f.beastDevourTicks > 4) {
+    f.beastDevourNextHit = BEAST_DEVOUR_HIT_INTERVAL;
+    const damage = getTakenDamage(opponent, Math.ceil(BEAST_DEVOUR_HIT_DAMAGE * beastOutgoing(f)));
+    applyFighterDamage(opponent, damage);
+    gainUltimate(f, damage * ULT_DAMAGE_GAIN_SCALE * 0.7);
+    const c = getFighterCenter(opponent);
+    spawnHitSpark(c.x + (Math.random() - 0.5) * 18, c.y + (Math.random() - 0.5) * 26, f.dir, "light");
+    hitStopTicks = Math.max(hitStopTicks, 1);
+    updateHud();
+  }
+  if (f.beastDevourTicks <= 0 && !opponent.ko) {
+    applyBleed(opponent, 120);
+    opponent.vx = f.dir * getTakenKnockback(opponent, BEAST_DEVOUR_KNOCKBACK);
+    opponent.vy = -6; opponent.grounded = false;
+    opponent.stun = Math.max(opponent.stun, 18);
+    const c = getFighterCenter(opponent);
+    spawnHitSpark(c.x, c.y, f.dir, "heavy");
+    shake = Math.max(shake, 9);
+    hitStopTicks = Math.max(hitStopTicks, HITSTOP_HEAVY);
+    updateHud();
+  }
+}
+
+// Ability 3 - Fifth Fang: Crazy Cutting. Wild slashes hitting front AND
+// behind, final hit launches upward.
+function startBeastCrazy(f) {
+  if (!isBeast(f) || !canStartBeastSpecial(f) || (f.beastCrazyCooldown || 0) > 0) return false;
+  f.beastCrazyCooldown = BEAST_CRAZY_COOLDOWN_TICKS;
+  f.beastCrazyTicks = BEAST_CRAZY_TICKS;
+  f.beastCrazyNextHit = BEAST_CRAZY_HIT_INTERVAL;
+  f.blocking = false; f.vx = 0;
+  showActionWarning("CRAZY CUTTING");
+  return true;
+}
+
+function updateBeastCrazy(f, opponent) {
+  if ((f.beastCrazyTicks || 0) <= 0) return;
+  if (f.ko || f.stun > 0 || f.knockdown) { f.beastCrazyTicks = 0; return; }
+  f.beastCrazyTicks -= 1;
+  f.vx *= 0.6;
+  const c0 = getFighterCenter(f);
+  f.beastCrazyNextHit -= 1;
+  if (f.beastCrazyNextHit <= 0 && f.beastCrazyTicks > 4 && opponent && !opponent.ko && opponent.dodging <= 0 && !isUntargetable(opponent)) {
+    f.beastCrazyNextHit = BEAST_CRAZY_HIT_INTERVAL;
+    // hits regardless of side (front AND behind)
+    if (Math.abs(getFighterCenter(opponent).x - c0.x) < BEAST_CRAZY_RADIUS && Math.abs(getFighterCenter(opponent).y - c0.y) < 66) {
+      const dir = Math.sign(getFighterCenter(opponent).x - c0.x) || f.dir;
+      const blocked = isBlockingAttack(opponent, dir);
+      const damage = blocked ? 0 : getTakenDamage(opponent, Math.ceil(BEAST_CRAZY_HIT_DAMAGE * beastOutgoing(f)));
+      if (blocked) damageShield(opponent, BEAST_CRAZY_HIT_DAMAGE);
+      else {
+        applyFighterDamage(opponent, damage);
+        opponent.hurt = Math.max(opponent.hurt, 5); opponent.stun = Math.max(opponent.stun, 8);
+        gainUltimate(f, damage * ULT_DAMAGE_GAIN_SCALE * 0.6);
+      }
+      const c = getFighterCenter(opponent);
+      spawnHitSpark(c.x, c.y, dir, "light");
+      updateHud();
+    }
+  }
+  if (f.beastCrazyTicks <= 0 && opponent && !opponent.ko && Math.abs(getFighterCenter(opponent).x - c0.x) < BEAST_CRAZY_RADIUS + 10) {
+    const damage = getTakenDamage(opponent, Math.ceil((BEAST_CRAZY_HIT_DAMAGE + 4) * beastOutgoing(f)));
+    applyFighterDamage(opponent, damage);
+    applyBleed(opponent, 100);
+    opponent.vy = -11; opponent.grounded = false;
+    opponent.knockdown = true; opponent.knockdownTimer = 22;
+    opponent.stun = Math.max(opponent.stun, 20);
+    const c = getFighterCenter(opponent);
+    spawnHitSpark(c.x, c.y, f.dir, "heavy");
+    shake = Math.max(shake, 9);
+    hitStopTicks = Math.max(hitStopTicks, HITSTOP_HEAVY);
+    updateHud();
+  }
+}
+
+// Ability 4 - Seventh Form: Spatial Awareness. 6s senses buff.
+function startBeastSpatial(f) {
+  if (!isBeast(f) || gameOver || paused || f.ko || (f.beastSpatialCooldown || 0) > 0) return false;
+  f.beastSpatialCooldown = BEAST_SPATIAL_COOLDOWN_TICKS;
+  f.beastSpatialTicks = BEAST_SPATIAL_TICKS;
+  spawnHitSpark(getFighterCenter(f).x, getFighterCenter(f).y, f.dir, "blue");
+  showActionWarning("SPATIAL AWARENESS");
+  updateHud();
+  return true;
+}
+
+// Ability 5 - Eighth Form: Explosive Rush. Super-armored charge.
+function startBeastExplosive(f) {
+  if (!isBeast(f) || !canStartBeastSpecial(f) || (f.beastExplosiveCooldown || 0) > 0) return false;
+  const opponent = getOpponent(f);
+  if (opponent) f.dir = getFighterCenter(opponent).x >= getFighterCenter(f).x ? 1 : -1;
+  f.beastExplosiveCooldown = BEAST_EXPLOSIVE_COOLDOWN_TICKS;
+  f.beastExplosiveTicks = BEAST_EXPLOSIVE_TICKS;
+  f.beastExplosiveHit = false;
+  f.blocking = false;
+  f.vx = f.dir * BEAST_EXPLOSIVE_SPEED;
+  showActionWarning("EXPLOSIVE RUSH");
+  return true;
+}
+
+function updateBeastExplosive(f, opponent) {
+  if ((f.beastExplosiveTicks || 0) <= 0) return;
+  if (f.ko) { f.beastExplosiveTicks = 0; return; }
+  f.beastExplosiveTicks -= 1;
+  f.vx = f.dir * BEAST_EXPLOSIVE_SPEED;
+  f.stun = 0; f.knockdown = false; // super armor
+  if (frame % 2 === 0) spawnHitSpark(getFighterCenter(f).x - f.dir * 18, getFighterCenter(f).y, -f.dir, "heavy");
+  if (!f.beastExplosiveHit && opponent && !opponent.ko && opponent.dodging <= 0 && !isUntargetable(opponent) && rectsOverlap(expandRect(f, 10), opponent)) {
+    f.beastExplosiveHit = true;
+    const blocked = isBlockingAttack(opponent, f.dir);
+    const damage = blocked ? 0 : getTakenDamage(opponent, Math.ceil(BEAST_EXPLOSIVE_DAMAGE * beastOutgoing(f)));
+    if (blocked) damageShield(opponent, BEAST_EXPLOSIVE_DAMAGE);
+    else {
+      applyFighterDamage(opponent, damage);
+      opponent.hurt = 16; opponent.stun = Math.max(opponent.stun, 22);
+      opponent.vy = -7; opponent.grounded = false;
+      opponent.knockdown = true; opponent.knockdownTimer = 20;
+      gainUltimate(f, damage * ULT_DAMAGE_GAIN_SCALE);
+    }
+    opponent.vx = f.dir * getTakenKnockback(opponent, blocked ? 10 : BEAST_EXPLOSIVE_KNOCKBACK);
+    const c = getFighterCenter(opponent);
+    spawnHitSpark(c.x, c.y, f.dir, "heavy");
+    spawnHitSpark(c.x, c.y - 10, f.dir, "fuga");
+    shake = Math.max(shake, 13);
+    hitStopTicks = Math.max(hitStopTicks, HITSTOP_HEAVY);
+    f.vx *= 0.3;
+    f.beastExplosiveTicks = Math.min(f.beastExplosiveTicks, 4);
+    updateHud();
+  }
+}
+
+// Ability 6 - Tenth Fang: Whirling Fangs. Spin, reflect, pull + launch.
+function startBeastWhirl(f) {
+  if (!isBeast(f) || !canStartBeastSpecial(f) || (f.beastWhirlCooldown || 0) > 0) return false;
+  f.beastWhirlCooldown = BEAST_WHIRL_COOLDOWN_TICKS;
+  f.beastWhirlTicks = BEAST_WHIRL_TICKS;
+  f.beastWhirlNextHit = BEAST_WHIRL_HIT_INTERVAL;
+  f.blocking = false;
+  showActionWarning("WHIRLING FANGS");
+  return true;
+}
+
+function updateBeastWhirl(f, opponent) {
+  if ((f.beastWhirlTicks || 0) <= 0) return;
+  if (f.ko || f.stun > 0 || f.knockdown) { f.beastWhirlTicks = 0; return; }
+  f.beastWhirlTicks -= 1;
+  const center = getFighterCenter(f);
+  // reflect weak projectiles
+  for (const p of projectiles) {
+    if (p.hit || p.visualOnly || (p.startup || 0) > 0) continue;
+    if (p.owner === (f === player ? "player" : "enemy")) continue;
+    if ((p.damage || 0) > 14) continue;
+    if (Math.hypot(p.x - center.x, p.y - center.y) < BEAST_WHIRL_RADIUS) {
+      p.owner = f === player ? "player" : "enemy";
+      p.vx = -p.vx; p.baseVx = -(p.baseVx || p.vx); p.dir = -p.dir; p.aimX = -(p.aimX || 0); p.hit = false;
+      spawnHitSpark(p.x, p.y, p.dir, "block");
+    }
+  }
+  // pull nearby enemy toward the center
+  if (opponent && !opponent.ko && opponent.dodging <= 0 && !isUntargetable(opponent)) {
+    const gap = getFighterCenter(opponent).x - center.x;
+    if (Math.abs(gap) < BEAST_WHIRL_RADIUS && f.beastWhirlTicks > 8) {
+      opponent.vx += -Math.sign(gap) * 1.4;
+    }
+    f.beastWhirlNextHit -= 1;
+    if (f.beastWhirlNextHit <= 0 && Math.abs(gap) < BEAST_WHIRL_RADIUS && Math.abs(getFighterCenter(opponent).y - center.y) < 66) {
+      f.beastWhirlNextHit = BEAST_WHIRL_HIT_INTERVAL;
+      const dir = Math.sign(gap) || f.dir;
+      const blocked = isBlockingAttack(opponent, dir);
+      const damage = blocked ? 0 : getTakenDamage(opponent, Math.ceil(BEAST_WHIRL_HIT_DAMAGE * beastOutgoing(f)));
+      if (blocked) damageShield(opponent, BEAST_WHIRL_HIT_DAMAGE);
+      else {
+        applyFighterDamage(opponent, damage);
+        opponent.hurt = Math.max(opponent.hurt, 5); opponent.stun = Math.max(opponent.stun, 8);
+        gainUltimate(f, damage * ULT_DAMAGE_GAIN_SCALE * 0.6);
+      }
+      spawnHitSpark(getFighterCenter(opponent).x, getFighterCenter(opponent).y, dir, "light");
+      updateHud();
+    }
+  }
+  if (f.beastWhirlTicks <= 0 && opponent && !opponent.ko && Math.abs(getFighterCenter(opponent).x - center.x) < BEAST_WHIRL_RADIUS) {
+    const damage = getTakenDamage(opponent, Math.ceil((BEAST_WHIRL_HIT_DAMAGE + 4) * beastOutgoing(f)));
+    applyFighterDamage(opponent, damage);
+    opponent.vx = Math.sign(getFighterCenter(opponent).x - center.x || 1) * getTakenKnockback(opponent, 32);
+    opponent.vy = -8; opponent.grounded = false;
+    opponent.knockdown = true; opponent.knockdownTimer = 22;
+    const c = getFighterCenter(opponent);
+    spawnHitSpark(c.x, c.y, f.dir, "heavy");
+    shake = Math.max(shake, 10);
+    hitStopTicks = Math.max(hitStopTicks, HITSTOP_HEAVY);
+    updateHud();
+  }
+}
+
+// Ultimate - Rampaging Beast. Recast for the Palisade Bite finisher.
+function startBeastUltimate(f) {
+  if (beastUltActive(f)) return performPalisadeBite(f);
+  if (!canStartUltimate(f)) {
+    const warning = getUltimateFailureMessage(f);
+    if (warning) showActionWarning(warning);
+    return false;
+  }
+  f.ultimateMeter = 0;
+  f.beastUltTicks = BEAST_ULT_TICKS;
+  const c = getFighterCenter(f);
+  spawnHitSpark(c.x, c.y, f.dir, "heavy");
+  shake = Math.max(shake, 10);
+  showActionWarning("RAMPAGING BEAST");
+  updateHud();
+  return true;
+}
+
+function performPalisadeBite(f) {
+  const opponent = getOpponent(f);
+  if (!opponent || opponent.ko || gameOver || paused || f.ko || f.stun > 0 || f.knockdown) return false;
+  if (Math.abs(getFighterCenter(opponent).x - getFighterCenter(f).x) > 110) {
+    showActionWarning("GET CLOSER");
+    return false;
+  }
+  f.beastUltTicks = 0;
+  f.dir = getFighterCenter(opponent).x >= getFighterCenter(f).x ? 1 : -1;
+  const damage = getTakenDamage(opponent, Math.ceil(BEAST_PALISADE_DAMAGE * beastOutgoing(f)));
+  applyFighterDamage(opponent, damage);
+  applyBleed(opponent, 180);
+  opponent.hurt = 22; opponent.stun = Math.max(opponent.stun, 40);
+  opponent.vx = f.dir * getTakenKnockback(opponent, 44);
+  opponent.vy = -8; opponent.grounded = false;
+  opponent.knockdown = true; opponent.knockdownTimer = 30;
+  const c = getFighterCenter(opponent);
+  for (let i = 0; i < 8; i += 1) spawnHitSpark(c.x + (Math.random() - 0.5) * 40, c.y + (Math.random() - 0.5) * 40, f.dir, "heavy");
+  spawnHitSpark(c.x, c.y, f.dir, "fuga");
+  shake = Math.max(shake, 18);
+  hitStopTicks = Math.max(hitStopTicks, HITSTOP_HEAVY + 4);
+  if (!pacifistBot && opponent.health <= 0) startKnockout(f, opponent);
+  showActionWarning("PALISADE BITE");
+  updateHud();
+  return true;
+}
+
+function updateBeastSystems(f, opponent) {
+  updateBleed(f);
+  if (!isBeast(f)) return;
+  const ult = beastUltActive(f);
+  const cdRate = ult ? 1.35 : 1; // Rampaging Beast: 35% faster cooldowns
+  const dec = (v) => Math.max(0, v - cdRate);
+  if ((f.beastPierceCooldown || 0) > 0) f.beastPierceCooldown = dec(f.beastPierceCooldown);
+  if ((f.beastDevourCooldown || 0) > 0 && (f.beastDevourTicks || 0) <= 0) f.beastDevourCooldown = dec(f.beastDevourCooldown);
+  if ((f.beastCrazyCooldown || 0) > 0 && (f.beastCrazyTicks || 0) <= 0) f.beastCrazyCooldown = dec(f.beastCrazyCooldown);
+  if ((f.beastSpatialCooldown || 0) > 0 && (f.beastSpatialTicks || 0) <= 0) f.beastSpatialCooldown = dec(f.beastSpatialCooldown);
+  if ((f.beastExplosiveCooldown || 0) > 0 && (f.beastExplosiveTicks || 0) <= 0) f.beastExplosiveCooldown = dec(f.beastExplosiveCooldown);
+  if ((f.beastWhirlCooldown || 0) > 0 && (f.beastWhirlTicks || 0) <= 0) f.beastWhirlCooldown = dec(f.beastWhirlCooldown);
+  if ((f.beastSpatialTicks || 0) > 0) {
+    f.beastSpatialTicks -= 1;
+    if (frame % 4 === 0 && opponent && !opponent.ko) spawnHitSpark(getFighterCenter(opponent).x, getFighterCenter(opponent).y, 1, "block");
+  }
+  if ((f.beastComboSpeedTicks || 0) > 0) f.beastComboSpeedTicks -= 1;
+  if (ult) {
+    f.beastUltTicks -= 1;
+    if (frame % 4 === 0) spawnHitSpark(f.x + f.w / 2 + (Math.random() - 0.5) * 24, f.y + f.h - 8, f.dir, "heavy");
+  }
+  // movement: base + spatial (20%) + ult (25%) + post-combo burst (10%),
+  // applied as a reversible target so CPU scaling isn't clobbered.
+  let mult = 1;
+  if ((f.beastSpatialTicks || 0) > 0) mult *= 1.2;
+  if (ult) mult *= 1.25;
+  if ((f.beastComboSpeedTicks || 0) > 0) mult *= 1.1;
+  const baseSpeed = BASE_MOVE_SPEED * BEAST_MOVE_MULTIPLIER * (gameMode === "cpu" && f === enemy ? (cpuSettings[cpuDifficulty] || cpuSettings.medium).speedMultiplier : 1);
+  f.speed = baseSpeed * mult;
+  updateBeastPierce(f, opponent);
+  updateBeastDevour(f, opponent);
+  updateBeastCrazy(f, opponent);
+  updateBeastExplosive(f, opponent);
+  updateBeastWhirl(f, opponent);
+}
+
 function startKnockout(attacker, defender) {
   if (roundEnding || roundResolved) return;
   gameOver = true;
@@ -8809,6 +9385,13 @@ function startTechnique(f, slot, chargeRatio = 0, aimPoint = null, releasingChar
     return;
   }
 
+  // INOSUKE_PATCH: both mouse specials are melee.
+  if (f.technique === "beast") {
+    if (move === "beastPierce") startBeastPierce(f);
+    if (move === "beastDevour") startBeastDevour(f);
+    return;
+  }
+
   if (f.technique === "deathnote") {
     if (move === "ryukStrike") {
       if ((f.lightRyukCooldown || 0) > 0) return;
@@ -9080,7 +9663,7 @@ function getRctHealPerTick(f) {
 }
 
 function canStartRct(f) {
-  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider") return false; // NO_JJK all custom chars
+  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider" || f?.technique === "beast") return false; // NO_JJK all custom chars
   if (!f || gameOver || paused || isSpecialLocked(f) || f.ko || f.knockdown || f.dodging > 0) return false;
   if (f.health >= getCurrentHealthBarCeiling(f) || f.rctCooldown > 0) return false;
   return f.ce >= f.maxCe * RCT_MIN_CE_RATIO;
@@ -9102,7 +9685,7 @@ function cancelRct(f, startCooldown = true) {
 }
 
 function setRctHealing(f, wantsRct) {
-  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider") { // NO_JJK all custom chars
+  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider" || f?.technique === "beast") { // NO_JJK all custom chars
     cancelRct(f, false);
     return;
   }
@@ -9353,6 +9936,7 @@ function startUltimate(f, aimPoint = null) {
   if (f.technique === "hivemind") return startVecnaUltimate(f); // VECNA_PATCH
   if (f.technique === "zealot") return startZealotUltimate(f); // ZEALOT_PATCH
   if (f.technique === "spider") return startSpiderUltimate(f); // SPIDER_PATCH
+  if (f.technique === "beast") return startBeastUltimate(f); // INOSUKE_PATCH
   return beginUltimateAim(f, aimPoint);
 }
 
@@ -9364,6 +9948,7 @@ function beginUltimateAim(f, aimPoint = null) {
   if (f.technique === "hivemind") return startVecnaUltimate(f); // VECNA_PATCH
   if (f.technique === "zealot") return startZealotUltimate(f); // ZEALOT_PATCH
   if (f.technique === "spider") return startSpiderUltimate(f); // SPIDER_PATCH
+  if (f.technique === "beast") return startBeastUltimate(f); // INOSUKE_PATCH
   if (!canStartUltimate(f)) {
     const warning = getUltimateFailureMessage(f);
     if (warning) showActionWarning(warning);
@@ -9779,7 +10364,7 @@ function canStartSimpleDomain(f) {
 }
 
 function startSimpleDomain(f) {
-  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider") return false; // NO_JJK all custom chars
+  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider" || f?.technique === "beast") return false; // NO_JJK all custom chars
   if (!canStartSimpleDomain(f)) {
     showActionWarning(f && f.ce < Math.ceil(f.maxCe * SIMPLE_DOMAIN_CE_COST_RATIO) ? "Not Enough Cursed Energy" : "Can't Use Simple Domain");
     return false;
@@ -9874,7 +10459,7 @@ function getDomainAttemptForFighter(f) {
 }
 
 function canStartDomain(f) {
-  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider") return false; // NO_JJK all custom chars
+  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider" || f?.technique === "beast") return false; // NO_JJK all custom chars
   if (!f || gameState !== "playing" || gameOver || paused || f.ko || f.knockdown || f.stun > 0) return false;
   if (isSpecialLocked(f) || f.attacking || f.dodging > 0 || f.rctHealing || hasCtLock(f)) return false;
   if (activeDomain || domainClash) return false;
@@ -10795,6 +11380,22 @@ function applyHit(attacker, defender) {
     return;
   }
 
+  // INOSUKE_PATCH: Explosive Rush super armor - a normal melee hit deals
+  // half damage and can't stun or knock him out of the charge.
+  if (isBeastSuperArmor(defender) && !isBlockingAttack(defender, attacker.dir)) {
+    attacker.hasHit = true;
+    const raw = Math.ceil(attack.damage * getOutgoingDamageMultiplier(attacker));
+    const dmg = getTakenDamage(defender, Math.ceil(raw * 0.5));
+    const dealt = applyFighterDamage(defender, dmg);
+    gainUltimate(attacker, dealt * ULT_DAMAGE_GAIN_SCALE);
+    defender.hurt = 4;
+    spawnHitSpark(defender.x + defender.w / 2, defender.y + 48, attacker.dir, "block");
+    hitStopTicks = Math.max(hitStopTicks, HITSTOP_LIGHT);
+    if (!pacifistBot && defender.health <= 0) startKnockout(attacker, defender);
+    updateHud();
+    return;
+  }
+
   attacker.hasHit = true;
   if (pacifistBot && defender === enemy) markPracticeBotAttacked();
   const attackType = attacker.attacking;
@@ -10851,6 +11452,10 @@ function applyHit(attacker, defender) {
   cancelRct(defender, false);
   defender.hurt = blocked ? 6 : 14;
   defender.stun = getComboHitstun(attacker, attackType, blocked);
+  // INOSUKE_PATCH: Beast Instinct - 10% less hitstun (harder to combo).
+  if (isBeast(defender)) defender.stun = Math.ceil(defender.stun * 0.9);
+  // Beast Instinct - a short speed burst after landing a combo finisher.
+  if (isBeast(attacker) && !blocked && (heavyFinisher || finalLightHit)) attacker.beastComboSpeedTicks = BEAST_COMBO_SPEED_TICKS;
   let comboKnockbackScale = blocked ? 1 : 1 + comboHitsBefore * 0.14;
   if (!blocked && isHeavyHit) comboKnockbackScale *= heavyFinisher ? gojoRedHeavyFinisher ? 2.05 : 1.25 : 0.68;
   if (!blocked && finalLightHit) comboKnockbackScale *= gojoPushPullFinisher ? 0.12 : attacker.technique === "shrine" ? 2.75 : 2.55;
@@ -11048,6 +11653,21 @@ function applyOnlineDamageToPlayer(hit) {
 
 function applyProjectileHit(projectile, defender) {
   if (projectile.hit || defender.ko || defender.dodging > 0) return;
+  // INOSUKE_PATCH: Explosive Rush super armor - half damage, no stun, no
+  // interruption from a normal projectile (ultimate projectiles still hit
+  // in full).
+  const ultProjectile = projectile.move === "purple" || projectile.move === "worldSlash" || projectile.ultimateProjectile;
+  if (isBeastSuperArmor(defender) && !ultProjectile && !isBlockingAttack(defender, projectile.dir)) {
+    projectile.hit = true;
+    const dmg = getTakenDamage(defender, Math.ceil((projectile.damage || 0) * 0.5));
+    const dealt = applyFighterDamage(defender, dmg);
+    gainUltimate(projectile.owner === "player" ? player : enemy, dealt * ULT_DAMAGE_GAIN_SCALE);
+    defender.hurt = 4;
+    spawnHitSpark(defender.x + defender.w / 2, defender.y + 48, projectile.dir, "block");
+    if (!pacifistBot && defender.health <= 0) startKnockout(projectile.owner === "player" ? player : enemy, defender);
+    updateHud();
+    return;
+  }
   projectile.hit = true;
   if (pacifistBot && defender === enemy) markPracticeBotAttacked();
   const blocked = isBlockingAttack(defender, projectile.dir);
@@ -12363,6 +12983,27 @@ function updateEnemyAi() {
     }
   }
 
+  // INOSUKE_PATCH: CPU Inosuke is a relentless rusher - Pierce/Explosive
+  // to close, Devour/Crazy/Whirl up close, buffs and ult when it can.
+  if (enemy.technique === "beast" && !pacifistBot && enemy.stun <= 0 && !enemy.knockdown && !gameOver) {
+    const iGap = Math.abs((player.x + player.w / 2) - (enemy.x + enemy.w / 2));
+    if ((enemy.beastUltTicks || 0) > 0 && iGap < 100 && Math.random() < getCpuDecisionChance(0.008, 0.02, 0.045)) {
+      performPalisadeBite(enemy);
+    } else if ((enemy.beastSpatialCooldown || 0) <= 0 && (enemy.beastSpatialTicks || 0) <= 0 && Math.random() < getCpuDecisionChance(0.006, 0.014, 0.03)) {
+      startBeastSpatial(enemy);
+    } else if ((enemy.beastPierceCooldown || 0) <= 0 && iGap > 150 && Math.random() < getCpuDecisionChance(0.01, 0.024, 0.05)) {
+      startBeastPierce(enemy);
+    } else if ((enemy.beastExplosiveCooldown || 0) <= 0 && iGap > 130 && iGap < 340 && Math.random() < getCpuDecisionChance(0.006, 0.016, 0.035)) {
+      startBeastExplosive(enemy);
+    } else if ((enemy.beastDevourCooldown || 0) <= 0 && iGap < BEAST_DEVOUR_RANGE - 8 && Math.random() < getCpuDecisionChance(0.01, 0.026, 0.05)) {
+      startBeastDevour(enemy);
+    } else if ((enemy.beastCrazyCooldown || 0) <= 0 && iGap < BEAST_CRAZY_RADIUS && Math.random() < getCpuDecisionChance(0.008, 0.02, 0.045)) {
+      startBeastCrazy(enemy);
+    } else if ((enemy.beastWhirlCooldown || 0) <= 0 && iGap < BEAST_WHIRL_RADIUS && Math.random() < getCpuDecisionChance(0.006, 0.014, 0.03)) {
+      startBeastWhirl(enemy);
+    }
+  }
+
   // SPIDER_PATCH: CPU Spidey tags with a web, zips in, rushes, swings away.
   if (enemy.technique === "spider" && !pacifistBot && enemy.stun <= 0 && !enemy.knockdown && !gameOver) {
     const spGap = Math.abs((player.x + player.w / 2) - (enemy.x + enemy.w / 2));
@@ -12597,6 +13238,8 @@ function updateFighter(f, opponent) {
   updateZealotSystems(f, opponent);
   // SPIDER_PATCH
   updateSpiderSystems(f, opponent);
+  // INOSUKE_PATCH
+  updateBeastSystems(f, opponent);
 
   if (f.ko) {
     f.attacking = null;
@@ -12797,6 +13440,9 @@ function keepFightersApart() {
   // shoving them apart here made the attacker slide backwards all
   // through the hold and throw.
   if ((player.grabHeldTimer || 0) > 0 || (enemy.grabHeldTimer || 0) > 0) return;
+  // INOSUKE_PATCH: First Fang Pierce (and Explosive Rush) pass THROUGH the
+  // opponent - don't shove them apart mid-dash.
+  if ((player.beastPierceTicks || 0) > 0 || (enemy.beastPierceTicks || 0) > 0) return;
   if (!rectsOverlap(player, enemy)) return;
   const playerCenter = player.x + player.w / 2;
   const enemyCenter = enemy.x + enemy.w / 2;
@@ -13474,6 +14120,21 @@ function getTechniqueSkin(f, flash) {
       hair: "#101114",
       eye: "#0b0705",
       mark: "#d7dbe0"
+    };
+  }
+
+  // INOSUKE_PATCH: bare tan torso, blue-grey hakama, and the boar-head
+  // mask (a headpiece, not a face).
+  if (f.technique === "beast") {
+    return {
+      body: "#caa079",
+      skin: "#caa079",
+      accent: "#4a5568",
+      pants: "#3f4a5a",
+      shoe: "#2b333f",
+      hair: "#2a2622",
+      eye: "#1b1410",
+      mark: "#6b7280"
     };
   }
 
@@ -15525,6 +16186,46 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.moveTo(30, 47); ctx.lineTo(35, 47);
     ctx.moveTo(30, 50); ctx.lineTo(34, 53);
     ctx.stroke();
+  } else if (f.technique === "beast") {
+    // INOSUKE_PATCH: bare, cut torso (the whole torso is already tan skin)
+    // with carved pec/ab shading, and the blue-grey hakama waistband.
+    ctx.fillStyle = "rgba(120, 84, 54, 0.5)";
+    // sternum line
+    ctx.beginPath();
+    ctx.moveTo(27, 40); ctx.lineTo(26, 60); ctx.lineTo(24.5, 60); ctx.lineTo(25.5, 40); ctx.closePath();
+    ctx.fill();
+    // pec undershadows
+    ctx.beginPath();
+    ctx.ellipse(20, 49, 5, 2.6, 0.1, 0, Math.PI * 2);
+    ctx.ellipse(34, 49, 5, 2.6, -0.1, 0, Math.PI * 2);
+    ctx.fill();
+    // ab rows
+    ctx.strokeStyle = "rgba(110, 76, 48, 0.55)";
+    ctx.lineWidth = 1.5;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(19, 56); ctx.quadraticCurveTo(27, 59, 35, 56);
+    ctx.moveTo(20, 62); ctx.quadraticCurveTo(27, 65, 34, 62);
+    ctx.moveTo(21, 68); ctx.quadraticCurveTo(27, 70, 33, 68);
+    ctx.moveTo(27, 54); ctx.lineTo(27, 70);
+    ctx.stroke();
+    // muscle highlights
+    ctx.strokeStyle = "rgba(230, 200, 165, 0.4)";
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    ctx.moveTo(16, 45); ctx.quadraticCurveTo(20, 43, 23, 46);
+    ctx.moveTo(38, 45); ctx.quadraticCurveTo(34, 43, 31, 46);
+    ctx.stroke();
+    // blue-grey hakama waistband
+    ctx.fillStyle = "#3f4a5a";
+    ctx.beginPath();
+    ctx.moveTo(12, 70); ctx.lineTo(42, 70); ctx.lineTo(43, 78); ctx.lineTo(11, 78); ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(20, 26, 34, 0.7)";
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(11, 74); ctx.lineTo(43, 74);
+    ctx.stroke();
   } else if (f.technique === "zealot") {
     // ZEALOT_PATCH + ARTANIS_DETAIL_PATCH: ornate gold hero armor studded
     // with glowing blue khaydarin gems - layered chest plates, big
@@ -15976,6 +16677,68 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     };
     lens(22, -1);
     lens(30, 1);
+  } else if (f.technique === "beast") {
+    // INOSUKE_PATCH: the boar-head mask worn over the head (a headpiece,
+    // like the dummy's markings - the mask's own tusks/snout/eye-holes,
+    // not Inosuke's face). Drawn on top of the head ellipse.
+    // boar hide covering the skull
+    ctx.fillStyle = "#8f7355";
+    ctx.beginPath();
+    ctx.moveTo(13, 22);
+    ctx.quadraticCurveTo(12, 6, 26, 5);
+    ctx.quadraticCurveTo(40, 6, 39, 22);
+    ctx.quadraticCurveTo(39, 30, 33, 33);
+    ctx.lineTo(19, 33);
+    ctx.quadraticCurveTo(13, 30, 13, 22);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "#5f4a34";
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    // ears
+    ctx.fillStyle = "#7c6144";
+    ctx.beginPath();
+    ctx.moveTo(14, 12); ctx.lineTo(8, 4); ctx.lineTo(17, 9); ctx.closePath();
+    ctx.moveTo(38, 12); ctx.lineTo(44, 4); ctx.lineTo(35, 9); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // snout
+    ctx.fillStyle = "#7c6144";
+    ctx.beginPath();
+    ctx.ellipse(26, 30, 8, 6, 0, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#4a3826";
+    ctx.beginPath();
+    ctx.ellipse(22.5, 30, 1.4, 2, 0, 0, Math.PI * 2);
+    ctx.ellipse(29.5, 30, 1.4, 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // dark eye-holes of the mask (openings, not drawn eyes)
+    ctx.fillStyle = "#20160e";
+    ctx.beginPath();
+    ctx.ellipse(20, 21, 2.6, 3.2, 0.2, 0, Math.PI * 2);
+    ctx.ellipse(32, 21, 2.6, 3.2, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+    // white tusks curving up from the snout
+    ctx.fillStyle = "#f1ece0";
+    ctx.strokeStyle = "#b9b0a0";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(20, 33);
+    ctx.quadraticCurveTo(15, 32, 14, 25);
+    ctx.quadraticCurveTo(17, 30, 21, 31);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(32, 33);
+    ctx.quadraticCurveTo(37, 32, 38, 25);
+    ctx.quadraticCurveTo(35, 30, 31, 31);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // a little dark hair poking out under the mask
+    ctx.fillStyle = "#2a2622";
+    ctx.beginPath();
+    ctx.moveTo(15, 30); ctx.lineTo(13, 37); ctx.lineTo(19, 33); ctx.closePath();
+    ctx.moveTo(37, 30); ctx.lineTo(39, 37); ctx.lineTo(33, 33); ctx.closePath();
+    ctx.fill();
   } else if (f.technique === "zealot") {
     // ZEALOT_PATCH + LIKENESS_PATCH: Protoss khaydarin nerve cords sweep
     // down the SIDES/back of the head (clear of the face) plus the gold
@@ -16777,8 +17540,8 @@ function drawTechniquePreview(canvasEl, technique) {
     w: technique === "shrine" ? 52 : technique === "brawler" ? 54 : 50,
     h: 128,
     dir: 1,
-    color: technique === "shrine" ? "#dc2626" : technique === "deathnote" ? "#111827" : technique === "brawler" ? "#eceef2" : technique === "blackleg" ? "#16181f" : technique === "hivemind" ? "#54322c" : technique === "zealot" ? "#c8a13a" : technique === "spider" ? "#c0242c" : "#2563eb",
-    accent: technique === "shrine" ? "#991b1b" : technique === "deathnote" ? "#b91c1c" : technique === "brawler" ? "#dc2626" : technique === "blackleg" ? "#facc15" : technique === "hivemind" ? "#7f1d1d" : technique === "zealot" ? "#38e0f0" : technique === "spider" ? "#1e3a8a" : "#1d4ed8"
+    color: technique === "shrine" ? "#dc2626" : technique === "deathnote" ? "#111827" : technique === "brawler" ? "#eceef2" : technique === "blackleg" ? "#16181f" : technique === "hivemind" ? "#54322c" : technique === "zealot" ? "#c8a13a" : technique === "spider" ? "#c0242c" : technique === "beast" ? "#caa079" : "#2563eb",
+    accent: technique === "shrine" ? "#991b1b" : technique === "deathnote" ? "#b91c1c" : technique === "brawler" ? "#dc2626" : technique === "blackleg" ? "#facc15" : technique === "hivemind" ? "#7f1d1d" : technique === "zealot" ? "#38e0f0" : technique === "spider" ? "#1e3a8a" : technique === "beast" ? "#4a5568" : "#1d4ed8"
   });
   previewFighter.technique = technique;
   previewFighter.y = GROUND - previewFighter.h;
@@ -16787,7 +17550,7 @@ function drawTechniquePreview(canvasEl, technique) {
   ctx = previewCtx;
   ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
   const backdrop = ctx.createLinearGradient(0, 0, 0, canvasEl.height);
-  backdrop.addColorStop(0, technique === "shrine" ? "#2b1420" : technique === "deathnote" ? "#180b12" : technique === "brawler" ? "#141822" : technique === "blackleg" ? "#221208" : technique === "hivemind" ? "#1c0a10" : technique === "zealot" ? "#0a1a1f" : technique === "spider" ? "#1a0810" : "#142033");
+  backdrop.addColorStop(0, technique === "shrine" ? "#2b1420" : technique === "deathnote" ? "#180b12" : technique === "brawler" ? "#141822" : technique === "blackleg" ? "#221208" : technique === "hivemind" ? "#1c0a10" : technique === "zealot" ? "#0a1a1f" : technique === "spider" ? "#1a0810" : technique === "beast" ? "#1a1712" : "#142033");
   backdrop.addColorStop(1, "#050814");
   ctx.fillStyle = backdrop;
   ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
@@ -16815,6 +17578,7 @@ function renderTechniquePreviews() {
   drawTechniquePreview(techniquePreviewCanvases.hivemind, "hivemind"); // VECNA_PATCH
   drawTechniquePreview(techniquePreviewCanvases.zealot, "zealot"); // ZEALOT_PATCH
   drawTechniquePreview(techniquePreviewCanvases.spider, "spider"); // SPIDER_PATCH
+  drawTechniquePreview(techniquePreviewCanvases.beast, "beast"); // INOSUKE_PATCH
 }
 
 // THRAGG_BRAWLER_PATCH: install his character-select card the same way
@@ -16986,6 +17750,37 @@ function installSpiderTechniqueOption() {
   renderTechniquePreviews();
 }
 window.addEventListener("DOMContentLoaded", installSpiderTechniqueOption);
+
+// INOSUKE_PATCH: Inosuke's character-select card, cloned at runtime.
+function installBeastTechniqueOption() {
+  if (!techniqueScreen) return;
+  const existing = techniqueScreen.querySelector('[data-technique="beast"]');
+  if (!existing) {
+    const sample = techniqueScreen.querySelector(".technique-button");
+    const button = sample ? sample.cloneNode(true) : document.createElement("button");
+    button.type = "button";
+    button.className = sample ? sample.className : "technique-button";
+    button.dataset.technique = "beast";
+    button.innerHTML = `
+      <canvas id="beastPreview" width="320" height="180" aria-hidden="true"></canvas>
+      <strong>Inosuke</strong>
+      <span>Beast Breathing - relentless dual-blade rushdown</span>
+      <small>Fangs & Forms - Pierce, Devour, Crazy Cutting, Rampaging Beast</small>
+    `;
+    const holder = sample?.parentNode || techniqueScreen;
+    holder.appendChild(button);
+  }
+  const canvas = document.getElementById("beastPreview");
+  if (canvas) techniquePreviewCanvases.beast = canvas;
+  techniqueButtons = Array.from(document.querySelectorAll(".technique-button"));
+  techniqueButtons.forEach((button) => {
+    if (button.dataset.beastBound === "1") return;
+    button.dataset.beastBound = "1";
+    button.addEventListener("click", () => finishTechniqueSelect(button.dataset.technique));
+  });
+  renderTechniquePreviews();
+}
+window.addEventListener("DOMContentLoaded", installBeastTechniqueOption);
 
 
 function drawSukunaModelCleanup(f) {
@@ -19312,6 +20107,15 @@ window.addEventListener("keydown", (event) => {
       if (startSanjiCook(enemy)) sendOnlineInput("sanji-cook");
       return;
     }
+    // INOSUKE_PATCH: R = Spatial Awareness, F = Whirling Fangs.
+    if ((key === "r" || code === "keyr") && !event.repeat && enemy?.technique === "beast") {
+      if (startBeastSpatial(enemy)) sendOnlineInput("beast-spatial");
+      return;
+    }
+    if ((key === "f" || code === "keyf") && !event.repeat && enemy?.technique === "beast") {
+      if (startBeastWhirl(enemy)) sendOnlineInput("beast-whirl");
+      return;
+    }
     const action = getOnlineAction(key, code, event.repeat);
     if (action === "light") startAttack(enemy, "light");
     if (action === "heavy") startAttack(enemy, "heavy");
@@ -19339,10 +20143,20 @@ window.addEventListener("keydown", (event) => {
       if (startSanjiCook(player) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("sanji-cook");
       return;
     }
+    // INOSUKE_PATCH: F is Tenth Fang Whirling Fangs.
+    else if (player.technique === "beast") {
+      if (startBeastWhirl(player) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("beast-whirl");
+      return;
+    }
   }
   if ((key === "r" || code === "keyr") && !event.repeat && player.technique === "blackleg") {
     // SANJI_UTENSIL_PATCH: R cycles the loaded utensil.
     if (switchSanjiUtensil(player) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("sanji-utensil-switch");
+    return;
+  }
+  if ((key === "r" || code === "keyr") && !event.repeat && player.technique === "beast") {
+    // INOSUKE_PATCH: R is Seventh Form Spatial Awareness.
+    if (startBeastSpatial(player) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("beast-spatial");
     return;
   }
   if ((key === "t" || code === "keyt") && !event.repeat && player.technique === "shrine") {
@@ -19381,6 +20195,9 @@ window.addEventListener("keydown", (event) => {
     } else if (fighter?.technique === "spider") {
       // SPIDER_PATCH: S is Web Swing.
       if (startWebSwing(fighter) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("spider-swing");
+    } else if (fighter?.technique === "beast") {
+      // INOSUKE_PATCH: S is Fifth Fang Crazy Cutting.
+      if (startBeastCrazy(fighter) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("beast-crazy");
     }
   }
   if (isEventForAction("ultimate", key, code) && !event.repeat) beginUltimateAim(player, mouseAimWorld);
