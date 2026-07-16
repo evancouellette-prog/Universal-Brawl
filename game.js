@@ -2892,7 +2892,11 @@ const techniqueMoves = {
   charge: { cost: 0, damage: ZEALOT_CHARGE_DAMAGE, speed: 0, radius: 1, knockback: 0, life: 1 },
   psiFlurry: { cost: 0, damage: 0, speed: 0, radius: 1, knockback: 0, life: 1 },
   // ZEALOT_PATCH: Stalker unit's ranged shot (spawned by the ultimate).
-  stalkerShot: { cost: 0, damage: 7, speed: 9, radius: 9, knockback: 8, life: 70 }
+  stalkerShot: { cost: 0, damage: 7, speed: 9, radius: 9, knockback: 8, life: 70 },
+  // SPIDER_PATCH: melee/mobility specials handled in startTechnique; web is
+  // the only real projectile.
+  webShot: { cost: 0, damage: SPIDER_WEBSHOT_DAMAGE, speed: 0, radius: 1, knockback: 0, life: 1 },
+  webBarrage: { cost: 0, damage: 0, speed: 0, radius: 1, knockback: 0, life: 1 }
 };
 
 function getTechniqueMoveKey(f, slot) {
@@ -2903,6 +2907,7 @@ function getTechniqueMoveKey(f, slot) {
   if (f.technique === "brawler") return "groundBreak";
   if (f.technique === "blackleg") return slot === 2 ? "muttonShot" : "diableJambe"; // SANJI_PATCH
   if (f.technique === "zealot") return slot === 2 ? "psiFlurry" : "charge"; // ZEALOT_PATCH
+  if (f.technique === "spider") return slot === 2 ? "webBarrage" : "webShot"; // SPIDER_PATCH
   if (f.technique === "hivemind") return slot === 2 ? "demodogHunt" : "demobatSwarm"; // VECNA_PATCH
   return "blue";
 }
@@ -2923,6 +2928,9 @@ function getTechniqueDisplayName(move) {
   if (move === "charge") return "CHARGE"; // ZEALOT_PATCH
   if (move === "psiFlurry") return "PSI FLURRY"; // ZEALOT_PATCH
   if (move === "whirlwind") return "WHIRLWIND"; // ZEALOT_PATCH
+  if (move === "webShot") return "WEB SHOT"; // SPIDER_PATCH
+  if (move === "webBarrage") return "WEB BARRAGE"; // SPIDER_PATCH
+  if (move === "webSwing") return "WEB SWING"; // SPIDER_PATCH
   return move.toUpperCase();
 }
 
@@ -2947,6 +2955,10 @@ function getTechniqueCooldownTicks(move, f = null) {
   if (move === "charge") return ZEALOT_CHARGE_COOLDOWN_TICKS;
   if (move === "psiFlurry") return ZEALOT_FLURRY_COOLDOWN_TICKS;
   if (move === "whirlwind") return ZEALOT_WHIRL_COOLDOWN_TICKS;
+  // SPIDER_PATCH:
+  if (move === "webShot") return SPIDER_WEBSHOT_COOLDOWN_TICKS;
+  if (move === "webBarrage") return SPIDER_BARRAGE_COOLDOWN_TICKS;
+  if (move === "webSwing") return SPIDER_SWING_COOLDOWN_TICKS;
   let base = move === "red" || move === "cleave" ? TECHNIQUE_HEAVY_COOLDOWN : TECHNIQUE_FAST_COOLDOWN;
   if (move === "cleave" && hasBindingVow(f, "cleave")) base = Math.max(10, Math.ceil(base * 0.55));
   return base;
@@ -3401,6 +3413,13 @@ function applyTechniqueStats(f, preserveMeters = false) {
     f.zealotWhirlTicks = 0;
     f.zealotUltTicks = 0;
   }
+  // SPIDER_PATCH: clear the web kit when switching off Spider-Man.
+  if (f.technique !== "spider") {
+    f.spiderWebShotCooldown = 0;
+    f.spiderSwingTicks = 0;
+    f.spiderRushTicks = 0;
+    f.spiderUltTicks = 0;
+  }
   // SANJI_PATCH: clear the Black Leg kit when switching off Sanji.
   if (f.technique !== "blackleg") {
     f.sanjiHeat = 0;
@@ -3451,6 +3470,7 @@ function getTechniqueHudMoves(f) {
   if (f.technique === "blackleg") return ["diableJambe", "muttonShot", "skyWalk"]; // SANJI_PATCH
   if (f.technique === "hivemind") return ["demobatSwarm", "demodogHunt", "upsideDownSlip"]; // VECNA_PATCH
   if (f.technique === "zealot") return ["charge", "psiFlurry", "whirlwind"]; // ZEALOT_PATCH
+  if (f.technique === "spider") return ["webShot", "webBarrage", "webSwing"]; // SPIDER_PATCH
   return ["blue", "red", "teleport"];
 }
 
@@ -3508,7 +3528,7 @@ function getTechniqueHudState(f, move) {
     };
   }
   // SANJI_PATCH + VECNA_PATCH: these specials are free - pure cooldown gates.
-  if (move === "diableJambe" || move === "muttonShot" || move === "skyWalk" || move === "demobatSwarm" || move === "demodogHunt" || move === "upsideDownSlip" || move === "charge" || move === "psiFlurry" || move === "whirlwind") {
+  if (move === "diableJambe" || move === "muttonShot" || move === "skyWalk" || move === "demobatSwarm" || move === "demodogHunt" || move === "upsideDownSlip" || move === "charge" || move === "psiFlurry" || move === "whirlwind" || move === "webShot" || move === "webBarrage" || move === "webSwing") {
     const cooldown = move === "diableJambe" ? (f.sanjiDiableCooldown || 0)
       : move === "muttonShot" ? (f.sanjiMuttonCooldown || 0)
       : move === "skyWalk" ? (f.sanjiSkyWalkCooldown || 0)
@@ -3517,7 +3537,10 @@ function getTechniqueHudState(f, move) {
       : move === "upsideDownSlip" ? (f.vecnaSlipCooldown || 0)
       : move === "charge" ? (f.zealotChargeCooldown || 0)
       : move === "psiFlurry" ? (f.zealotFlurryCooldown || 0)
-      : (f.zealotWhirlCooldown || 0);
+      : move === "whirlwind" ? (f.zealotWhirlCooldown || 0)
+      : move === "webShot" ? (f.spiderWebShotCooldown || 0)
+      : move === "webBarrage" ? (f.spiderBarrageCooldown || 0)
+      : (f.spiderSwingCooldown || 0);
     return {
       cost: 0,
       cooling: cooldown > 0,
@@ -3577,6 +3600,7 @@ function updateTechniqueCooldownHud(f, slots) {
     hud.slot.classList.toggle("sanji-cooldown", f.technique === "blackleg"); // SANJI_PATCH
     hud.slot.classList.toggle("vecna-cooldown", f.technique === "hivemind"); // VECNA_PATCH
     hud.slot.classList.toggle("zealot-cooldown", f.technique === "zealot"); // ZEALOT_PATCH
+    hud.slot.classList.toggle("spider-cooldown", f.technique === "spider"); // SPIDER_PATCH
   });
 }
 
@@ -3681,6 +3705,13 @@ function pinStationaryPracticeDummy(f = enemy) {
   f.zealotChargeTicks = 0;
   f.zealotFlurryTicks = 0;
   f.zealotWhirlTicks = 0;
+  // SPIDER_PATCH: clear mid-move + web debuffs.
+  f.spiderRushTicks = 0;
+  f.spiderSwingTicks = 0;
+  f.spiderKickTicks = 0;
+  f.spiderMarkTicks = 0;
+  f.webbedTicks = 0;
+  f.cocoonTicks = 0;
   // SANJI_PATCH: clear mid-move Black Leg state.
   f.sanjiDiableTicks = 0;
   f.sanjiDiveKickTicks = 0;
@@ -4170,6 +4201,59 @@ function installZealotCyanHudStyle() {
 window.addEventListener("DOMContentLoaded", installZealotCyanHudStyle);
 window.setTimeout(installZealotCyanHudStyle, 0);
 
+// SPIDER_PATCH: Spider-Man's cooldown HUD in red with blue accents.
+function installSpiderRedHudStyle() {
+  if (document.getElementById("spiderRedEffectsStyle")) return;
+  const style = document.createElement("style");
+  style.id = "spiderRedEffectsStyle";
+  style.textContent = `
+    .ct-slot.spider-cooldown,
+    .extra-cooldown.spider-cooldown,
+    .ct-slot.spider-cooldown.ready,
+    .ct-slot.spider-cooldown.cooling,
+    .extra-cooldown.spider-cooldown.ready,
+    .extra-cooldown.spider-cooldown.cooling {
+      background: linear-gradient(180deg, rgba(40, 10, 14, 0.92), rgba(14, 10, 24, 0.95)) !important;
+      border: 3px solid #d62333 !important;
+      box-shadow: 0 3px 0 #1e3a8a, 0 0 14px rgba(214, 35, 51, 0.4) !important;
+    }
+    .ct-slot.spider-cooldown .ct-label,
+    .ct-slot.spider-cooldown .ct-status,
+    .extra-cooldown.spider-cooldown .ct-label,
+    .extra-cooldown.spider-cooldown .ct-status,
+    .extra-cooldown.spider-cooldown .extra-cooldown-label,
+    .extra-cooldown.spider-cooldown .extra-cooldown-status {
+      color: #fecaca !important;
+      text-shadow: 0 0 6px rgba(214, 35, 51, 0.75) !important;
+    }
+    .ct-slot.spider-cooldown .ct-meter,
+    .extra-cooldown.spider-cooldown .ct-meter {
+      background: rgba(30, 8, 12, 0.75) !important;
+      border-color: rgba(214, 35, 51, 0.4) !important;
+    }
+    .ct-slot.spider-cooldown .ct-fill,
+    .ct-slot.spider-cooldown.ready .ct-fill,
+    .ct-slot.spider-cooldown.low-ce .ct-fill,
+    .ct-slot.spider-cooldown.blocked .ct-fill,
+    .extra-cooldown.spider-cooldown .ct-fill,
+    .extra-cooldown.spider-cooldown .ready .ct-fill,
+    .extra-cooldown.spider-cooldown .extra-cooldown-fill {
+      background: linear-gradient(90deg, #991b1b, #d62333, #f87171) !important;
+      box-shadow: 0 0 12px rgba(214, 35, 51, 0.5), inset 0 1px 0 rgba(255, 200, 200, 0.25) !important;
+    }
+    .ct-slot.spider-cooldown.cooling .ct-fill,
+    .ct-slot.spider-cooldown.charging .ct-fill,
+    .extra-cooldown.spider-cooldown.cooling .ct-fill,
+    .extra-cooldown.spider-cooldown.cooling .extra-cooldown-fill {
+      background: linear-gradient(90deg, #1e3a8a, #3b4a9a, #6b21a8) !important;
+      opacity: 0.92 !important;
+    }
+  `;
+  document.head.appendChild(style);
+}
+window.addEventListener("DOMContentLoaded", installSpiderRedHudStyle);
+window.setTimeout(installSpiderRedHudStyle, 0);
+
 
 function installLightTechniqueOption() {
   installUniversalBrawlRename();
@@ -4263,6 +4347,10 @@ function getTechniqueControlHtml(technique) {
     // ZEALOT_PATCH: melee-only Protoss kit, no JJK controls.
     return '<span><kbd>Left Click</kbd> Charge</span><span><kbd>Right Click</kbd> Psi Blade Flurry</span><span><kbd>S</kbd> Whirlwind</span><span><kbd>C</kbd> Warp Reinforcements</span>';
   }
+  if (technique === "spider") {
+    // SPIDER_PATCH: web-based mobility kit, no JJK controls.
+    return '<span><kbd>Left Click</kbd> Web Shot (recast to zip to mark)</span><span><kbd>Right Click</kbd> Web Barrage (cocoons a webbed foe)</span><span><kbd>S</kbd> Web Swing (attack to flying-kick)</span><span><kbd>Tab</kbd> Spider Rush</span><span><kbd>C</kbd> Friendly Neighborhood</span>';
+  }
   return '<span><kbd>Left Click</kbd> Blue</span><span><kbd>Right Click</kbd> Red</span><span><kbd>Hold S</kbd> Teleport</span><span><kbd>Hold T</kbd> Blue Punch</span><span><kbd>F</kbd> Infinity</span><span><kbd>Hold C</kbd> Aim Ultimate</span><span><kbd>R</kbd> hold RCT</span>';
 }
 
@@ -4277,6 +4365,7 @@ function getExtraBattleControlHtml(technique) {
   if (technique === "blackleg") return '<span><kbd>Heat 100%</kbd> next fire attack +15% and burns</span><span><kbd>Chopsticks</kbd> fast reload · <kbd>Fork</kbd> pins · <kbd>Spoon</kbd> knockback · <kbd>Knife</kbd> damage</span>'; // SANJI_PATCH
   if (technique === "hivemind") return '<span><kbd>Corruption 100%</kbd> next summon/ability is enhanced</span>'; // VECNA_PATCH
   if (technique === "zealot") return '<span><kbd>Shields</kbd> soak 25% HP, regen after 5s undamaged · no HP regen</span>'; // ZEALOT_PATCH
+  if (technique === "spider") return '<span><kbd>Spider Sense</kbd> perfect dodge = speed boost + cooldown refund</span><span><kbd>Marked</kbd> +10% combo damage, full combos extend the mark</span>'; // SPIDER_PATCH
   return '<span><kbd>X</kbd> Domain Expansion</span><span><kbd>Z</kbd> Simple Domain</span>';
 }
 
@@ -4643,7 +4732,9 @@ function applyJoinerFighterStateOnHost(remoteFighter) {
     // VECNA_PATCH
     "vecnaCorruption", "vecnaBatCooldown", "vecnaDogCooldown", "vecnaSlipCooldown", "vecnaSlipTicks", "vecnaBoneSnapCooldown", "rootedTicks",
     // ZEALOT_PATCH
-    "zealotShield", "zealotShieldMax", "zealotChargeCooldown", "zealotChargeTicks", "zealotFlurryCooldown", "zealotFlurryTicks", "zealotWhirlCooldown", "zealotWhirlTicks", "zealotUltTicks"
+    "zealotShield", "zealotShieldMax", "zealotChargeCooldown", "zealotChargeTicks", "zealotFlurryCooldown", "zealotFlurryTicks", "zealotWhirlCooldown", "zealotWhirlTicks", "zealotUltTicks",
+    // SPIDER_PATCH
+    "spiderWebShotCooldown", "spiderMarkTicks", "spiderMarkedBy", "spiderSwingCooldown", "spiderSwingTicks", "spiderBarrageCooldown", "spiderRushCooldown", "spiderRushTicks", "spiderUltTicks", "webbedTicks", "cocoonTicks"
   ];
 
   fields.forEach((field) => {
@@ -4742,6 +4833,8 @@ if (data.type === "role") {
       if (data.action === "sanji-cook") startSanjiCook(enemy); // SANJI_COOK_PATCH
       if (data.action === "upside-slip") startUpsideDownSlip(enemy); // VECNA_PATCH
       if (data.action === "zealot-whirl") startZealotWhirlwind(enemy); // ZEALOT_PATCH
+      if (data.action === "spider-swing") startWebSwing(enemy); // SPIDER_PATCH
+      if (data.action === "spider-rush") startSpiderRush(enemy); // SPIDER_PATCH
       if (data.action === "dodge") startDodge(enemy, getVectorFromInput(remoteInput));
       if (data.action === "jump") jumpFighterWithMove(enemy, (remoteInput.right ? 1 : 0) - (remoteInput.left ? 1 : 0));
       if (data.action === "infinity" && !hasCtLock(enemy)) toggleInfinity(enemy);
@@ -5624,6 +5717,17 @@ function getExtraCooldownItems(f) {
     return items;
   }
 
+  // SPIDER_PATCH: Spider Rush + ultimate timer, nothing JJK.
+  if (f.technique === "spider") {
+    const opp = getOpponent(f);
+    const marked = opp && isMarkedByFighter(f, opp);
+    items.push({ name: marked ? "MARKED" : "SPIDER RUSH", current: marked ? (opp.spiderMarkTicks || 0) : (f.spiderRushCooldown || 0), max: marked ? SPIDER_MARK_MAX_TICKS : SPIDER_RUSH_COOLDOWN_TICKS, mode: marked ? "resource" : undefined });
+    if ((f.spiderUltTicks || 0) > 0) {
+      items.push({ name: "FRIENDLY", current: f.spiderUltTicks, max: SPIDER_ULT_TICKS, mode: "active" });
+    }
+    return items;
+  }
+
   // ZEALOT_PATCH: Protoss shield gauge + ultimate timer, nothing JJK.
   if (f.technique === "zealot") {
     items.push({ name: "SHIELDS", current: f.zealotShield || 0, max: f.zealotShieldMax || 1, mode: "resource", style: "zealot-shield-meter" });
@@ -5717,7 +5821,7 @@ function updateExtraCooldownHud(container, f) {
       : ready ? 100 : Math.max(4, ratio * 100);
 
     const row = document.createElement("div");
-    row.className = `extra-cooldown ct-slot ${ready ? "ready" : "cooling"} ${f.technique === "shrine" ? "sukuna-cooldown" : f.technique === "deathnote" ? "light-cooldown" : f.technique === "brawler" ? "thragg-cooldown" : f.technique === "blackleg" ? "sanji-cooldown" : f.technique === "hivemind" ? "vecna-cooldown" : f.technique === "zealot" ? "zealot-cooldown" : "gojo-cooldown"} ${item.style || ""}`;
+    row.className = `extra-cooldown ct-slot ${ready ? "ready" : "cooling"} ${f.technique === "shrine" ? "sukuna-cooldown" : f.technique === "deathnote" ? "light-cooldown" : f.technique === "brawler" ? "thragg-cooldown" : f.technique === "blackleg" ? "sanji-cooldown" : f.technique === "hivemind" ? "vecna-cooldown" : f.technique === "zealot" ? "zealot-cooldown" : f.technique === "spider" ? "spider-cooldown" : "gojo-cooldown"} ${item.style || ""}`;
 
     const label = document.createElement("span");
     label.className = "extra-cooldown-label ct-label";
@@ -5780,7 +5884,7 @@ function updateResourceBarLabels() {
   const playerUltFrame = playerUltimateEl ? playerUltimateEl.closest(".ultimate-frame") : null;
   const enemyUltFrame = enemyUltimateEl ? enemyUltimateEl.closest(".ultimate-frame") : null;
 
-  ensureResourceBarLabel(playerCeFrame, isLight(player) ? "Information" : player?.technique === "brawler" || player?.technique === "blackleg" || player?.technique === "hivemind" || player?.technique === "zealot" ? "" : "Cursed Energy", "ce"); // + ZEALOT
+  ensureResourceBarLabel(playerCeFrame, isLight(player) ? "Information" : player?.technique === "brawler" || player?.technique === "blackleg" || player?.technique === "hivemind" || player?.technique === "zealot" || player?.technique === "spider" ? "" : "Cursed Energy", "ce"); // + SPIDER
   ensureResourceBarLabel(playerUltFrame, isLight(player) ? "Name" : "Ultimate", "ultimate");
 
   // DUMMY_HUD_NO_WORDS_PATCH:
@@ -5791,7 +5895,7 @@ function updateResourceBarLabels() {
     return;
   }
 
-  ensureResourceBarLabel(enemyCeFrame, isLight(enemy) ? "Information" : enemy?.technique === "brawler" || enemy?.technique === "blackleg" || enemy?.technique === "hivemind" || enemy?.technique === "zealot" ? "" : "Cursed Energy", "ce"); // + ZEALOT
+  ensureResourceBarLabel(enemyCeFrame, isLight(enemy) ? "Information" : enemy?.technique === "brawler" || enemy?.technique === "blackleg" || enemy?.technique === "hivemind" || enemy?.technique === "zealot" || enemy?.technique === "spider" ? "" : "Cursed Energy", "ce"); // + SPIDER
   ensureResourceBarLabel(enemyUltFrame, isLight(enemy) ? "Name" : "Ultimate", "ultimate");
 }
 
@@ -5832,11 +5936,11 @@ function updateLightHudVisibility() {
   // Light uses the CE slot as INFO and the Ultimate slot as NAME.
   // THRAGG_NO_JJK_PATCH: Thragg has no Cursed Energy at all - his CE bar
   // is hidden outright (abilities are cooldown-gated).
-  setHudElementHidden(playerCeFrame, player?.technique === "brawler" || player?.technique === "blackleg" || player?.technique === "hivemind" || player?.technique === "zealot"); // + ZEALOT
+  setHudElementHidden(playerCeFrame, player?.technique === "brawler" || player?.technique === "blackleg" || player?.technique === "hivemind" || player?.technique === "zealot" || player?.technique === "spider"); // + SPIDER
   setHudElementHidden(playerUltFrame, false);
 
   if (gameMode !== "practice") {
-    setHudElementHidden(enemyCeFrame, enemy?.technique === "brawler" || enemy?.technique === "blackleg" || enemy?.technique === "hivemind" || enemy?.technique === "zealot"); // + ZEALOT
+    setHudElementHidden(enemyCeFrame, enemy?.technique === "brawler" || enemy?.technique === "blackleg" || enemy?.technique === "hivemind" || enemy?.technique === "zealot" || enemy?.technique === "spider"); // + SPIDER
     setHudElementHidden(enemyUltFrame, false);
   } else {
     setHudElementHidden(enemyCeFrame, true);
@@ -6276,10 +6380,15 @@ function isZealotCommitted(f) {
   return Boolean(f && ((f.zealotFlurryTicks || 0) > 0 || (f.zealotWhirlTicks || 0) > 0));
 }
 
+// SPIDER_PATCH: mid Spider-Rush he is committed; cocoon fully locks anyone.
+function isSpiderCommitted(f) {
+  return Boolean(f && ((f.spiderRushTicks || 0) > 0 || (f.cocoonTicks || 0) > 0));
+}
+
 function isSpecialLocked(f) {
   const owner = getFighterOwner(f);
   const clashing = Boolean(owner && domainClash?.attempts?.[owner]);
-  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || isSanjiCommitted(f) || isZealotCommitted(f) || (f?.vecnaSlipTicks || 0) > 0 || (f?.domainStartup || 0) > 0 || clashing || (f?.potatoVulnerableTicks || 0) > 0; // + ZEALOT
+  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || isSanjiCommitted(f) || isZealotCommitted(f) || isSpiderCommitted(f) || (f?.vecnaSlipTicks || 0) > 0 || (f?.domainStartup || 0) > 0 || clashing || (f?.potatoVulnerableTicks || 0) > 0; // + SPIDER
 }
 
 // DOMAIN_MOVEMENT_FIX
@@ -6288,7 +6397,7 @@ function isSpecialLocked(f) {
 function isMovementLocked(f) {
   const owner = getFighterOwner(f);
   const clashing = Boolean(owner && domainClash?.attempts?.[owner]);
-  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || (f?.sanjiMuttonTicks || 0) > 0 || (f?.sanjiCookTicks || 0) > 0 || (f?.zealotFlurryTicks || 0) > 0 || (f?.zealotWhirlTicks || 0) > 0 || clashing; // + ZEALOT roots
+  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || (f?.sanjiMuttonTicks || 0) > 0 || (f?.sanjiCookTicks || 0) > 0 || (f?.zealotFlurryTicks || 0) > 0 || (f?.zealotWhirlTicks || 0) > 0 || (f?.spiderRushTicks || 0) > 0 || (f?.cocoonTicks || 0) > 0 || clashing; // + SPIDER roots
 }
 
 function getMoveInputForFighter(f) {
@@ -6402,6 +6511,7 @@ function handleThrowInput(f, requireButtons = true) {
   if (f.technique === "brawler") return startThraggGrab(f);
   if (f.technique === "hivemind") return startBoneSnap(f); // VECNA_PATCH
   if (f.technique === "blackleg") return throwSanjiUtensil(f); // SANJI_UTENSIL_PATCH
+  if (f.technique === "spider") return startSpiderRush(f); // SPIDER_PATCH
   return startBackThrow(f, requireButtons);
 }
 
@@ -6420,6 +6530,8 @@ function startAttack(f, type) {
   if (gameOver || isSpecialLocked(f) || f.rctHealing || f.chargingTechnique || f.fugaAiming || f.stun > 0 || f.dodging > 0 || f.knockdown || f.punchCooldown > 0 || f.pendingPunchCooldown) return;
   // SANJI_PATCH: pressing attack during Sky Walk performs the diving kick.
   if (isSanji(f) && trySanjiDiveKick(f)) return;
+  // SPIDER_PATCH: pressing attack during Web Swing performs the flying kick.
+  if (isSpider(f) && trySpiderSwingKick(f)) return;
   if (f.attacking) {
     if (f.hasHit && canChainAttack(f, type)) f.queuedAttack = type;
     return;
@@ -6447,6 +6559,16 @@ function startDodge(f, inputVector = null) {
     const center = getFighterCenter(f);
     gainUltimate(f, ULT_PERFECT_DODGE_GAIN);
     spawnHitSpark(center.x, center.y, -f.dir, "blue");
+    // SPIDER_PATCH: Spider Sense rewards a perfectly-timed dodge with a
+    // short speed boost and a small cooldown refund.
+    if (isSpider(f)) {
+      f.spiderDodgeBoostTicks = 90;
+      f.spiderSenseFlash = 8;
+      f.spiderWebShotCooldown = Math.max(0, (f.spiderWebShotCooldown || 0) - 30);
+      f.spiderSwingCooldown = Math.max(0, (f.spiderSwingCooldown || 0) - 30);
+      f.spiderBarrageCooldown = Math.max(0, (f.spiderBarrageCooldown || 0) - 30);
+      f.spiderRushCooldown = Math.max(0, (f.spiderRushCooldown || 0) - 30);
+    }
   }
 }
 
@@ -8055,6 +8177,333 @@ function updateZealotSystems(f, opponent) {
   updateZealotWhirlwind(f, opponent);
 }
 
+// ==========================================================================
+// SPIDER_PATCH: Spider-Man. Spider Sense, Web Shot (mark + zip), Web Swing
+// (+flying kick), Web Barrage (slow + cocoon), Spider Rush, and Friendly
+// Neighborhood with its swing-slam finisher.
+// ==========================================================================
+
+function isSpider(f) {
+  return Boolean(f && f.technique === "spider");
+}
+
+function spiderUltActive(f) {
+  return isSpider(f) && (f.spiderUltTicks || 0) > 0;
+}
+
+function markTarget(f, opponent, ticks = SPIDER_MARK_TICKS) {
+  if (!opponent) return;
+  opponent.spiderMarkTicks = Math.min(SPIDER_MARK_MAX_TICKS, Math.max(opponent.spiderMarkTicks || 0, ticks));
+  opponent.spiderMarkedBy = f === player ? "player" : "enemy";
+}
+
+function isMarkedByFighter(f, opponent) {
+  return Boolean(opponent && (opponent.spiderMarkTicks || 0) > 0 && opponent.spiderMarkedBy === (f === player ? "player" : "enemy"));
+}
+
+function canStartSpiderSpecial(f) {
+  return Boolean(
+    f && !gameOver && !paused && !isSpecialLocked(f) && !f.ko &&
+    f.stun <= 0 && f.dodging <= 0 && !f.knockdown &&
+    (f.spiderRushTicks || 0) <= 0
+  );
+}
+
+// Zip to the marked target to keep the combo going (Marvel-Rivals style).
+function spiderZipToTarget(f, opponent) {
+  const oc = getFighterCenter(opponent);
+  f.dir = oc.x >= getFighterCenter(f).x ? 1 : -1;
+  // land just behind the target on the side he zipped from
+  f.x = clampStageX(oc.x - f.dir * (opponent.w / 2 + f.w / 2 + 4) - f.w / 2, f.w);
+  f.y = opponent.y;
+  f.vx = 0;
+  f.vy = opponent.grounded ? 0 : Math.min(f.vy, opponent.vy);
+  f.grounded = opponent.grounded;
+  spawnHitSpark(getFighterCenter(f).x, getFighterCenter(f).y, f.dir, "block");
+}
+
+function startWebShot(f) {
+  if (!isSpider(f) || !canStartSpiderSpecial(f)) return false;
+  if ((f.spiderWebShotCooldown || 0) > 0) return false;
+  const opponent = getOpponent(f);
+  // second press while target is marked = zip to them
+  if (opponent && !opponent.ko && isMarkedByFighter(f, opponent)) {
+    spiderZipToTarget(f, opponent);
+    f.spiderWebShotCooldown = Math.round(SPIDER_WEBSHOT_COOLDOWN_TICKS * (spiderUltActive(f) ? 0.5 : 1));
+    return true;
+  }
+  // otherwise fire a marking web projectile
+  f.spiderWebShotCooldown = Math.round(SPIDER_WEBSHOT_COOLDOWN_TICKS * (spiderUltActive(f) ? 0.5 : 1));
+  const center = getFighterCenter(f);
+  projectiles.push({
+    owner: f === player ? "player" : "enemy",
+    move: "web", x: center.x + f.dir * (f.w * 0.5 + 4), y: center.y - 4,
+    vx: f.dir * 15, vy: 0, baseVx: f.dir * 15, baseVy: 0, radius: 10,
+    damage: Math.ceil(SPIDER_WEBSHOT_DAMAGE * getOutgoingDamageMultiplier(f)),
+    knockback: 4, webRoot: SPIDER_WEBSHOT_ROOT,
+    dir: f.dir, aimX: f.dir, aimY: 0, angle: f.dir > 0 ? 0 : Math.PI,
+    maxTravel: Infinity, traveled: 0, life: 60, maxLife: 60, hit: false
+  });
+  return true;
+}
+
+function startWebSwing(f) {
+  if (!isSpider(f) || gameOver || paused || f.ko || f.knockdown || f.stun > 0 || f.dodging > 0) return false;
+  const ult = spiderUltActive(f);
+  if (!ult && (f.spiderSwingCooldown || 0) > 0) return false;
+  if ((f.spiderSwingTicks || 0) > 0) return false;
+  if (!ult) f.spiderSwingCooldown = SPIDER_SWING_COOLDOWN_TICKS;
+  f.spiderSwingTicks = SPIDER_SWING_TICKS;
+  f.spiderSwingKickArmed = true;
+  f.blocking = false;
+  f.vy = -11;
+  const move = getMoveInputForFighter(f);
+  f.vx = (move !== 0 ? move : f.dir) * f.speed * 1.8;
+  f.grounded = false;
+  f.jumpsUsed = 1;
+  spawnHitSpark(f.x + f.w / 2, f.y + 10, f.dir, "block");
+  return true;
+}
+
+// Pressing attack during the swing performs a flying kick.
+function trySpiderSwingKick(f) {
+  if (!isSpider(f) || (f.spiderSwingTicks || 0) <= 0 || !f.spiderSwingKickArmed) return false;
+  f.spiderSwingKickArmed = false;
+  f.spiderSwingTicks = 0;
+  f.spiderKickTicks = 26;
+  f.spiderKickHit = false;
+  f.vx = f.dir * 11;
+  f.vy = 4;
+  return true;
+}
+
+function updateSpiderSwing(f, opponent) {
+  if ((f.spiderSwingTicks || 0) > 0) {
+    f.spiderSwingTicks -= 1;
+    f.vy = Math.max(f.vy - 0.4, -12);
+    if (frame % 3 === 0) spawnHitSpark(f.x + f.w / 2, f.y, -f.dir, "block");
+    if (f.grounded) { f.spiderSwingTicks = 0; f.spiderSwingKickArmed = false; }
+  }
+  if ((f.spiderKickTicks || 0) > 0) {
+    f.spiderKickTicks -= 1;
+    f.vx = f.dir * 10;
+    if (!f.spiderKickHit && opponent && !opponent.ko && opponent.dodging <= 0 && !isUntargetable(opponent) && rectsOverlap(expandRect(f, 12), opponent)) {
+      f.spiderKickHit = true;
+      const marked = isMarkedByFighter(f, opponent);
+      const blocked = isBlockingAttack(opponent, f.dir);
+      const raw = SPIDER_SWING_KICK_DAMAGE * (marked ? 1 + SPIDER_MARK_COMBO_BONUS : 1) * (spiderUltActive(f) ? 1.2 : 1);
+      const damage = blocked ? 0 : getTakenDamage(opponent, Math.ceil(raw * getOutgoingDamageMultiplier(f)));
+      if (blocked) damageShield(opponent, Math.ceil(raw));
+      else {
+        applyFighterDamage(opponent, damage);
+        opponent.hurt = 14; opponent.stun = Math.max(opponent.stun, 18);
+        opponent.vy = -6; opponent.grounded = false;
+        gainUltimate(f, damage * ULT_DAMAGE_GAIN_SCALE);
+      }
+      opponent.vx = f.dir * getTakenKnockback(opponent, blocked ? 8 : 22);
+      const c = getFighterCenter(opponent);
+      spawnHitSpark(c.x, c.y, f.dir, "heavy");
+      hitStopTicks = Math.max(hitStopTicks, HITSTOP_HEAVY);
+      shake = Math.max(shake, 9);
+      f.spiderKickTicks = 0;
+      f.vy = -4;
+      updateHud();
+    }
+    if (f.grounded) f.spiderKickTicks = 0;
+  }
+}
+
+function startWebBarrage(f) {
+  if (!isSpider(f) || !canStartSpiderSpecial(f) || (f.spiderBarrageCooldown || 0) > 0) return false;
+  const opponent = getOpponent(f);
+  if (!opponent || opponent.ko) return false;
+  const gap = Math.abs(getFighterCenter(opponent).x - getFighterCenter(f).x);
+  if (gap > 200) return false;
+  f.spiderBarrageCooldown = SPIDER_BARRAGE_COOLDOWN_TICKS;
+  f.dir = getFighterCenter(opponent).x >= getFighterCenter(f).x ? 1 : -1;
+  f.vx = 0;
+  const forward = (getFighterCenter(opponent).x - getFighterCenter(f).x) * f.dir >= -10;
+  if (forward && opponent.dodging <= 0 && !isUntargetable(opponent)) {
+    const alreadyWebbed = (opponent.webbedTicks || 0) > 0 || isMarkedByFighter(f, opponent);
+    const blocked = isBlockingAttack(opponent, f.dir);
+    const damage = blocked ? 0 : getTakenDamage(opponent, Math.ceil(SPIDER_BARRAGE_DAMAGE * getOutgoingDamageMultiplier(f)));
+    if (blocked) damageShield(opponent, SPIDER_BARRAGE_DAMAGE);
+    else {
+      applyFighterDamage(opponent, damage);
+      opponent.hurt = Math.max(opponent.hurt, 8);
+      opponent.webbedTicks = Math.max(opponent.webbedTicks || 0, SPIDER_BARRAGE_SLOW_TICKS);
+      gainUltimate(f, damage * ULT_DAMAGE_GAIN_SCALE);
+      if (alreadyWebbed) {
+        // wrap into a cocoon - hard stun
+        opponent.cocoonTicks = SPIDER_COCOON_TICKS;
+        opponent.stun = Math.max(opponent.stun, SPIDER_COCOON_TICKS);
+        opponent.rootedTicks = Math.max(opponent.rootedTicks || 0, SPIDER_COCOON_TICKS);
+        opponent.vx = 0;
+        showActionWarning("COCOON");
+      } else {
+        opponent.stun = Math.max(opponent.stun, 12);
+      }
+    }
+    const c = getFighterCenter(opponent);
+    for (let i = 0; i < 5; i += 1) spawnHitSpark(c.x + (Math.random() - 0.5) * 40, c.y + (Math.random() - 0.5) * 50, f.dir, "block");
+  }
+  // cone visual pellets
+  const center = getFighterCenter(f);
+  for (let i = 0; i < 6; i += 1) {
+    projectiles.push({
+      owner: f === player ? "player" : "enemy", move: "webPellet", visualOnly: true,
+      x: center.x + f.dir * 10, y: center.y - 8,
+      vx: f.dir * (7 + Math.random() * 3), vy: (Math.random() - 0.5) * 5, radius: 5,
+      damage: 0, knockback: 0, dir: f.dir, aimX: f.dir, aimY: 0,
+      maxTravel: 160, traveled: 0, life: 26, maxLife: 26, hit: false
+    });
+  }
+  updateHud();
+  return true;
+}
+
+function startSpiderRush(f) {
+  if (!isSpider(f) || !canStartSpiderSpecial(f) || (f.spiderRushCooldown || 0) > 0) return false;
+  const opponent = getOpponent(f);
+  if (!opponent || opponent.ko) return false;
+  // teleport to a marked target first
+  if (isMarkedByFighter(f, opponent)) spiderZipToTarget(f, opponent);
+  const gap = Math.abs(getFighterCenter(opponent).x - getFighterCenter(f).x);
+  if (gap > 130) return false;
+  f.spiderRushCooldown = SPIDER_RUSH_COOLDOWN_TICKS;
+  f.spiderRushTicks = SPIDER_RUSH_TICKS;
+  f.spiderRushNextHit = 4;
+  f.dir = getFighterCenter(opponent).x >= getFighterCenter(f).x ? 1 : -1;
+  f.blocking = false;
+  f.vx = 0;
+  opponent.blocking = false;
+  return true;
+}
+
+function updateSpiderRush(f, opponent) {
+  if ((f.spiderRushTicks || 0) <= 0) return;
+  if (f.ko || f.stun > 0 || f.knockdown || !opponent || opponent.ko) { f.spiderRushTicks = 0; return; }
+  f.spiderRushTicks -= 1;
+  f.vx = 0;
+  // stay attached at the target's back
+  f.x = clampStageX(opponent.x + opponent.w / 2 - f.dir * (opponent.w / 2 + f.w / 2 - 6) - f.w / 2, f.w);
+  const marked = isMarkedByFighter(f, opponent);
+  f.spiderRushNextHit -= 1;
+  if (f.spiderRushNextHit <= 0 && f.spiderRushTicks > 4) {
+    f.spiderRushNextHit = Math.round(SPIDER_RUSH_TICKS / (SPIDER_RUSH_HITS + 1));
+    const raw = SPIDER_RUSH_HIT_DAMAGE * (marked ? 1 + SPIDER_MARK_COMBO_BONUS : 1);
+    const damage = getTakenDamage(opponent, Math.ceil(raw * getOutgoingDamageMultiplier(f)));
+    applyFighterDamage(opponent, damage);
+    opponent.hurt = Math.max(opponent.hurt, 5);
+    opponent.stun = Math.max(opponent.stun, 10);
+    gainUltimate(f, damage * ULT_DAMAGE_GAIN_SCALE * 0.7);
+    const c = getFighterCenter(opponent);
+    spawnHitSpark(c.x + (Math.random() - 0.5) * 20, c.y + (Math.random() - 0.5) * 30, f.dir, "light");
+    hitStopTicks = Math.max(hitStopTicks, 1);
+    updateHud();
+  }
+  if (f.spiderRushTicks <= 0 && !opponent.ko) {
+    // launching uppercut finisher
+    const damage = getTakenDamage(opponent, Math.ceil((SPIDER_RUSH_HIT_DAMAGE + 4) * getOutgoingDamageMultiplier(f)));
+    applyFighterDamage(opponent, damage);
+    opponent.vx = f.dir * getTakenKnockback(opponent, SPIDER_RUSH_LAUNCH);
+    opponent.vy = -10; opponent.grounded = false;
+    opponent.knockdown = true; opponent.knockdownTimer = 24;
+    opponent.stun = Math.max(opponent.stun, 22);
+    // full combo refreshes half of Web Shot's cooldown + extends the mark
+    f.spiderWebShotCooldown = Math.round((f.spiderWebShotCooldown || 0) * 0.5);
+    if (marked) markTarget(f, opponent, Math.min(SPIDER_MARK_MAX_TICKS, (opponent.spiderMarkTicks || 0) + 60));
+    const c = getFighterCenter(opponent);
+    spawnHitSpark(c.x, c.y, f.dir, "heavy");
+    shake = Math.max(shake, 10);
+    hitStopTicks = Math.max(hitStopTicks, HITSTOP_HEAVY);
+    updateHud();
+  }
+}
+
+function startSpiderUltimate(f) {
+  // finisher: recast while active
+  if (spiderUltActive(f)) {
+    if (!f.spiderUltFinisherUsed) return performSpiderFinisher(f);
+    return false;
+  }
+  if (!canStartUltimate(f)) {
+    const warning = getUltimateFailureMessage(f);
+    if (warning) showActionWarning(warning);
+    return false;
+  }
+  f.ultimateMeter = 0;
+  f.spiderUltTicks = SPIDER_ULT_TICKS;
+  f.spiderUltFinisherUsed = false;
+  const c = getFighterCenter(f);
+  spawnHitSpark(c.x, c.y, f.dir, "block");
+  showActionWarning("FRIENDLY NEIGHBORHOOD");
+  updateHud();
+  return true;
+}
+
+function performSpiderFinisher(f) {
+  const opponent = getOpponent(f);
+  if (!opponent || opponent.ko || gameOver || paused || f.ko || f.stun > 0 || f.knockdown) return false;
+  f.spiderUltFinisherUsed = true;
+  f.spiderUltTicks = 0;
+  spiderZipToTarget(f, opponent);
+  const damage = getTakenDamage(opponent, Math.ceil(48 * getOutgoingDamageMultiplier(f)));
+  applyFighterDamage(opponent, damage);
+  opponent.hurt = 22; opponent.stun = Math.max(opponent.stun, 40);
+  opponent.rootedTicks = Math.max(opponent.rootedTicks || 0, 120);
+  opponent.webbedTicks = Math.max(opponent.webbedTicks || 0, 120);
+  opponent.vx = 0; opponent.vy = -12; opponent.grounded = false;
+  opponent.knockdown = true; opponent.knockdownTimer = 40;
+  gainUltimate(f, damage * ULT_DAMAGE_GAIN_SCALE * 0.4);
+  const c = getFighterCenter(opponent);
+  for (let i = 0; i < 12; i += 1) spawnHitSpark(c.x + (Math.random() - 0.5) * 70, c.y + (Math.random() - 0.5) * 80, (Math.random() < 0.5 ? 1 : -1), "block");
+  spawnHitSpark(c.x, c.y, f.dir, "heavy");
+  shake = Math.max(shake, 18);
+  hitStopTicks = Math.max(hitStopTicks, HITSTOP_HEAVY + 4);
+  if (!pacifistBot && opponent.health <= 0) startKnockout(f, opponent);
+  showActionWarning("WEB EXPLOSION");
+  updateHud();
+  return true;
+}
+
+// Spider Sense passive + web debuff ticking on everyone.
+function updateSpiderSystems(f, opponent) {
+  // shared web debuffs
+  if ((f.spiderMarkTicks || 0) > 0) f.spiderMarkTicks -= 1;
+  if ((f.webbedTicks || 0) > 0) { f.webbedTicks -= 1; if (f.grounded) f.vx *= 0.86; }
+  if ((f.cocoonTicks || 0) > 0) { f.cocoonTicks -= 1; f.vx = 0; }
+  if ((f.spiderSenseFlash || 0) > 0) f.spiderSenseFlash -= 1;
+  if ((f.spiderDodgeBoostTicks || 0) > 0) f.spiderDodgeBoostTicks -= 1;
+  if (!isSpider(f)) return;
+  if ((f.spiderWebShotCooldown || 0) > 0) f.spiderWebShotCooldown -= 1;
+  if ((f.spiderSwingCooldown || 0) > 0 && (f.spiderSwingTicks || 0) <= 0) f.spiderSwingCooldown -= 1;
+  if ((f.spiderBarrageCooldown || 0) > 0) f.spiderBarrageCooldown -= 1;
+  if ((f.spiderRushCooldown || 0) > 0 && (f.spiderRushTicks || 0) <= 0) f.spiderRushCooldown -= 1;
+  // Spider Sense: warn when a threat is incoming
+  if (opponent && !opponent.ko) {
+    const heavyWindup = opponent.attacking === "heavy" && opponent.attackFrame < (getAttackSpec(opponent)?.windup || 0);
+    const projThreat = projectiles.some((p) => !p.hit && !p.visualOnly && p.owner === (f === player ? "enemy" : "player") &&
+      Math.abs(p.x - getFighterCenter(f).x) < 220 && Math.sign(p.vx) === Math.sign(getFighterCenter(f).x - p.x));
+    if (heavyWindup || projThreat) f.spiderSenseFlash = Math.max(f.spiderSenseFlash || 0, 6);
+  }
+  // ultimate: faster + auto-dodge once every 5s + speed
+  const ult = spiderUltActive(f);
+  if (ult) {
+    f.spiderUltTicks -= 1;
+    if (f.spiderUltTicks % 300 === 0 && opponent && opponent.attacking) {
+      f.dodging = Math.max(f.dodging, 16);
+      f.spiderSenseFlash = 8;
+    }
+  }
+  const wantBoost = ult || (f.spiderDodgeBoostTicks || 0) > 0;
+  if (wantBoost && !f.spiderSpeedBoosted) { f.speed *= ult ? 1.2 : 1.12; f.spiderSpeedBoosted = ult ? "ult" : "dodge"; }
+  else if (!wantBoost && f.spiderSpeedBoosted) { f.speed /= f.spiderSpeedBoosted === "ult" ? 1.2 : 1.12; f.spiderSpeedBoosted = false; }
+  else if (wantBoost && f.spiderSpeedBoosted === "dodge" && ult) { f.speed = f.speed / 1.12 * 1.2; f.spiderSpeedBoosted = "ult"; }
+  updateSpiderSwing(f, opponent);
+  updateSpiderRush(f, opponent);
+}
+
 function startKnockout(attacker, defender) {
   if (roundEnding || roundResolved) return;
   gameOver = true;
@@ -8346,6 +8795,13 @@ function startTechnique(f, slot, chargeRatio = 0, aimPoint = null, releasingChar
   if (f.technique === "zealot") {
     if (move === "charge") startZealotCharge(f);
     if (move === "psiFlurry") startZealotFlurry(f);
+    return;
+  }
+
+  // SPIDER_PATCH: web shot is a projectile, barrage is a cone melee.
+  if (f.technique === "spider") {
+    if (move === "webShot") startWebShot(f);
+    if (move === "webBarrage") startWebBarrage(f);
     return;
   }
 
@@ -8892,6 +9348,7 @@ function startUltimate(f, aimPoint = null) {
   if (f.technique === "blackleg") return startSanjiUltimate(f); // SANJI_PATCH
   if (f.technique === "hivemind") return startVecnaUltimate(f); // VECNA_PATCH
   if (f.technique === "zealot") return startZealotUltimate(f); // ZEALOT_PATCH
+  if (f.technique === "spider") return startSpiderUltimate(f); // SPIDER_PATCH
   return beginUltimateAim(f, aimPoint);
 }
 
@@ -8902,6 +9359,7 @@ function beginUltimateAim(f, aimPoint = null) {
   if (f.technique === "blackleg") return startSanjiUltimate(f); // SANJI_PATCH
   if (f.technique === "hivemind") return startVecnaUltimate(f); // VECNA_PATCH
   if (f.technique === "zealot") return startZealotUltimate(f); // ZEALOT_PATCH
+  if (f.technique === "spider") return startSpiderUltimate(f); // SPIDER_PATCH
   if (!canStartUltimate(f)) {
     const warning = getUltimateFailureMessage(f);
     if (warning) showActionWarning(warning);
@@ -10642,6 +11100,16 @@ function applyProjectileHit(projectile, defender) {
     const owner = projectile.owner === "player" ? player : enemy;
     // Ryuk hit builds Info only. Name is Investigation-only.
     gainLightInfo(owner, 10);
+  } else if (projectile.move === "web" && !blocked) {
+    // SPIDER_PATCH: the web marks the target and briefly roots them.
+    const owner = projectile.owner === "player" ? player : enemy;
+    markTarget(owner, defender);
+    if ((projectile.webRoot || 0) > 0) {
+      defender.rootedTicks = Math.max(defender.rootedTicks || 0, projectile.webRoot);
+      defender.stun = Math.max(defender.stun, projectile.webRoot);
+      defender.vx = 0;
+    }
+    defender.webbedTicks = Math.max(defender.webbedTicks || 0, SPIDER_BARRAGE_SLOW_TICKS);
   } else if (projectile.move === "utensil" && !blocked) {
     // SANJI_UTENSIL_PATCH: the fork pins the target (roots) in place;
     // empowered/Ifrit utensils also burn. Landing utensils build Heat.
@@ -11891,6 +12359,23 @@ function updateEnemyAi() {
     }
   }
 
+  // SPIDER_PATCH: CPU Spidey tags with a web, zips in, rushes, swings away.
+  if (enemy.technique === "spider" && !pacifistBot && enemy.stun <= 0 && !enemy.knockdown && !gameOver) {
+    const spGap = Math.abs((player.x + player.w / 2) - (enemy.x + enemy.w / 2));
+    const marked = isMarkedByFighter(enemy, player);
+    if ((enemy.spiderUltTicks || 0) > 0 && !enemy.spiderUltFinisherUsed && enemy.spiderUltTicks < 4 * 60 && spGap < 260 && Math.random() < getCpuDecisionChance(0.01, 0.03, 0.06)) {
+      performSpiderFinisher(enemy);
+    } else if ((enemy.spiderRushCooldown || 0) <= 0 && (marked || spGap < 120) && Math.random() < getCpuDecisionChance(0.01, 0.026, 0.05)) {
+      startSpiderRush(enemy);
+    } else if ((enemy.spiderWebShotCooldown || 0) <= 0 && (spGap > 160 || marked) && Math.random() < getCpuDecisionChance(0.02, 0.05, 0.09)) {
+      startWebShot(enemy);
+    } else if ((enemy.spiderBarrageCooldown || 0) <= 0 && spGap < 190 && Math.random() < getCpuDecisionChance(0.008, 0.02, 0.04)) {
+      startWebBarrage(enemy);
+    } else if ((enemy.spiderSwingCooldown || 0) <= 0 && spGap > 300 && Math.random() < getCpuDecisionChance(0.01, 0.02, 0.04)) {
+      startWebSwing(enemy);
+    }
+  }
+
   // SANJI_PATCH: CPU Sanji plays rushdown - Diable Jambe to close space,
   // Mutton Shot up close, Sky Walk to chase in the air, Boeuf on cue.
   if (enemy.technique === "blackleg" && !pacifistBot && enemy.stun <= 0 && !enemy.knockdown && !gameOver) {
@@ -12106,6 +12591,8 @@ function updateFighter(f, opponent) {
   updateVecnaSystems(f);
   // ZEALOT_PATCH
   updateZealotSystems(f, opponent);
+  // SPIDER_PATCH
+  updateSpiderSystems(f, opponent);
 
   if (f.ko) {
     f.attacking = null;
@@ -12982,6 +13469,21 @@ function getTechniqueSkin(f, flash) {
       hair: "#101114",
       eye: "#0b0705",
       mark: "#dc2626"
+    };
+  }
+
+  // SPIDER_PATCH: red-and-blue suit with the black web lines and eye lenses
+  // rendered as a mask (allowed as a costume marking, not real eyes).
+  if (f.technique === "spider") {
+    return {
+      body: "#c0242c",
+      skin: "#c0242c",
+      accent: "#1e3a8a",
+      pants: "#1e3a8a",
+      shoe: "#7f1620",
+      hair: "#c0242c",
+      eye: "#e8f0ff",
+      mark: "#e8f0ff"
     };
   }
 
@@ -14910,6 +15412,45 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.moveTo(30, 46);
     ctx.lineTo(28, 58);
     ctx.stroke();
+  } else if (f.technique === "spider") {
+    // SPIDER_PATCH: red torso with the black web lines and the blue lower
+    // torso, plus the chest spider emblem.
+    ctx.fillStyle = "#1e3a8a";
+    ctx.beginPath();
+    ctx.moveTo(15, 58);
+    ctx.lineTo(39, 58);
+    ctx.lineTo(41, 76);
+    ctx.lineTo(29, 82);
+    ctx.lineTo(13, 77);
+    ctx.closePath();
+    ctx.fill();
+    // web lines on the red chest
+    ctx.strokeStyle = "rgba(2, 6, 23, 0.85)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = -2; i <= 2; i += 1) {
+      ctx.moveTo(27, 38);
+      ctx.lineTo(27 + i * 8, 58);
+    }
+    ctx.moveTo(15, 44); ctx.quadraticCurveTo(27, 48, 39, 44);
+    ctx.moveTo(14, 50); ctx.quadraticCurveTo(27, 55, 40, 50);
+    ctx.moveTo(14, 56); ctx.quadraticCurveTo(27, 61, 40, 56);
+    ctx.stroke();
+    // spider emblem
+    ctx.fillStyle = "#020617";
+    ctx.beginPath();
+    ctx.ellipse(27, 48, 3, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#020617";
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(24, 44); ctx.lineTo(20, 41);
+    ctx.moveTo(24, 47); ctx.lineTo(19, 47);
+    ctx.moveTo(24, 50); ctx.lineTo(20, 53);
+    ctx.moveTo(30, 44); ctx.lineTo(34, 41);
+    ctx.moveTo(30, 47); ctx.lineTo(35, 47);
+    ctx.moveTo(30, 50); ctx.lineTo(34, 53);
+    ctx.stroke();
   } else if (f.technique === "zealot") {
     // ZEALOT_PATCH: layered gold armor plates with cyan energy trim and a
     // glowing chest crystal.
@@ -15248,6 +15789,41 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.beginPath();
     ctx.ellipse(26, 12, 6, 3.4, 0, 0, Math.PI * 2);
     ctx.fill();
+  } else if (f.technique === "spider") {
+    // SPIDER_PATCH: the full red mask - black web lines radiating from the
+    // crown and the two white eye lenses (a costume marking, like the
+    // dummy's X-eyes, not anatomical eyes).
+    ctx.strokeStyle = "rgba(2, 6, 23, 0.9)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = 0; i < 7; i += 1) {
+      const a = -Math.PI / 2 + (i - 3) * 0.42;
+      ctx.moveTo(26, 12);
+      ctx.lineTo(26 + Math.cos(a) * 15, 23 + Math.sin(a) * 15);
+    }
+    // concentric web arcs
+    ctx.ellipse(26, 20, 8, 8, 0, 0.15, Math.PI - 0.15);
+    ctx.moveTo(15, 24); ctx.quadraticCurveTo(26, 30, 37, 24);
+    ctx.stroke();
+    // eye lenses - angular teardrop shapes with a black rim
+    const lens = (cx, flip) => {
+      ctx.fillStyle = "#020617";
+      ctx.beginPath();
+      ctx.moveTo(cx, 20);
+      ctx.quadraticCurveTo(cx + flip * 7, 19, cx + flip * 8, 24);
+      ctx.quadraticCurveTo(cx + flip * 6, 28, cx, 27);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#e8f0ff";
+      ctx.beginPath();
+      ctx.moveTo(cx + flip * 1, 21);
+      ctx.quadraticCurveTo(cx + flip * 5.5, 20.5, cx + flip * 6.2, 24);
+      ctx.quadraticCurveTo(cx + flip * 4.5, 26.6, cx + flip * 1, 26);
+      ctx.closePath();
+      ctx.fill();
+    };
+    lens(22, -1);
+    lens(30, 1);
   } else if (f.technique === "zealot") {
     // ZEALOT_PATCH: Protoss nerve cords hanging behind the head plus a
     // gold headdress crest. No face - the cords read as "hair".
@@ -15958,8 +16534,8 @@ function drawTechniquePreview(canvasEl, technique) {
     w: technique === "shrine" ? 52 : technique === "brawler" ? 54 : 50,
     h: 128,
     dir: 1,
-    color: technique === "shrine" ? "#dc2626" : technique === "deathnote" ? "#111827" : technique === "brawler" ? "#eceef2" : technique === "blackleg" ? "#16181f" : technique === "hivemind" ? "#54322c" : technique === "zealot" ? "#c8a13a" : "#2563eb",
-    accent: technique === "shrine" ? "#991b1b" : technique === "deathnote" ? "#b91c1c" : technique === "brawler" ? "#dc2626" : technique === "blackleg" ? "#facc15" : technique === "hivemind" ? "#7f1d1d" : technique === "zealot" ? "#38e0f0" : "#1d4ed8"
+    color: technique === "shrine" ? "#dc2626" : technique === "deathnote" ? "#111827" : technique === "brawler" ? "#eceef2" : technique === "blackleg" ? "#16181f" : technique === "hivemind" ? "#54322c" : technique === "zealot" ? "#c8a13a" : technique === "spider" ? "#c0242c" : "#2563eb",
+    accent: technique === "shrine" ? "#991b1b" : technique === "deathnote" ? "#b91c1c" : technique === "brawler" ? "#dc2626" : technique === "blackleg" ? "#facc15" : technique === "hivemind" ? "#7f1d1d" : technique === "zealot" ? "#38e0f0" : technique === "spider" ? "#1e3a8a" : "#1d4ed8"
   });
   previewFighter.technique = technique;
   previewFighter.y = GROUND - previewFighter.h;
@@ -15968,7 +16544,7 @@ function drawTechniquePreview(canvasEl, technique) {
   ctx = previewCtx;
   ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
   const backdrop = ctx.createLinearGradient(0, 0, 0, canvasEl.height);
-  backdrop.addColorStop(0, technique === "shrine" ? "#2b1420" : technique === "deathnote" ? "#180b12" : technique === "brawler" ? "#141822" : technique === "blackleg" ? "#221208" : technique === "hivemind" ? "#1c0a10" : technique === "zealot" ? "#0a1a1f" : "#142033");
+  backdrop.addColorStop(0, technique === "shrine" ? "#2b1420" : technique === "deathnote" ? "#180b12" : technique === "brawler" ? "#141822" : technique === "blackleg" ? "#221208" : technique === "hivemind" ? "#1c0a10" : technique === "zealot" ? "#0a1a1f" : technique === "spider" ? "#1a0810" : "#142033");
   backdrop.addColorStop(1, "#050814");
   ctx.fillStyle = backdrop;
   ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
@@ -15995,6 +16571,7 @@ function renderTechniquePreviews() {
   drawTechniquePreview(techniquePreviewCanvases.blackleg, "blackleg"); // SANJI_PATCH
   drawTechniquePreview(techniquePreviewCanvases.hivemind, "hivemind"); // VECNA_PATCH
   drawTechniquePreview(techniquePreviewCanvases.zealot, "zealot"); // ZEALOT_PATCH
+  drawTechniquePreview(techniquePreviewCanvases.spider, "spider"); // SPIDER_PATCH
 }
 
 // THRAGG_BRAWLER_PATCH: install his character-select card the same way
@@ -16135,6 +16712,37 @@ function installZealotTechniqueOption() {
   renderTechniquePreviews();
 }
 window.addEventListener("DOMContentLoaded", installZealotTechniqueOption);
+
+// SPIDER_PATCH: Spider-Man's character-select card, cloned at runtime.
+function installSpiderTechniqueOption() {
+  if (!techniqueScreen) return;
+  const existing = techniqueScreen.querySelector('[data-technique="spider"]');
+  if (!existing) {
+    const sample = techniqueScreen.querySelector(".technique-button");
+    const button = sample ? sample.cloneNode(true) : document.createElement("button");
+    button.type = "button";
+    button.className = sample ? sample.className : "technique-button";
+    button.dataset.technique = "spider";
+    button.innerHTML = `
+      <canvas id="spiderPreview" width="320" height="180" aria-hidden="true"></canvas>
+      <strong>Spider-Man</strong>
+      <span>High-mobility combos - webs, swings, spider sense</span>
+      <small>Web Shot · Web Swing · Web Barrage · Spider Rush</small>
+    `;
+    const holder = sample?.parentNode || techniqueScreen;
+    holder.appendChild(button);
+  }
+  const canvas = document.getElementById("spiderPreview");
+  if (canvas) techniquePreviewCanvases.spider = canvas;
+  techniqueButtons = Array.from(document.querySelectorAll(".technique-button"));
+  techniqueButtons.forEach((button) => {
+    if (button.dataset.spiderBound === "1") return;
+    button.dataset.spiderBound = "1";
+    button.addEventListener("click", () => finishTechniqueSelect(button.dataset.technique));
+  });
+  renderTechniquePreviews();
+}
+window.addEventListener("DOMContentLoaded", installSpiderTechniqueOption);
 
 
 function drawSukunaModelCleanup(f) {
@@ -16530,10 +17138,64 @@ function drawOrbitalBeams() {
   }
 }
 
+// SPIDER_PATCH: floating web mark over a tagged target + cocoon wrap.
+function drawSpiderMarks() {
+  for (const fighter of [player, enemy]) {
+    if (!fighter || fighter.ko) continue;
+    if ((fighter.cocoonTicks || 0) > 0) {
+      // wrapped in webbing - pale overlay with cross-hatched strands
+      const c = getFighterCenter(fighter);
+      ctx.save();
+      ctx.globalAlpha = 0.5;
+      ctx.strokeStyle = "rgba(226, 232, 240, 0.9)";
+      ctx.lineWidth = 2;
+      for (let i = -2; i <= 2; i += 1) {
+        ctx.beginPath();
+        ctx.moveTo(fighter.x + 4, fighter.y + 30 + i * 14);
+        ctx.lineTo(fighter.x + fighter.w - 4, fighter.y + 40 + i * 14);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(fighter.x + fighter.w - 4, fighter.y + 30 + i * 14);
+        ctx.lineTo(fighter.x + 4, fighter.y + 40 + i * 14);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    if ((fighter.spiderMarkTicks || 0) > 0) {
+      const c = getFighterCenter(fighter);
+      const y = fighter.y - 14 + Math.sin(frame * 0.15) * 2;
+      ctx.save();
+      ctx.translate(c.x, y);
+      ctx.strokeStyle = "rgba(214, 35, 51, 0.9)";
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(0, 0, 6, 0, Math.PI * 2);
+      ctx.stroke();
+      // little spider legs
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      for (let i = 0; i < 4; i += 1) {
+        const a = 0.5 + i * 0.4;
+        ctx.moveTo(Math.cos(Math.PI - a) * 6, -2);
+        ctx.lineTo(Math.cos(Math.PI - a) * 11, -5);
+        ctx.moveTo(Math.cos(a) * 6, -2);
+        ctx.lineTo(Math.cos(a) * 11, -5);
+      }
+      ctx.stroke();
+      ctx.fillStyle = "rgba(214, 35, 51, 0.9)";
+      ctx.beginPath();
+      ctx.arc(0, 0, 2.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+}
+
 function drawEffects() {
   drawVecnaMinions(); // VECNA_PATCH
   drawZealotUnits(); // ZEALOT_PATCH
   drawOrbitalBeams(); // ZEALOT_PATCH
+  drawSpiderMarks(); // SPIDER_PATCH
   drawGroundEraseEffects();
   drawWorldSlashEffects();
   drawUltimateChargeEffects();
@@ -17699,6 +18361,33 @@ function drawProjectiles() {
       ctx.lineTo(p.radius * 0.3, p.radius * 0.3);
       ctx.closePath();
       ctx.fill();
+    } else if (p.move === "web") {
+      // SPIDER_PATCH: a white web ball with trailing strands.
+      ctx.scale(p.dir, 1);
+      ctx.strokeStyle = "rgba(226, 232, 240, 0.7)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(-14, -4); ctx.lineTo(-4, 0); ctx.moveTo(-14, 4); ctx.lineTo(-4, 0);
+      ctx.moveTo(-10, 0); ctx.lineTo(-4, 0);
+      ctx.stroke();
+      ctx.fillStyle = "#e8eef7";
+      ctx.strokeStyle = "#94a3b8";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.arc(0, 0, 8, 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = "rgba(100, 116, 139, 0.8)";
+      ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      ctx.moveTo(-8, 0); ctx.lineTo(8, 0); ctx.moveTo(0, -8); ctx.lineTo(0, 8);
+      ctx.moveTo(-5.6, -5.6); ctx.lineTo(5.6, 5.6); ctx.moveTo(-5.6, 5.6); ctx.lineTo(5.6, -5.6);
+      ctx.stroke();
+    } else if (p.move === "webPellet") {
+      // SPIDER_PATCH: the barrage cone's little web bits.
+      ctx.fillStyle = `rgba(226, 232, 240, ${Math.max(0.2, p.life / Math.max(1, p.maxLife))})`;
+      ctx.beginPath();
+      ctx.arc(0, 0, 4, 0, Math.PI * 2);
+      ctx.fill();
     } else if (p.move === "stalkerShot") {
       // ZEALOT_PATCH: the Stalker's particle-disruptor bolt - a cyan dart.
       ctx.scale(p.dir, 1);
@@ -18446,6 +19135,9 @@ window.addEventListener("keydown", (event) => {
     } else if (fighter?.technique === "zealot") {
       // ZEALOT_PATCH: S spins up Whirlwind.
       if (startZealotWhirlwind(fighter) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("zealot-whirl");
+    } else if (fighter?.technique === "spider") {
+      // SPIDER_PATCH: S is Web Swing.
+      if (startWebSwing(fighter) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("spider-swing");
     }
   }
   if (isEventForAction("ultimate", key, code) && !event.repeat) beginUltimateAim(player, mouseAimWorld);
