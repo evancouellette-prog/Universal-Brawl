@@ -13501,17 +13501,19 @@ function getTechniqueSkin(f, flash) {
     };
   }
 
-  // VECNA_PATCH: decayed grey-red flesh laced with vines, maroon theme.
+  // VECNA_PATCH: raw decayed flesh - reddish sinew, darker recesses,
+  // vines threaded across. LIKENESS_PATCH tones it toward Vecna's actual
+  // exposed-muscle look instead of a smooth brown "hoodie".
   if (f.technique === "hivemind") {
     return {
-      body: "#54322c",
-      skin: "#8a5a50",
-      accent: "#7f1d1d",
-      pants: "#241412",
-      shoe: "#1a0e0c",
-      hair: "#54322c",
+      body: "#6e3b34",
+      skin: "#7c3f38",
+      accent: "#4a1512",
+      pants: "#3a201c",
+      shoe: "#221210",
+      hair: "#3a201c",
       eye: "#0b0705",
-      mark: "#7f1d1d"
+      mark: "#4a1512"
     };
   }
 
@@ -15385,32 +15387,54 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.arc(32.5, 70, 1.1, 0, Math.PI * 2);
     ctx.fill();
   } else if (f.technique === "hivemind") {
-    // VECNA_PATCH: exposed decayed flesh with dark vines winding around
-    // the torso, and a sunken maroon chest hollow.
-    ctx.strokeStyle = "#2a1210";
-    ctx.lineWidth = 2.6;
+    // VECNA_PATCH + LIKENESS_PATCH: exposed torso musculature - carved
+    // pectoral/ab shading and deep recesses - laced with the black vines
+    // that wrap Vecna's whole body.
+    // carved muscle shading
+    ctx.fillStyle = "rgba(40, 16, 14, 0.55)";
+    ctx.beginPath();
+    ctx.moveTo(27, 40); ctx.lineTo(27, 74); ctx.lineTo(24, 74); ctx.lineTo(24, 40); ctx.closePath(); // sternum groove
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(20, 47, 4.5, 3, -0.3, 0, Math.PI * 2); // pec recess L
+    ctx.ellipse(34, 47, 4.5, 3, 0.3, 0, Math.PI * 2); // pec recess R
+    ctx.fill();
+    // ab segmentation
+    ctx.strokeStyle = "rgba(30, 12, 10, 0.6)";
+    ctx.lineWidth = 1.6;
     ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.moveTo(14, 40);
-    ctx.quadraticCurveTo(24, 48, 18, 58);
-    ctx.quadraticCurveTo(13, 66, 21, 74);
-    ctx.moveTo(40, 41);
-    ctx.quadraticCurveTo(30, 50, 36, 60);
-    ctx.quadraticCurveTo(41, 68, 33, 76);
-    ctx.moveTo(20, 38);
-    ctx.quadraticCurveTo(28, 44, 34, 39);
+    ctx.moveTo(18, 58); ctx.quadraticCurveTo(27, 61, 36, 58);
+    ctx.moveTo(19, 64); ctx.quadraticCurveTo(27, 67, 35, 64);
+    ctx.moveTo(20, 70); ctx.quadraticCurveTo(27, 72, 34, 70);
     ctx.stroke();
-    ctx.fillStyle = "rgba(127, 29, 29, 0.5)";
+    // pale muscle highlights
+    ctx.strokeStyle = "rgba(180, 120, 108, 0.35)";
+    ctx.lineWidth = 1.3;
     ctx.beginPath();
-    ctx.ellipse(27, 52, 6.5, 8.5, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "rgba(20, 8, 8, 0.8)";
-    ctx.lineWidth = 1.4;
+    ctx.moveTo(16, 44); ctx.quadraticCurveTo(21, 43, 24, 46);
+    ctx.moveTo(38, 44); ctx.quadraticCurveTo(33, 43, 30, 46);
+    ctx.stroke();
+    // black vines winding across the torso
+    ctx.strokeStyle = "#160a09";
+    ctx.lineWidth = 2.8;
+    ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.moveTo(24, 46);
-    ctx.lineTo(27, 58);
-    ctx.moveTo(30, 46);
-    ctx.lineTo(28, 58);
+    ctx.moveTo(13, 39);
+    ctx.quadraticCurveTo(23, 47, 17, 57);
+    ctx.quadraticCurveTo(12, 67, 21, 75);
+    ctx.moveTo(41, 40);
+    ctx.quadraticCurveTo(31, 49, 37, 59);
+    ctx.quadraticCurveTo(42, 69, 32, 77);
+    ctx.moveTo(22, 38);
+    ctx.quadraticCurveTo(28, 45, 35, 40);
+    ctx.stroke();
+    // thin vine tendrils branching off
+    ctx.strokeStyle = "rgba(22, 10, 9, 0.7)";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(17, 52); ctx.quadraticCurveTo(22, 54, 21, 60);
+    ctx.moveTo(37, 53); ctx.quadraticCurveTo(32, 55, 33, 61);
     ctx.stroke();
   } else if (f.technique === "spider") {
     // SPIDER_PATCH: red torso with the black web lines and the blue lower
@@ -15626,39 +15650,46 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.lineTo(27.4, 40);
     ctx.stroke();
   } else if (f.technique === "deathnote") {
-    const hairSway = idle;
-
-    ctx.fillStyle = "rgba(128, 73, 33, 0.35)";
-    ctx.beginPath();
-    ctx.ellipse(26, 25, 14, 14, 0, 0, Math.PI * 2);
-    ctx.fill();
-
+    // LIKENESS_PATCH: Light Yagami's neat side-parted hair - smooth
+    // reddish-brown, a soft off-center part with layered bangs framing
+    // the face instead of the old jagged spikes. No facial features.
+    const hairSway = idle * 0.4;
+    // main hair cap
     ctx.fillStyle = skin.hair;
     ctx.beginPath();
-    ctx.moveTo(11 + hairSway * 0.25, 18);
-    ctx.quadraticCurveTo(14, 5, 24, 4);
-    ctx.quadraticCurveTo(35, 3, 42, 15);
-    ctx.lineTo(38, 24);
-    ctx.lineTo(34, 14);
-    ctx.lineTo(31, 25);
-    ctx.lineTo(27, 13);
-    ctx.lineTo(23, 26);
-    ctx.lineTo(19, 15);
-    ctx.lineTo(15, 25);
+    ctx.moveTo(12, 24);
+    ctx.quadraticCurveTo(10.5, 8, 24, 5);
+    ctx.quadraticCurveTo(38, 4, 40.5, 20);
+    // right-side sweep
+    ctx.quadraticCurveTo(41, 25, 38, 27);
+    ctx.lineTo(37, 20);
+    // layered bangs across the brow (soft points, not spikes)
+    ctx.quadraticCurveTo(34, 14, 32, 22);
+    ctx.quadraticCurveTo(30, 15, 27, 22.5);
+    ctx.quadraticCurveTo(24.5, 15.5, 22, 23);
+    ctx.quadraticCurveTo(20, 16, 17.5, 23);
+    ctx.lineTo(15.5, 19);
+    ctx.quadraticCurveTo(13, 22, 12, 24);
     ctx.closePath();
     ctx.fill();
-
-    ctx.strokeStyle = "#3b2414";
-    ctx.lineWidth = 1.8;
+    // the off-center part + a couple soft strand lines
+    ctx.strokeStyle = "rgba(59, 36, 20, 0.55)";
+    ctx.lineWidth = 1.3;
+    ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.moveTo(15, 17);
-    ctx.quadraticCurveTo(23, 9, 34, 13);
-    ctx.moveTo(20, 13);
-    ctx.lineTo(17, 25);
-    ctx.moveTo(27, 12);
-    ctx.lineTo(24, 25);
-    ctx.moveTo(34, 15);
-    ctx.lineTo(31, 25);
+    ctx.moveTo(22 + hairSway, 7);
+    ctx.quadraticCurveTo(18, 14, 16, 21);
+    ctx.moveTo(24, 6.5);
+    ctx.quadraticCurveTo(30, 12, 34, 20);
+    ctx.moveTo(28, 6);
+    ctx.quadraticCurveTo(31, 12, 30, 20);
+    ctx.stroke();
+    // soft top highlight
+    ctx.strokeStyle = "rgba(180, 130, 80, 0.4)";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(18, 9);
+    ctx.quadraticCurveTo(27, 5.5, 36, 11);
     ctx.stroke();
 
   } else if (f.technique === "brawler") {
@@ -15772,23 +15803,51 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.lineTo(30, 36.2);
     ctx.stroke();
   } else if (f.technique === "hivemind") {
-    // VECNA_PATCH: bald, with dark tendrils creeping up the neck and
-    // over the scalp. No facial features.
-    ctx.strokeStyle = "#2a1210";
-    ctx.lineWidth = 2.2;
+    // VECNA_PATCH + LIKENESS_PATCH: a gaunt, skull-like head - sunken
+    // temples and cheeks, a heavy brow ridge, and vine ridges running back
+    // over the scalp. No eyes/mouth/nose, just carved bone-and-sinew.
+    // sunken temple + cheek hollows
+    ctx.fillStyle = "rgba(38, 16, 14, 0.5)";
+    ctx.beginPath();
+    ctx.ellipse(18, 20, 3.5, 5, 0.3, 0, Math.PI * 2); // temple L
+    ctx.ellipse(34, 20, 3.5, 5, -0.3, 0, Math.PI * 2); // temple R
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(19, 30, 3, 4, 0.2, 0, Math.PI * 2); // cheek hollow L
+    ctx.ellipse(33, 30, 3, 4, -0.2, 0, Math.PI * 2); // cheek hollow R
+    ctx.fill();
+    // deep brow-ridge shadow (a ridge, not eyes)
+    ctx.strokeStyle = "rgba(28, 12, 10, 0.75)";
+    ctx.lineWidth = 3;
     ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.moveTo(17, 33);
-    ctx.quadraticCurveTo(14, 24, 18, 15);
-    ctx.moveTo(35, 33);
-    ctx.quadraticCurveTo(38, 25, 34, 16);
-    ctx.moveTo(22, 10);
-    ctx.quadraticCurveTo(26, 7.5, 30, 10);
+    ctx.moveTo(16, 22);
+    ctx.quadraticCurveTo(26, 18.5, 36, 22);
     ctx.stroke();
-    ctx.fillStyle = "rgba(127, 29, 29, 0.35)";
+    // gaunt highlight along the brow and cheekbones
+    ctx.strokeStyle = "rgba(180, 120, 108, 0.4)";
+    ctx.lineWidth = 1.4;
     ctx.beginPath();
-    ctx.ellipse(26, 12, 6, 3.4, 0, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.moveTo(17, 20); ctx.quadraticCurveTo(26, 17, 35, 20);
+    ctx.moveTo(21, 26); ctx.quadraticCurveTo(24, 28, 22, 31);
+    ctx.moveTo(31, 26); ctx.quadraticCurveTo(28, 28, 30, 31);
+    ctx.stroke();
+    // vine ridges over the scalp
+    ctx.strokeStyle = "#160a09";
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(18, 16);
+    ctx.quadraticCurveTo(22, 9, 26, 8);
+    ctx.quadraticCurveTo(30, 9, 34, 16);
+    ctx.moveTo(23, 14);
+    ctx.quadraticCurveTo(26, 10, 29, 14);
+    ctx.stroke();
+    // gnarled chin/jaw line
+    ctx.strokeStyle = "rgba(28, 12, 10, 0.6)";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(21, 34); ctx.quadraticCurveTo(26, 37, 31, 34);
+    ctx.stroke();
   } else if (f.technique === "spider") {
     // SPIDER_PATCH: the full red mask - black web lines radiating from the
     // crown and the two white eye lenses (a costume marking, like the
@@ -15825,44 +15884,63 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     lens(22, -1);
     lens(30, 1);
   } else if (f.technique === "zealot") {
-    // ZEALOT_PATCH: Protoss nerve cords hanging behind the head plus a
-    // gold headdress crest. No face - the cords read as "hair".
+    // ZEALOT_PATCH + LIKENESS_PATCH: Protoss khaydarin nerve cords sweep
+    // down the SIDES/back of the head (clear of the face) plus the gold
+    // headdress. No face.
     const sway = idle * 0.6;
     ctx.strokeStyle = "#0b1420";
     ctx.lineWidth = 5;
     ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.moveTo(20, 30);
-    ctx.quadraticCurveTo(13, 40 + sway, 16, 52 + sway);
-    ctx.moveTo(32, 30);
-    ctx.quadraticCurveTo(39, 40 - sway, 36, 52 - sway);
-    ctx.moveTo(24, 32);
-    ctx.quadraticCurveTo(20, 42 + sway, 22, 50 + sway);
-    ctx.moveTo(28, 32);
-    ctx.quadraticCurveTo(32, 42 - sway, 30, 50 - sway);
+    // outer cords - down past the jaw at the sides
+    ctx.moveTo(14, 22);
+    ctx.quadraticCurveTo(8, 36 + sway, 11, 54 + sway);
+    ctx.moveTo(38, 22);
+    ctx.quadraticCurveTo(44, 36 - sway, 41, 54 - sway);
+    // inner cords - just inside the outer, still off the face center
+    ctx.moveTo(16, 26);
+    ctx.quadraticCurveTo(12, 40 + sway, 15, 52 + sway);
+    ctx.moveTo(36, 26);
+    ctx.quadraticCurveTo(40, 40 - sway, 37, 52 - sway);
+    ctx.stroke();
+    // segment ridges on the cords
+    ctx.strokeStyle = "#1a2838";
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    for (let i = 0; i < 3; i += 1) {
+      const yy = 34 + i * 7;
+      ctx.moveTo(9 + i * 0.5, yy + sway); ctx.lineTo(13 + i * 0.5, yy + sway);
+      ctx.moveTo(39 - i * 0.5, yy - sway); ctx.lineTo(43 - i * 0.5, yy - sway);
+    }
     ctx.stroke();
     // cyan cord tips
     ctx.fillStyle = skin.accent;
     ctx.beginPath();
-    ctx.arc(16, 52 + sway, 2, 0, Math.PI * 2);
-    ctx.arc(36, 52 - sway, 2, 0, Math.PI * 2);
+    ctx.arc(11, 54 + sway, 2, 0, Math.PI * 2);
+    ctx.arc(41, 54 - sway, 2, 0, Math.PI * 2);
     ctx.fill();
-    // gold headdress crest
+    // gold headdress crest across the brow
     ctx.fillStyle = "#d8b23e";
     ctx.beginPath();
-    ctx.moveTo(18, 15);
-    ctx.lineTo(26, 5);
-    ctx.lineTo(34, 15);
-    ctx.lineTo(30, 18);
-    ctx.lineTo(26, 12);
-    ctx.lineTo(22, 18);
+    ctx.moveTo(16, 16);
+    ctx.lineTo(26, 4);
+    ctx.lineTo(36, 16);
+    ctx.lineTo(32, 19);
+    ctx.lineTo(26, 11);
+    ctx.lineTo(20, 19);
     ctx.closePath();
     ctx.fill();
     ctx.strokeStyle = "#020617";
     ctx.lineWidth = 1.6;
     ctx.stroke();
+    // side brow plates framing the temples
+    ctx.fillStyle = "#b8942e";
+    ctx.beginPath();
+    ctx.moveTo(15, 18); ctx.lineTo(19, 20); ctx.lineTo(17, 26); ctx.lineTo(14, 24); ctx.closePath();
+    ctx.moveTo(37, 18); ctx.lineTo(33, 20); ctx.lineTo(35, 26); ctx.lineTo(38, 24); ctx.closePath();
+    ctx.fill();
     ctx.fillStyle = skin.accent;
-    ctx.fillRect(24.5, 9, 3, 5);
+    ctx.fillRect(24.5, 8, 3, 5);
   }
   ctx.restore();
 
