@@ -3293,10 +3293,12 @@ body.mobile-controls-on .health-frame { height: 16px !important; }
 body.mobile-controls-on .segmented-health { padding: 2px !important; gap: 3px !important; }
 body.mobile-controls-on .ce-frame,
 body.mobile-controls-on .ultimate-frame { height: 8px !important; }
-body.mobile-controls-on .ct-cooldowns { gap: 3px !important; }
-body.mobile-controls-on .ct-slot { min-height: 20px !important; padding: 2px 4px !important; }
-body.mobile-controls-on .ct-label { font-size: 9px !important; }
-body.mobile-controls-on .ct-status { font-size: 9px !important; }
+/* CT_COOLDOWN_READABLE_PATCH: stack the ability chips in one column on mobile
+   so the full ability name is readable (they were clipped in 3 columns). */
+body.mobile-controls-on .ct-cooldowns { grid-template-columns: 1fr !important; gap: 3px !important; }
+body.mobile-controls-on .ct-slot { min-height: 20px !important; padding: 3px 8px !important; }
+body.mobile-controls-on .ct-label { font-size: 11px !important; overflow: visible !important; }
+body.mobile-controls-on .ct-status { font-size: 10px !important; }
 body.mobile-controls-on .extra-cooldowns { display: none !important; }
 body.mobile-controls-on .resource-bar-label { font-size: 8px !important; }
 body.mobile-controls-on .stars { font-size: 11px !important; }

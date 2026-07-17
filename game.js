@@ -6772,7 +6772,8 @@ function updateResourceBarLabels() {
 
   // DUMMY_HUD_NO_WORDS_PATCH:
   // Practice dummy should have HP only. No CE/Ult bars and no labels/words.
-  if (gameMode === "practice") {
+  // (Practice runs as gameMode "cpu" with pacifistBot set, so key off that.)
+  if (pacifistBot || gameMode === "practice") {
     removeResourceBarLabel(enemyCeFrame);
     removeResourceBarLabel(enemyUltFrame);
     return;
@@ -6803,7 +6804,7 @@ function applyJijiRageBarState(ceEl, f) {
 }
 
 function updatePracticeDummyHudVisibility() {
-  const hideDummyMeters = gameMode === "practice";
+  const hideDummyMeters = pacifistBot || gameMode === "practice";
 
   const enemyPanel = enemyHealthEl ? enemyHealthEl.closest(".fighter-panel") : null;
   const enemyCeFrame = enemyCeEl ? enemyCeEl.closest(".ce-frame") : null;
@@ -24205,26 +24206,30 @@ function drawWorldSlashEffects() {
   function layout() {
     if (!root) return;
     const W = window.innerWidth, H = window.innerHeight;
-    const BM = 26; // bottom margin to clear phone chrome / safe area
+    const BM = 18; // bottom margin to clear phone chrome / safe area
     const B = H - BM;
-    const pos = (el, x, y) => { el.style.left = x + "px"; el.style.top = y + "px"; };
-    // left movement cluster
-    pos(root._left, 16, B - 74);
-    pos(root._right, 16 + 82, B - 74);
-    pos(root._jump, 16 + 30, B - 154);
-    pos(root._block, 16, B - 154);
-    pos(root._dodge, 16 + 82, B - 154);
-    // right action cluster
-    const rx = W - 16;
-    pos(root._sp1, rx - 74, B - 154);
-    pos(root._sp2, rx - 74 - 82, B - 116);
-    pos(root._light, rx - 74, B - 74);
-    pos(root._heavy, rx - 74 - 82, B - 36);
-    pos(root._ult, rx - 74 - 150, B - 74);
-    pos(root._aimS, rx - 74 - 150, B - 154);
-    // utility strip (top-right, under mode toggle)
-    let ux = W - 56;
-    [root._throw, root._rkey, root._fkey, root._tkey].forEach((el) => { pos(el, ux, 56); ux -= 54; });
+    const pos = (el, x, y) => { el.style.left = Math.round(x) + "px"; el.style.top = Math.round(y) + "px"; };
+
+    // ---- left thumb: movement (bottom) + block/dodge (above) ----
+    pos(root._left,  16, B - 78);    // ◀ lg 74
+    pos(root._right, 98, B - 78);    // ▶ lg 74
+    pos(root._block, 16, B - 136);   // BLK sm 48
+    pos(root._dodge, 74, B - 136);   // DDG sm 48
+
+    // ---- right thumb: attacks, specials, JUMP, ult (spread so none overlap) ----
+    pos(root._light, W - 90,  B - 78);   // LIGHT lg 74
+    pos(root._heavy, W - 166, B - 50);   // HEAVY md 62
+    pos(root._sp1,   W - 96,  B - 164);  // ① lg 74
+    pos(root._sp2,   W - 166, B - 134);  // ② md 62
+    pos(root._jump,  W - 244, B - 78);   // JUMP md 62 (now on the right side)
+    pos(root._ult,   W - 244, B - 160);  // ULT md 62
+    pos(root._aimS,  W - 312, B - 118);  // S sm 48
+
+    // ---- utility strip: a centred bottom row, clear of the HUD + thumbs ----
+    const uw = 48, ug = 12, n = 4;
+    const total = n * uw + (n - 1) * ug;
+    let ux = (W - total) / 2 - 30;
+    [root._throw, root._rkey, root._fkey, root._tkey].forEach((el) => { pos(el, ux, B - 54); ux += uw + ug; });
   }
 
   function build() {
