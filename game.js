@@ -4561,9 +4561,9 @@ function installJijiHudStyle() {
     .ct-slot.jiji-cooldown.cooling,
     .extra-cooldown.jiji-cooldown.ready,
     .extra-cooldown.jiji-cooldown.cooling {
-      background: linear-gradient(180deg, rgba(40, 12, 20, 0.92), rgba(20, 6, 12, 0.95)) !important;
-      border: 3px solid #a01f36 !important;
-      box-shadow: 0 3px 0 #3a0c16, 0 0 14px rgba(160, 31, 54, 0.4) !important;
+      background: linear-gradient(180deg, rgba(30, 14, 52, 0.92), rgba(16, 6, 30, 0.95)) !important;
+      border: 3px solid #8b3fd6 !important;
+      box-shadow: 0 3px 0 #2a0c48, 0 0 14px rgba(139, 63, 214, 0.4) !important;
     }
     .ct-slot.jiji-cooldown .ct-label,
     .ct-slot.jiji-cooldown .ct-status,
@@ -4571,13 +4571,13 @@ function installJijiHudStyle() {
     .extra-cooldown.jiji-cooldown .ct-status,
     .extra-cooldown.jiji-cooldown .extra-cooldown-label,
     .extra-cooldown.jiji-cooldown .extra-cooldown-status {
-      color: #f9c9d2 !important;
-      text-shadow: 0 0 6px rgba(200, 40, 70, 0.75) !important;
+      color: #e9d5ff !important;
+      text-shadow: 0 0 6px rgba(168, 85, 247, 0.75) !important;
     }
     .ct-slot.jiji-cooldown .ct-meter,
     .extra-cooldown.jiji-cooldown .ct-meter {
-      background: rgba(26, 8, 14, 0.75) !important;
-      border-color: rgba(160, 31, 54, 0.4) !important;
+      background: rgba(20, 8, 34, 0.75) !important;
+      border-color: rgba(139, 63, 214, 0.4) !important;
     }
     .ct-slot.jiji-cooldown .ct-fill,
     .ct-slot.jiji-cooldown.ready .ct-fill,
@@ -4586,22 +4586,22 @@ function installJijiHudStyle() {
     .extra-cooldown.jiji-cooldown .ct-fill,
     .extra-cooldown.jiji-cooldown.ready .ct-fill,
     .extra-cooldown.jiji-cooldown .extra-cooldown-fill {
-      background: linear-gradient(90deg, #7a1226, #c01e30, #f0708a) !important;
-      box-shadow: 0 0 12px rgba(200, 40, 70, 0.5), inset 0 1px 0 rgba(255, 220, 230, 0.25) !important;
+      background: linear-gradient(90deg, #6d28d9, #a855f7, #d8b4fe) !important;
+      box-shadow: 0 0 12px rgba(168, 85, 247, 0.5), inset 0 1px 0 rgba(240, 225, 255, 0.25) !important;
     }
     .ct-slot.jiji-cooldown.cooling .ct-fill,
     .ct-slot.jiji-cooldown.charging .ct-fill,
     .extra-cooldown.jiji-cooldown.cooling .ct-fill,
     .extra-cooldown.jiji-cooldown.cooling .extra-cooldown-fill {
-      background: linear-gradient(90deg, #2a1016, #47202a, #5a2530) !important;
+      background: linear-gradient(90deg, #241038, #3a1c5a, #4a2570) !important;
       opacity: 0.92 !important;
     }
-    /* Rage bar (repurposed CE bar) */
+    /* Rage bar (repurposed CE bar) - Evil Eye purple, flashing red at takeover */
     .jiji-rage-fill {
-      background: linear-gradient(90deg, #6d1220, #b01e34, #d94060) !important;
+      background: linear-gradient(90deg, #5b21b6, #9333ea, #c084fc) !important;
     }
     .jiji-rage-fill.jiji-rage-warn {
-      background: linear-gradient(90deg, #8a1424, #d12a44, #ff5a72) !important;
+      background: linear-gradient(90deg, #7e1ba6, #c026a6, #f472b6) !important;
     }
     .jiji-rage-fill.jiji-rage-critical {
       background: linear-gradient(90deg, #b01020, #ff2438, #ff6a7c) !important;
@@ -14849,31 +14849,31 @@ function getTechniqueSkin(f, flash) {
     };
   }
 
-  // JIJI_PATCH: shared body, two looks. Jiji is a wiry old man - tan skin,
-  // white hair, plain jacket. The Evil Eye possession turns him ashen with a
-  // dark-maroon aura and wild black-red hair (a "marking", not real eyes).
+  // JIJI_PATCH: shared body, two looks. Jiji is a young boy - tan skin, bright
+  // spiky red hair, dark casual jacket. The Evil Eye possession turns his skin
+  // purple with a big glowing eye, wild dark hair and rainbow earrings.
   if (f.technique === "jiji") {
     if (f.jijiForm === "evileye") {
       return {
-        body: "#6d1622",
-        skin: "#b9a6a6",
-        accent: "#ef2d3f",
-        pants: "#2a1116",
-        shoe: "#140508",
-        hair: "#1a0d10",
-        eye: "#ef2d3f",
-        mark: "#ef2d3f"
+        body: "#5a2a9c",
+        skin: "#a874e0",
+        accent: "#c084fc",
+        pants: "#2f1652",
+        shoe: "#1a0b30",
+        hair: "#241040",
+        eye: "#f5d020",
+        mark: "#c084fc"
       };
     }
     return {
-      body: "#5f6b57",
-      skin: "#dcb890",
-      accent: "#c9a24a",
-      pants: "#39414c",
+      body: "#2f3640",
+      skin: "#e8b48c",
+      accent: "#d23a2a",
+      pants: "#3a3f47",
       shoe: "#1f242c",
-      hair: "#eef0f2",
+      hair: "#d83a24",
       eye: "#2a2320",
-      mark: "#8a8f96"
+      mark: "#d23a2a"
     };
   }
 
@@ -17048,12 +17048,12 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.stroke();
     ctx.globalAlpha = 1;
   } else if (f.technique === "jiji") {
-    // JIJI_PATCH: a plain zip-up jacket over a shirt. In Jiji form it's a
-    // calm olive jacket; the Evil Eye possession darkens it to blood-maroon
-    // with a jagged red aura seam down the chest.
+    // JIJI_PATCH: a young boy's zip-up jacket over a shirt. In Jiji form it's
+    // a dark charcoal jacket; the Evil Eye possession recolours everything
+    // purple with a pulsing violet aura seam down the chest.
     const evil = f.jijiForm === "evileye";
     // open jacket panels
-    ctx.fillStyle = evil ? "#571019" : "#4c5647";
+    ctx.fillStyle = evil ? "#4a2088" : "#2f3640";
     ctx.beginPath();
     ctx.moveTo(11, 40); ctx.lineTo(22, 42); ctx.lineTo(20, 92); ctx.lineTo(10, 90); ctx.closePath();
     ctx.fill();
@@ -17061,29 +17061,29 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.moveTo(43, 40); ctx.lineTo(32, 42); ctx.lineTo(34, 92); ctx.lineTo(44, 90); ctx.closePath();
     ctx.fill();
     // inner shirt strip
-    ctx.fillStyle = evil ? "#2a1015" : "#d7d2c4";
+    ctx.fillStyle = evil ? "#2a1052" : "#c94b3a";
     ctx.beginPath();
     ctx.moveTo(22, 42); ctx.lineTo(32, 42); ctx.lineTo(31, 90); ctx.lineTo(23, 90); ctx.closePath();
     ctx.fill();
     // jacket collar
-    ctx.strokeStyle = evil ? "#7a1622" : "#39413090";
+    ctx.strokeStyle = evil ? "#7c3aed" : "#20252b";
     ctx.lineWidth = 3;
     ctx.lineCap = "round";
     ctx.beginPath();
     ctx.moveTo(20, 40); ctx.lineTo(27, 50); ctx.lineTo(34, 40);
     ctx.stroke();
     // zipper seam
-    ctx.strokeStyle = evil ? "#ef2d3f" : "#8a8f7a";
+    ctx.strokeStyle = evil ? "#c084fc" : "#565c64";
     ctx.lineWidth = evil ? 2 : 1.4;
     ctx.beginPath();
     ctx.moveTo(27, 50); ctx.lineTo(27, 90);
     ctx.stroke();
     if (evil) {
-      // pulsing red aura seam
+      // pulsing violet aura seam
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
       ctx.globalAlpha = 0.5 + Math.sin(frame * 0.3) * 0.2;
-      ctx.strokeStyle = "#ff3348";
+      ctx.strokeStyle = "#a855f7";
       ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.moveTo(18, 46); ctx.quadraticCurveTo(14, 66, 19, 88);
@@ -17612,48 +17612,49 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     // the forehead khaydarin gem
     headGem(26, 12, 2.3, 3);
   } else if (f.technique === "jiji") {
-    // JIJI_PATCH: a wiry old man. Jiji form - short swept-back white hair
-    // and round glasses (a marking accessory, not eyes). Evil Eye form -
-    // wild upswept black-red hair and a single glowing red eye-marking on
-    // the forehead.
+    // JIJI_PATCH: Jiji form - a young boy with bright, messy spiky red hair.
+    // Evil Eye form - purple-skinned possession with a big glowing eye, wild
+    // dark hair and dangling rainbow earrings.
     const evil = f.jijiForm === "evileye";
     const sway = idle * 0.5;
     if (!evil) {
-      // white hair - short, swept back over the crown and temples
+      // spiky red hair - messy young-boy fringe over the crown and forehead
       ctx.fillStyle = skin.hair;
       ctx.beginPath();
-      ctx.moveTo(13, 22);
-      ctx.quadraticCurveTo(11, 6, 26, 4);
-      ctx.quadraticCurveTo(41, 6, 39, 22);
-      ctx.quadraticCurveTo(37, 14, 30, 12);
-      ctx.quadraticCurveTo(26, 16, 22, 12);
-      ctx.quadraticCurveTo(16, 14, 13, 22);
+      ctx.moveTo(12, 24);
+      ctx.lineTo(11 + sway * 0.6, 8);
+      ctx.lineTo(17, 15);
+      ctx.lineTo(16 + sway, 3);
+      ctx.lineTo(23, 14);
+      ctx.lineTo(24, 2 + sway * 0.5);
+      ctx.lineTo(29, 13);
+      ctx.lineTo(32 + sway, 4);
+      ctx.lineTo(34, 15);
+      ctx.lineTo(41 - sway * 0.6, 8);
+      ctx.lineTo(40, 24);
+      ctx.quadraticCurveTo(37, 17, 30, 16);
+      ctx.quadraticCurveTo(26, 19, 22, 16);
+      ctx.quadraticCurveTo(15, 17, 12, 24);
       ctx.closePath();
       ctx.fill();
-      // a couple of hair strands
-      ctx.strokeStyle = "#c9ccd1";
-      ctx.lineWidth = 1;
+      // darker red hair shading strands
+      ctx.strokeStyle = "#a82a18";
+      ctx.lineWidth = 1.2;
+      ctx.lineCap = "round";
       ctx.beginPath();
-      ctx.moveTo(16, 14); ctx.quadraticCurveTo(22, 9, 28, 11);
-      ctx.moveTo(30, 11); ctx.quadraticCurveTo(35, 12, 37, 18);
+      ctx.moveTo(18, 15); ctx.lineTo(17, 5);
+      ctx.moveTo(25, 14); ctx.lineTo(25, 4);
+      ctx.moveTo(32, 14); ctx.lineTo(33, 6);
       ctx.stroke();
-      // round glasses (accessory marking)
-      ctx.strokeStyle = "#2a2320";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(20.5, 23, 4.2, 0, Math.PI * 2);
-      ctx.arc(31.5, 23, 4.2, 0, Math.PI * 2);
-      ctx.moveTo(24.7, 23); ctx.lineTo(27.3, 23);
-      ctx.stroke();
-      // grey brow ridges above the glasses
-      ctx.strokeStyle = "#cdd0d4";
+      // young brows
+      ctx.strokeStyle = "#7a3a20";
       ctx.lineWidth = 1.6;
       ctx.beginPath();
-      ctx.moveTo(16, 17); ctx.quadraticCurveTo(20, 15, 24, 17);
-      ctx.moveTo(28, 17); ctx.quadraticCurveTo(32, 15, 36, 17);
+      ctx.moveTo(18, 20); ctx.quadraticCurveTo(21, 18.5, 24, 20);
+      ctx.moveTo(28, 20); ctx.quadraticCurveTo(31, 18.5, 34, 20);
       ctx.stroke();
     } else {
-      // wild upswept black-red hair
+      // wild upswept dark-purple hair
       ctx.fillStyle = skin.hair;
       ctx.beginPath();
       ctx.moveTo(12, 24);
@@ -17669,8 +17670,8 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       ctx.lineTo(40, 24);
       ctx.closePath();
       ctx.fill();
-      // red streaks in the hair
-      ctx.strokeStyle = "#c01e30";
+      // purple streaks in the hair
+      ctx.strokeStyle = "#a855f7";
       ctx.lineWidth = 1.4;
       ctx.lineCap = "round";
       ctx.beginPath();
@@ -17678,27 +17679,48 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       ctx.moveTo(27, 10); ctx.lineTo(27, -5 + sway);
       ctx.moveTo(35, 11); ctx.lineTo(35 + sway, -2);
       ctx.stroke();
-      // glowing red single eye-marking on the forehead
+      // dangling rainbow earrings on both sides of the head
+      const rainbow = ["#ef4444", "#f59e0b", "#facc15", "#22c55e", "#3b82f6", "#a855f7"];
+      const earHang = Math.sin(frame * 0.18) * 1.2;
+      [12, 40].forEach((ex) => {
+        for (let i = 0; i < 3; i++) {
+          ctx.fillStyle = rainbow[(i * 2 + (ex < 26 ? 0 : 1)) % rainbow.length];
+          ctx.strokeStyle = "#1a0530";
+          ctx.lineWidth = 0.8;
+          ctx.beginPath();
+          ctx.arc(ex + (ex < 26 ? -1 : 1), 27 + i * 4.5 + earHang, 2.1, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        }
+      });
+      // big glowing single eye-marking across the face
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
-      const pulse = 0.6 + Math.sin(frame * 0.3) * 0.25;
+      const pulse = 0.55 + Math.sin(frame * 0.3) * 0.25;
       ctx.globalAlpha = pulse;
-      ctx.fillStyle = "#ff2d3f";
+      ctx.fillStyle = "#f5d020";
       ctx.beginPath();
-      ctx.ellipse(26, 22, 5.5, 3.2, 0, 0, Math.PI * 2);
+      ctx.ellipse(26, 23, 7, 4.4, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
-      ctx.fillStyle = "#1a0508";
+      // white sclera + dark slit pupil
+      ctx.fillStyle = "#fef9c3";
       ctx.beginPath();
-      ctx.ellipse(26, 22, 2, 3, 0, 0, Math.PI * 2);
+      ctx.ellipse(26, 23, 6, 3.6, 0, 0, Math.PI * 2);
       ctx.fill();
-      // angry black brow slashes
-      ctx.strokeStyle = "#160306";
-      ctx.lineWidth = 2.2;
+      ctx.strokeStyle = "#2a0a40";
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+      ctx.fillStyle = "#1a0530";
+      ctx.beginPath();
+      ctx.ellipse(26, 23, 1.8, 3.2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // heavy dark upper lid line
+      ctx.strokeStyle = "#2a0a40";
+      ctx.lineWidth = 2;
       ctx.lineCap = "round";
       ctx.beginPath();
-      ctx.moveTo(16, 16); ctx.lineTo(23, 19);
-      ctx.moveTo(36, 16); ctx.lineTo(29, 19);
+      ctx.moveTo(20, 20); ctx.quadraticCurveTo(26, 18.5, 32, 20);
       ctx.stroke();
     }
   }
@@ -18413,8 +18435,8 @@ function drawTechniquePreview(canvasEl, technique) {
     w: technique === "shrine" ? 52 : technique === "brawler" ? 54 : 50,
     h: 128,
     dir: 1,
-    color: technique === "shrine" ? "#dc2626" : technique === "deathnote" ? "#111827" : technique === "brawler" ? "#eceef2" : technique === "blackleg" ? "#16181f" : technique === "hivemind" ? "#54322c" : technique === "zealot" ? "#c8a13a" : technique === "spider" ? "#c0242c" : technique === "beast" ? "#caa079" : technique === "jiji" ? "#6d1622" : "#2563eb",
-    accent: technique === "shrine" ? "#991b1b" : technique === "deathnote" ? "#b91c1c" : technique === "brawler" ? "#dc2626" : technique === "blackleg" ? "#facc15" : technique === "hivemind" ? "#7f1d1d" : technique === "zealot" ? "#38e0f0" : technique === "spider" ? "#1e3a8a" : technique === "beast" ? "#4a5568" : technique === "jiji" ? "#ef2d3f" : "#1d4ed8"
+    color: technique === "shrine" ? "#dc2626" : technique === "deathnote" ? "#111827" : technique === "brawler" ? "#eceef2" : technique === "blackleg" ? "#16181f" : technique === "hivemind" ? "#54322c" : technique === "zealot" ? "#c8a13a" : technique === "spider" ? "#c0242c" : technique === "beast" ? "#caa079" : technique === "jiji" ? "#d23a2a" : "#2563eb",
+    accent: technique === "shrine" ? "#991b1b" : technique === "deathnote" ? "#b91c1c" : technique === "brawler" ? "#dc2626" : technique === "blackleg" ? "#facc15" : technique === "hivemind" ? "#7f1d1d" : technique === "zealot" ? "#38e0f0" : technique === "spider" ? "#1e3a8a" : technique === "beast" ? "#4a5568" : technique === "jiji" ? "#a855f7" : "#1d4ed8"
   });
   previewFighter.technique = technique;
   previewFighter.y = GROUND - previewFighter.h;
@@ -18423,7 +18445,7 @@ function drawTechniquePreview(canvasEl, technique) {
   ctx = previewCtx;
   ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
   const backdrop = ctx.createLinearGradient(0, 0, 0, canvasEl.height);
-  backdrop.addColorStop(0, technique === "shrine" ? "#2b1420" : technique === "deathnote" ? "#180b12" : technique === "brawler" ? "#141822" : technique === "blackleg" ? "#221208" : technique === "hivemind" ? "#1c0a10" : technique === "zealot" ? "#0a1a1f" : technique === "spider" ? "#1a0810" : technique === "beast" ? "#1a1712" : technique === "jiji" ? "#1e0810" : "#142033");
+  backdrop.addColorStop(0, technique === "shrine" ? "#2b1420" : technique === "deathnote" ? "#180b12" : technique === "brawler" ? "#141822" : technique === "blackleg" ? "#221208" : technique === "hivemind" ? "#1c0a10" : technique === "zealot" ? "#0a1a1f" : technique === "spider" ? "#1a0810" : technique === "beast" ? "#1a1712" : technique === "jiji" ? "#160a26" : "#142033");
   backdrop.addColorStop(1, "#050814");
   ctx.fillStyle = backdrop;
   ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
@@ -20456,10 +20478,10 @@ function drawProjectiles() {
       ctx.globalCompositeOperation = "lighter";
       const glow = ctx.createRadialGradient(0, 0, rad * 0.15, 0, 0, rad * 2.1 * pulse);
       if (evil) {
-        glow.addColorStop(0, "rgba(255, 220, 230, 0.95)");
-        glow.addColorStop(0.35, "rgba(190, 30, 60, 0.9)");
-        glow.addColorStop(0.7, "rgba(90, 12, 30, 0.55)");
-        glow.addColorStop(1, "rgba(20, 4, 10, 0)");
+        glow.addColorStop(0, "rgba(245, 230, 255, 0.95)");
+        glow.addColorStop(0.35, "rgba(168, 85, 247, 0.9)");
+        glow.addColorStop(0.7, "rgba(91, 33, 182, 0.55)");
+        glow.addColorStop(1, "rgba(20, 6, 40, 0)");
       } else if (soccer) {
         glow.addColorStop(0, "rgba(255, 255, 255, 0.95)");
         glow.addColorStop(0.4, "rgba(129, 140, 248, 0.82)");
@@ -20476,12 +20498,12 @@ function drawProjectiles() {
       ctx.arc(0, 0, rad * 2 * pulse, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalCompositeOperation = "source-over";
-      ctx.fillStyle = evil ? "rgba(255, 235, 240, 0.95)" : "rgba(255, 255, 255, 0.95)";
+      ctx.fillStyle = evil ? "rgba(245, 230, 255, 0.95)" : "rgba(255, 255, 255, 0.95)";
       ctx.beginPath();
       ctx.arc(0, 0, rad * 0.55, 0, Math.PI * 2);
       ctx.fill();
       // trailing wisps
-      ctx.strokeStyle = evil ? "rgba(220, 40, 70, 0.7)" : soccer ? "rgba(129, 140, 248, 0.7)" : "rgba(196, 181, 253, 0.7)";
+      ctx.strokeStyle = evil ? "rgba(168, 85, 247, 0.7)" : soccer ? "rgba(129, 140, 248, 0.7)" : "rgba(196, 181, 253, 0.7)";
       ctx.lineWidth = 3;
       ctx.lineCap = "round";
       ctx.beginPath();
@@ -20489,10 +20511,14 @@ function drawProjectiles() {
       ctx.lineTo(-(p.dir || 1) * rad * 0.8, 0);
       ctx.stroke();
       if (evil) {
-        // an angry slit "eye" in the core
-        ctx.fillStyle = "rgba(40, 4, 12, 0.95)";
+        // a glowing slit "eye" in the core
+        ctx.fillStyle = "rgba(245, 208, 32, 0.95)";
         ctx.beginPath();
-        ctx.ellipse(0, 0, rad * 0.34, rad * 0.14, 0, 0, Math.PI * 2);
+        ctx.ellipse(0, 0, rad * 0.4, rad * 0.18, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(26, 5, 48, 0.95)";
+        ctx.beginPath();
+        ctx.ellipse(0, 0, rad * 0.12, rad * 0.16, 0, 0, Math.PI * 2);
         ctx.fill();
       }
     } else {
