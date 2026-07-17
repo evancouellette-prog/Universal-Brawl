@@ -3304,3 +3304,27 @@ body.mobile-controls-on .resource-bar-label { font-size: 8px !important; }
 body.mobile-controls-on .stars { font-size: 11px !important; }
 /* the center round-info / pause column stays but compresses */
 body.mobile-controls-on .topbar { grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); }
+
+/* MOBILE_HOME_FIT_PATCH: compress the home screen so everything fits in one
+   landscape viewport without scrolling. Desktop is unaffected. */
+body.mobile-controls-on .home-screen { overflow: hidden; }
+body.mobile-controls-on .home-panel {
+  width: min(700px, calc(100vw - 16px));
+  max-height: calc(100dvh - 10px);
+  padding: 8px 16px 10px;
+  gap: 6px 14px;
+  overflow: hidden;
+}
+body.mobile-controls-on .home-panel h1 {
+  font-size: clamp(26px, 5.4vw, 44px);
+  padding: 0 12px 2px;
+  animation: none;
+}
+body.mobile-controls-on .home-group { gap: 5px; }
+body.mobile-controls-on .home-group h2 { font-size: 12px; margin: 0; }
+body.mobile-controls-on .home-actions { gap: 6px; }
+body.mobile-controls-on .home-panel button { min-height: 30px; padding: 5px 12px; font-size: 13px; }
+body.mobile-controls-on .room-code-input { min-height: 30px; padding: 4px 10px; }
+body.mobile-controls-on .online-group { gap: 5px; }
+/* keep the radio corner out of the way on a small landscape home */
+body.mobile-controls-on .music-volume-corner { transform: scale(0.82); transform-origin: bottom left; }

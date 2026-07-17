@@ -4032,11 +4032,15 @@ function updateTechniqueCooldownHud(f, slots) {
       ? `${Math.ceil(state.cooldown / 6) / 10}s`
       : state.blocked ? "BLOCK"
         : state.lowCe && !isLight(f) ? "NO CE" : "READY";
-    hud.slot.classList.toggle("ready", !state.cooling && !state.blocked && (!state.lowCe || isLight(f)) && !state.charging);
-    hud.slot.classList.toggle("cooling", state.cooling || state.charging);
-    hud.slot.classList.toggle("charging", state.charging);
-    hud.slot.classList.toggle("low-ce", !isLight(f) && !state.cooling && !state.charging && state.lowCe);
-    hud.slot.classList.toggle("blocked", !state.cooling && !state.charging && state.blocked);
+    // CHARGE_FLICKER_FIX: custom characters don't set state.charging, so it is
+    // undefined - and classList.toggle(name, undefined) *flips* the class every
+    // frame instead of removing it, which made the chips strobe. Coerce every
+    // force argument to a real boolean.
+    hud.slot.classList.toggle("ready", Boolean(!state.cooling && !state.blocked && (!state.lowCe || isLight(f)) && !state.charging));
+    hud.slot.classList.toggle("cooling", Boolean(state.cooling || state.charging));
+    hud.slot.classList.toggle("charging", Boolean(state.charging));
+    hud.slot.classList.toggle("low-ce", Boolean(!isLight(f) && !state.cooling && !state.charging && state.lowCe));
+    hud.slot.classList.toggle("blocked", Boolean(!state.cooling && !state.charging && state.blocked));
 
     hud.slot.classList.toggle("gojo-cooldown", f.technique === "limitless");
     hud.slot.classList.toggle("sukuna-cooldown", f.technique === "shrine");
@@ -24217,11 +24221,11 @@ function drawWorldSlashEffects() {
     pos(root._dodge, 74, B - 136);   // DDG sm 48
 
     // ---- right thumb: attacks, specials, JUMP, ult (spread so none overlap) ----
-    pos(root._light, W - 90,  B - 78);   // LIGHT lg 74
+    pos(root._jump,  W - 90,  B - 78);   // JUMP lg 74 (bottom-right corner)
     pos(root._heavy, W - 166, B - 50);   // HEAVY md 62
     pos(root._sp1,   W - 96,  B - 164);  // ① lg 74
     pos(root._sp2,   W - 166, B - 134);  // ② md 62
-    pos(root._jump,  W - 244, B - 78);   // JUMP md 62 (now on the right side)
+    pos(root._light, W - 244, B - 78);   // LIGHT md 62 (swapped with JUMP)
     pos(root._ult,   W - 244, B - 160);  // ULT md 62
     pos(root._aimS,  W - 312, B - 118);  // S sm 48
 
@@ -24244,13 +24248,13 @@ function drawWorldSlashEffects() {
 
     root._left = makeBtn("mc-lg", "◀");   holdKey(root._left, "left");
     root._right = makeBtn("mc-lg", "▶");  holdKey(root._right, "right");
-    root._jump = makeBtn("mc-md", "JUMP"); holdKey(root._jump, "jump");
+    root._jump = makeBtn("mc-lg", "JUMP"); holdKey(root._jump, "jump");
     root._block = makeBtn("mc-sm", "BLK"); holdKey(root._block, "block");
     root._dodge = makeBtn("mc-sm", "DDG"); tapKey(root._dodge, "dodge");
 
     root._sp1 = makeBtn("mc-lg mc-sp1", "①"); bindHold(root._sp1, () => touchTechnique(1, true), () => touchTechnique(1, false));
     root._sp2 = makeBtn("mc-md mc-sp2", "②"); bindHold(root._sp2, () => touchTechnique(2, true), () => touchTechnique(2, false));
-    root._light = makeBtn("mc-lg", "LIGHT"); tapKey(root._light, "light");
+    root._light = makeBtn("mc-md", "LIGHT"); tapKey(root._light, "light");
     root._heavy = makeBtn("mc-md", "HEAVY"); tapKey(root._heavy, "heavy");
     root._ult = makeBtn("mc-md mc-ult", "ULT"); bindHold(root._ult, () => pressKeyBtn("ult"), () => releaseKeyBtn("ult"));
     root._aimS = makeBtn("mc-sm", "S");  bindHold(root._aimS, () => pressKeyBtn("aimS"), () => releaseKeyBtn("aimS"));
