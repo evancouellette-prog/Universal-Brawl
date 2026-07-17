@@ -24173,6 +24173,16 @@ function drawWorldSlashEffects() {
       @media (max-width: 820px), (pointer: coarse) {
         body.mobile-controls-on .shell { touch-action: none; }
       }
+      #mcRotate { position: fixed; inset: 0; z-index: 90; display: none;
+        flex-direction: column; align-items: center; justify-content: center;
+        gap: 14px; text-align: center; padding: 28px;
+        background: radial-gradient(circle at 50% 40%, #16233d, #070b16 75%);
+        color: #eaf1ff; font: 700 17px system-ui, sans-serif; }
+      body.mobile-controls-on #mcRotate.show { display: flex; }
+      #mcRotate .mc-rot-icon { font-size: 66px; line-height: 1;
+        animation: mcRotSpin 1.8s ease-in-out infinite; }
+      #mcRotate small { font-weight: 500; font-size: 13px; color: #9fb2cc; max-width: 280px; }
+      @keyframes mcRotSpin { 0%, 100% { transform: rotate(0deg); } 45%, 55% { transform: rotate(-90deg); } }
     `;
     document.head.appendChild(s);
   }
@@ -24273,6 +24283,7 @@ function drawWorldSlashEffects() {
     controlMode = mode;
     localStorage.setItem(STORE_KEY, mode);
     applyMode();
+    if (mobileActive()) { tryLockLandscape(); updateRotate(); }
   }
   function buildToggle() {
     if (document.getElementById("mcModeToggle")) return;
@@ -24305,16 +24316,55 @@ function drawWorldSlashEffects() {
     }));
   }
 
-  // Show the pad only during actual gameplay.
+  // ---- landscape enforcement ----------------------------------------------
+  function isPortrait() {
+    return window.innerHeight > window.innerWidth;
+  }
+  function tryLockLandscape() {
+    try {
+      const so = screen.orientation;
+      if (so && so.lock) so.lock("landscape").catch(() => {});
+    } catch (e) { /* not supported - the rotate overlay covers it */ }
+  }
+  let rotateEl = null;
+  function buildRotate() {
+    if (rotateEl) return;
+    rotateEl = document.createElement("div");
+    rotateEl.id = "mcRotate";
+    rotateEl.innerHTML = `
+      <div class="mc-rot-icon">🔄</div>
+      <div>Rotate your device</div>
+      <small>Universal Brawl plays best in landscape. Turn your phone sideways to keep going.</small>`;
+    document.body.appendChild(rotateEl);
+    // tapping it is a user gesture - a good moment to (re)try the lock.
+    rotateEl.addEventListener("touchstart", tryLockLandscape, { passive: true });
+  }
+  function updateRotate() {
+    if (!rotateEl) return;
+    const need = mobileActive() && isPortrait();
+    rotateEl.classList.toggle("show", need);
+  }
+
+  // Show the pad only during actual gameplay (and never over the rotate gate).
   function visibilityTick() {
-    if (root) root.classList.toggle("playing", mobileActive() && typeof gameState !== "undefined" && gameState === "playing" && !homeOpen && !paused);
+    updateRotate();
+    if (root) root.classList.toggle("playing", mobileActive() && !isPortrait() && typeof gameState !== "undefined" && gameState === "playing" && !homeOpen && !paused);
   }
 
   function init() {
     injectStyle();
     buildToggle();
+    buildRotate();
     applyMode();
     maybePrompt();
+    updateRotate();
+    window.addEventListener("resize", updateRotate);
+    window.addEventListener("orientationchange", () => setTimeout(() => { updateRotate(); layout(); }, 200));
+    // Best-effort: lock to landscape on the first touch gesture.
+    window.addEventListener("touchstart", function once() {
+      if (mobileActive()) tryLockLandscape();
+      window.removeEventListener("touchstart", once);
+    }, { passive: true, once: true });
     setInterval(visibilityTick, 150);
   }
   if (document.readyState === "loading") window.addEventListener("DOMContentLoaded", init);
