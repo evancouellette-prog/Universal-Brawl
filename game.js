@@ -267,6 +267,15 @@ function skinOf(f) {
   if (f.skinId) return f.skinId;
   return getSelectedSkin(f.technique);
 }
+// SKINS_PATCH: Shibuya Sukuna wears a full uniform - one pair of sleeved arms.
+function isShibuya(f) {
+  return Boolean(f && f.technique === "shrine" && skinOf(f) === "shibuya");
+}
+// SKINS_PATCH: Viltrumite Thragg wears the tight Viltrumite battlesuit - the
+// emperor's fur collar and robe are dropped for the clean uniform.
+function isViltrumite(f) {
+  return Boolean(f && f.technique === "brawler" && skinOf(f) === "viltrumite");
+}
 
 let localPlayerName = "Player";
 let buttonSfxVolume = 0.45;
@@ -2026,6 +2035,9 @@ const DAVID_ULT_SPEED = 1.15;
 // completing Bucket List goals for permanent round buffs. Work is the
 // resource: built with Overtime, spent on Beer or a Work-scaling Ultimate.
 const AKIRA_WORK_MAX = 100;
+// AKIRA_NO_ULT_BAR_PATCH: Akira has no ultimate bar - the Bucket List ult is
+// powered entirely by banked Work. Need at least this much to cash it in.
+const AKIRA_ULT_MIN_WORK = 25;
 const AKIRA_OVERTIME_RATE = 12 / 60;   // 12 Work / second
 const AKIRA_OVERTIME_TICKS = 3 * 60;
 const AKIRA_OVERTIME_COOLDOWN = 8 * 60;
@@ -4717,8 +4729,8 @@ function installZealotCyanHudStyle() {
     .extra-cooldown.zealot-cooldown.ready,
     .extra-cooldown.zealot-cooldown.cooling {
       background: linear-gradient(180deg, rgba(12, 34, 40, 0.92), rgba(6, 16, 20, 0.95)) !important;
-      border: 3px solid #38e0f0 !important;
-      box-shadow: 0 3px 0 #b8860b, 0 0 14px rgba(56, 224, 240, 0.4) !important;
+      border: 3px solid #2dd4bf !important;
+      box-shadow: 0 3px 0 #b8860b, 0 0 14px rgba(45, 212, 191, 0.4) !important;
     }
     .ct-slot.zealot-cooldown .ct-label,
     .ct-slot.zealot-cooldown .ct-status,
@@ -4727,12 +4739,12 @@ function installZealotCyanHudStyle() {
     .extra-cooldown.zealot-cooldown .extra-cooldown-label,
     .extra-cooldown.zealot-cooldown .extra-cooldown-status {
       color: #a5f3fc !important;
-      text-shadow: 0 0 6px rgba(56, 224, 240, 0.75) !important;
+      text-shadow: 0 0 6px rgba(45, 212, 191, 0.75) !important;
     }
     .ct-slot.zealot-cooldown .ct-meter,
     .extra-cooldown.zealot-cooldown .ct-meter {
       background: rgba(9, 26, 30, 0.75) !important;
-      border-color: rgba(56, 224, 240, 0.4) !important;
+      border-color: rgba(45, 212, 191, 0.4) !important;
     }
     .ct-slot.zealot-cooldown .ct-fill,
     .ct-slot.zealot-cooldown.ready .ct-fill,
@@ -4741,20 +4753,21 @@ function installZealotCyanHudStyle() {
     .extra-cooldown.zealot-cooldown .ct-fill,
     .extra-cooldown.zealot-cooldown.ready .ct-fill,
     .extra-cooldown.zealot-cooldown .extra-cooldown-fill {
-      background: linear-gradient(90deg, #0891b2, #38e0f0, #a5f3fc) !important;
-      box-shadow: 0 0 12px rgba(56, 224, 240, 0.5), inset 0 1px 0 rgba(224, 255, 255, 0.3) !important;
+      background: linear-gradient(90deg, #0d9488, #2dd4bf, #99f6e4) !important;
+      box-shadow: 0 0 12px rgba(45, 212, 191, 0.5), inset 0 1px 0 rgba(224, 255, 255, 0.3) !important;
     }
-    /* gold shield gauge, distinct from the cyan ability fills */
+    /* ZEALOT_SHIELD_BLUE_PATCH: Protoss shield gauge in the game's dark
+       cobalt blue, distinct from the lighter cyan ability fills */
     .extra-cooldown.zealot-cooldown.zealot-shield-meter .ct-fill,
     .extra-cooldown.zealot-cooldown.zealot-shield-meter .extra-cooldown-fill {
-      background: linear-gradient(90deg, #b8860b, #f0c94a, #fde68a) !important;
-      box-shadow: 0 0 12px rgba(240, 201, 74, 0.55) !important;
+      background: linear-gradient(90deg, #0a1f6e, #1b3fc4, #3f6ff0) !important;
+      box-shadow: 0 0 12px rgba(43, 95, 240, 0.6), inset 0 1px 0 rgba(180, 205, 255, 0.35) !important;
     }
     .ct-slot.zealot-cooldown.cooling .ct-fill,
     .ct-slot.zealot-cooldown.charging .ct-fill,
     .extra-cooldown.zealot-cooldown.cooling .ct-fill,
     .extra-cooldown.zealot-cooldown.cooling .extra-cooldown-fill {
-      background: linear-gradient(90deg, #083344, #0e5566, #0891b2) !important;
+      background: linear-gradient(90deg, #0a3330, #0e5c53, #0d9488) !important;
       opacity: 0.92 !important;
     }
   `;
@@ -6887,11 +6900,13 @@ function updateLightHudVisibility() {
   // THRAGG_NO_JJK_PATCH: Thragg has no Cursed Energy at all - his CE bar
   // is hidden outright (abilities are cooldown-gated).
   setHudElementHidden(playerCeFrame, player?.technique === "brawler" || player?.technique === "blackleg" || player?.technique === "hivemind" || player?.technique === "zealot" || player?.technique === "spider" || player?.technique === "beast"); // + INOSUKE
-  setHudElementHidden(playerUltFrame, false);
+  // AKIRA_NO_ULT_BAR_PATCH: Akira's Bucket List ult runs off Work, so hide the
+  // ultimate bar entirely.
+  setHudElementHidden(playerUltFrame, player?.technique === "akira");
 
   if (gameMode !== "practice") {
     setHudElementHidden(enemyCeFrame, enemy?.technique === "brawler" || enemy?.technique === "blackleg" || enemy?.technique === "hivemind" || enemy?.technique === "zealot" || enemy?.technique === "spider" || enemy?.technique === "beast"); // + INOSUKE
-    setHudElementHidden(enemyUltFrame, false);
+    setHudElementHidden(enemyUltFrame, enemy?.technique === "akira");
   } else {
     setHudElementHidden(enemyCeFrame, true);
     setHudElementHidden(enemyUltFrame, true);
@@ -11028,11 +11043,32 @@ function startSharkSuit(f) {
 
 // ---- Ultimate: Bucket List! ----------------------------------------------
 
+// AKIRA_NO_ULT_BAR_PATCH: same action-lock gate as canStartUltimate but keyed
+// off banked Work instead of the (now hidden) ultimate meter.
+function canStartAkiraUltimate(f) {
+  return Boolean(
+    f &&
+    (f.akiraWork || 0) >= AKIRA_ULT_MIN_WORK &&
+    gameState === "playing" &&
+    !gameOver &&
+    !paused &&
+    !isSpecialLocked(f) &&
+    !f.ko &&
+    !f.knockdown &&
+    !f.rctHealing &&
+    !f.chargingTechnique &&
+    !f.blocking &&
+    !isHoldingShield(f) &&
+    f.stun <= 0 &&
+    f.dodging <= 0 &&
+    !f.attacking
+  );
+}
+
 function startAkiraUltimate(f) {
   if (!isAkira(f) || akiraUltActive(f)) return false;
-  if (!canStartUltimate(f)) {
-    const warning = getUltimateFailureMessage(f);
-    if (warning) showActionWarning(warning);
+  if (!canStartAkiraUltimate(f)) {
+    if ((f.akiraWork || 0) < AKIRA_ULT_MIN_WORK) showActionWarning("Not Enough Work");
     return false;
   }
   const work = f.akiraWork || 0;
@@ -15224,7 +15260,9 @@ function updateEnemyAi() {
   if (enemy.aiCooldown <= 0 && tryCpuBindingVow(cpu, distance)) return;
   if (enemy.aiCooldown <= 0 && tryCpuDomainExpansion(cpu, distance)) return;
 
-  if (enemy.ultimateMeter >= MAX_ULTIMATE && enemy.aiCooldown <= 0) {
+  // AKIRA_NO_ULT_BAR_PATCH: Akira's ult is gated on Work, not the ult meter.
+  const enemyUltReady = enemy.technique === "akira" ? (enemy.akiraWork || 0) >= AKIRA_ULT_MIN_WORK : enemy.ultimateMeter >= MAX_ULTIMATE;
+  if (enemyUltReady && enemy.aiCooldown <= 0) {
     const ultimateChance = cpuDifficulty === "hard" ? 0.18 : cpuDifficulty === "medium" ? 0.08 : 0.025;
     const goodRange = enemy.technique === "blackleg" || enemy.technique === "hivemind" || enemy.technique === "zealot" || enemy.technique === "spider" || enemy.technique === "jiji" || enemy.technique === "david" || enemy.technique === "akira" ? true : enemy.technique === "shrine" ? distance > 120 : distance > 260; // custom self-buff ults work anywhere
     if (goodRange && Math.random() < ultimateChance && startUltimate(enemy)) {
@@ -16229,24 +16267,43 @@ function drawSkinOutfitOverlay(f, skinColor) {
   }
 
   if (f.technique === "brawler" && skin === "viltrumite") {
-    // white Viltrumite battle-suit with grey plates and the chest emblem.
-    // Wide + tall enough to hide the default red robe panels underneath.
-    ctx.fillStyle = "#e9ecf1";
-    ctx.beginPath(); ctx.moveTo(4, 37); ctx.lineTo(50, 37); ctx.lineTo(49, 98); ctx.lineTo(5, 98); ctx.closePath(); ctx.fill();
-    // grey shoulder yoke
+    // SKINS_PATCH: the tight white Viltrumite battle-suit. The torso is
+    // already white via the palette (and the emperor robe is suppressed),
+    // so this only lays the grey plating that hugs the body silhouette -
+    // no boxy fill.
+    // grey shoulder yoke, tucked to the torso width so it reads as sculpted
+    // pauldrons rather than a slab
     ctx.fillStyle = "#c7ccd3";
-    ctx.beginPath(); ctx.moveTo(6, 37); ctx.quadraticCurveTo(27, 45, 48, 37); ctx.lineTo(45, 53); ctx.quadraticCurveTo(27, 59, 9, 53); ctx.closePath(); ctx.fill();
-    // diagonal grey chest seams
-    ctx.strokeStyle = "#aeb4bc"; ctx.lineWidth = 2.4;
-    ctx.beginPath(); ctx.moveTo(12, 60); ctx.lineTo(24, 66); ctx.moveTo(42, 60); ctx.lineTo(30, 66); ctx.stroke();
-    // grey belt
-    ctx.fillStyle = "#b3b9c1"; ctx.fillRect(10, 72, 34, 8);
-    ctx.strokeStyle = "#8a9099"; ctx.strokeRect(10, 72, 34, 8);
-    // Viltrumite emblem - grey ring + hooked glyph
-    ctx.fillStyle = "#cdd2d9"; ctx.beginPath(); ctx.arc(27, 60, 6, 0, PI2); ctx.fill();
-    ctx.fillStyle = "#9aa1aa"; ctx.beginPath(); ctx.arc(27, 60, 4, 0, PI2); ctx.fill();
-    ctx.strokeStyle = "#e9ecf1"; ctx.lineWidth = 1.6; ctx.lineCap = "round";
-    ctx.beginPath(); ctx.arc(27, 60, 2.4, Math.PI * 0.25, Math.PI * 1.75); ctx.moveTo(27, 57.5); ctx.lineTo(27, 62.5); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(10, 39);
+    ctx.quadraticCurveTo(27, 46, 44, 39);
+    ctx.lineTo(41, 52);
+    ctx.quadraticCurveTo(27, 57, 13, 52);
+    ctx.closePath();
+    ctx.fill();
+    // grey side plates that taper in with the ribcage - the tight-suit look
+    ctx.fillStyle = "#d2d7dd";
+    ctx.beginPath();
+    ctx.moveTo(12, 52); ctx.quadraticCurveTo(9, 66, 13, 82); ctx.lineTo(18, 80);
+    ctx.quadraticCurveTo(16, 66, 18, 54); ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(42, 52); ctx.quadraticCurveTo(45, 66, 41, 82); ctx.lineTo(36, 80);
+    ctx.quadraticCurveTo(38, 66, 36, 54); ctx.closePath(); ctx.fill();
+    // central sculpted seam + ab lines
+    ctx.strokeStyle = "#aeb4bc"; ctx.lineWidth = 1.8; ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(27, 58); ctx.lineTo(27, 84);
+    ctx.moveTo(20, 66); ctx.lineTo(24, 66); ctx.moveTo(30, 66); ctx.lineTo(34, 66);
+    ctx.moveTo(20, 74); ctx.lineTo(24, 74); ctx.moveTo(30, 74); ctx.lineTo(34, 74);
+    ctx.stroke();
+    // grey belt, snug to the waist
+    ctx.fillStyle = "#b3b9c1"; ctx.fillRect(14, 84, 26, 7);
+    ctx.strokeStyle = "#8a9099"; ctx.lineWidth = 1; ctx.strokeRect(14, 84, 26, 7);
+    // Viltrumite emblem - grey ring + hooked glyph on the chest
+    ctx.fillStyle = "#cdd2d9"; ctx.beginPath(); ctx.arc(27, 50, 5.4, 0, PI2); ctx.fill();
+    ctx.fillStyle = "#9aa1aa"; ctx.beginPath(); ctx.arc(27, 50, 3.5, 0, PI2); ctx.fill();
+    ctx.strokeStyle = "#eef1f5"; ctx.lineWidth = 1.5; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.arc(27, 50, 2.2, Math.PI * 0.25, Math.PI * 1.75); ctx.moveTo(27, 47.8); ctx.lineTo(27, 52.2); ctx.stroke();
     return;
   }
 
@@ -16491,17 +16548,17 @@ function getBaseTechniqueSkin(f, flash) {
     };
   }
 
-  // ZEALOT_PATCH: gold-plated Protoss armor with cyan energy trim.
+  // ZEALOT_PATCH: gold-plated Protoss armor with teal energy trim.
   if (f.technique === "zealot") {
     return {
       body: "#c8a13a",
       skin: "#8a6f3a",
-      accent: "#38e0f0",
+      accent: "#2dd4bf",
       pants: "#7c5c1e",
       shoe: "#4a3712",
       hair: "#0b1420",
-      eye: "#38e0f0",
-      mark: "#38e0f0"
+      eye: "#2dd4bf",
+      mark: "#2dd4bf"
     };
   }
 
@@ -17811,6 +17868,306 @@ function drawThraggFlightEffect(f) {
   ctx.restore();
 }
 
+// AKIRA_PROPS_PATCH: signature props + animations for Akira's kit - the Cold
+// Beer toast, the Joy Ride motorbike, the Volt Punch battery gauntlet and the
+// Overtime laptop grind. Drawn in the fighter's local art space (x 0-52, feet
+// at y 124) with f.dir already applied, so +x always faces forward.
+function drawAkiraProps(f) {
+  if (!f || f.ko || f.lying) return;
+  const PI2 = Math.PI * 2;
+  const t = frame;
+
+  // ---- Joy Ride: a red motorbike carries Akira through the dash ----------
+  if ((f.akiraJoyrideTicks || 0) > 0) {
+    const spin = t * 0.9;
+    ctx.save();
+    // cyan speed streaks trailing behind him
+    ctx.strokeStyle = "rgba(120, 220, 255, 0.55)";
+    ctx.lineWidth = 2; ctx.lineCap = "round";
+    for (let i = 0; i < 4; i++) {
+      const yy = 74 + i * 11;
+      ctx.beginPath();
+      ctx.moveTo(-4 - (i % 2) * 6, yy);
+      ctx.lineTo(-26 - (i % 2) * 10, yy);
+      ctx.stroke();
+    }
+    const wheelR = 12, rearX = 8, frontX = 46, wheelY = 116;
+    // red frame
+    ctx.strokeStyle = "#c92d2a"; ctx.lineWidth = 5; ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(rearX, wheelY); ctx.lineTo(24, 94); ctx.lineTo(frontX, wheelY);
+    ctx.moveTo(24, 94); ctx.lineTo(42, 82);
+    ctx.stroke();
+    // black seat
+    ctx.fillStyle = "#191c22";
+    ctx.beginPath(); ctx.ellipse(17, 90, 12, 4.6, -0.15, 0, PI2); ctx.fill();
+    // handlebar + headlight
+    ctx.strokeStyle = "#2a2f38"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(42, 82); ctx.lineTo(49, 76); ctx.stroke();
+    ctx.fillStyle = "rgba(255, 238, 150, 0.95)";
+    ctx.beginPath(); ctx.arc(50, 86, 3.6, 0, PI2); ctx.fill();
+    // wheels with spinning spokes
+    [rearX, frontX].forEach((wx) => {
+      ctx.fillStyle = "#14171c";
+      ctx.beginPath(); ctx.arc(wx, wheelY, wheelR, 0, PI2); ctx.fill();
+      ctx.fillStyle = "#2b3038";
+      ctx.beginPath(); ctx.arc(wx, wheelY, wheelR * 0.5, 0, PI2); ctx.fill();
+      ctx.strokeStyle = "#6b7280"; ctx.lineWidth = 1.6;
+      for (let s = 0; s < 4; s++) {
+        const a = spin + s * (Math.PI / 2);
+        ctx.beginPath();
+        ctx.moveTo(wx, wheelY);
+        ctx.lineTo(wx + Math.cos(a) * wheelR * 0.85, wheelY + Math.sin(a) * wheelR * 0.85);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = "#4b5563"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(wx, wheelY, wheelR, 0, PI2); ctx.stroke();
+    });
+    // exhaust puff behind
+    ctx.fillStyle = "rgba(200, 200, 210, 0.32)";
+    ctx.beginPath(); ctx.arc(0 - (t % 8), 110, 3 + (t % 6) * 0.4, 0, PI2); ctx.fill();
+    ctx.restore();
+  }
+
+  // ---- Volt Punch: battery gauntlet + crackling arcs on the front fist ----
+  if ((f.akiraVoltTicks || 0) > 0) {
+    ctx.save();
+    const fx = 54, fy = 58;
+    // charged glow
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.fillStyle = "rgba(120, 200, 255, 0.35)";
+    ctx.beginPath(); ctx.arc(fx, fy, 14 + Math.sin(t * 0.6) * 2, 0, PI2); ctx.fill();
+    ctx.restore();
+    // battery gauntlet housing
+    ctx.fillStyle = "#232a34";
+    ctx.strokeStyle = "#020617"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.rect(fx - 9, fy - 8, 18, 16); ctx.fill(); ctx.stroke();
+    // battery cell (yellow) + terminal
+    ctx.fillStyle = "#f7c948";
+    ctx.fillRect(fx - 5, fy - 5, 10, 10);
+    ctx.fillStyle = "#111827";
+    ctx.fillRect(fx - 1.5, fy - 8.5, 3, 2.4);
+    // bolt icon
+    ctx.fillStyle = "#111827";
+    ctx.beginPath();
+    ctx.moveTo(fx + 1, fy - 4); ctx.lineTo(fx - 3, fy + 1); ctx.lineTo(fx, fy + 1);
+    ctx.lineTo(fx - 1, fy + 5); ctx.lineTo(fx + 3, fy - 1); ctx.lineTo(fx, fy - 1);
+    ctx.closePath(); ctx.fill();
+    // electric arcs radiating out
+    ctx.strokeStyle = `rgba(180, 235, 255, ${0.7 + Math.sin(t) * 0.2})`;
+    ctx.lineWidth = 1.8; ctx.lineCap = "round";
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * PI2 + t * 0.4;
+      const r1 = 12, r2 = 22 + (i % 2) * 6;
+      const mx = fx + Math.cos(a) * (r1 + r2) * 0.5 + Math.sin(t * 2 + i) * 3;
+      const my = fy + Math.sin(a) * (r1 + r2) * 0.5 + Math.cos(t * 2 + i) * 3;
+      ctx.beginPath();
+      ctx.moveTo(fx + Math.cos(a) * r1, fy + Math.sin(a) * r1);
+      ctx.lineTo(mx, my);
+      ctx.lineTo(fx + Math.cos(a) * r2, fy + Math.sin(a) * r2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // ---- Overtime: Akira grinds at a glowing laptop -------------------------
+  if ((f.akiraOvertimeTicks || 0) > 0) {
+    ctx.save();
+    const lx = 40, ly = 84;
+    // laptop base
+    ctx.fillStyle = "#4b5563";
+    ctx.strokeStyle = "#020617"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(lx - 14, ly + 6); ctx.lineTo(lx + 14, ly + 6); ctx.lineTo(lx + 12, ly); ctx.lineTo(lx - 12, ly); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // screen (tilted up) with glow
+    ctx.fillStyle = "#2b333f";
+    ctx.beginPath(); ctx.moveTo(lx - 12, ly); ctx.lineTo(lx + 12, ly); ctx.lineTo(lx + 14, ly - 16); ctx.lineTo(lx - 10, ly - 16); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = `rgba(120, 220, 255, ${0.55 + Math.sin(t * 0.4) * 0.2})`;
+    ctx.beginPath(); ctx.moveTo(lx - 9, ly - 2); ctx.lineTo(lx + 10, ly - 2); ctx.lineTo(lx + 11.5, ly - 14); ctx.lineTo(lx - 7.5, ly - 14); ctx.closePath();
+    ctx.fill();
+    // spreadsheet lines on screen
+    ctx.strokeStyle = "rgba(230, 245, 255, 0.7)"; ctx.lineWidth = 0.9;
+    ctx.beginPath();
+    ctx.moveTo(lx - 6, ly - 11); ctx.lineTo(lx + 8, ly - 11);
+    ctx.moveTo(lx - 6.5, ly - 7); ctx.lineTo(lx + 9, ly - 7);
+    ctx.stroke();
+    // floating papers flying up as he works
+    ctx.fillStyle = "#eef1f5"; ctx.strokeStyle = "#94a3b8"; ctx.lineWidth = 1;
+    for (let i = 0; i < 3; i++) {
+      const ph = (t * 1.6 + i * 30) % 60;
+      const px = lx - 4 + i * 8 + Math.sin((t + i * 20) * 0.1) * 4;
+      const py = ly - 20 - ph * 0.7;
+      const al = Math.max(0, 1 - ph / 60);
+      ctx.globalAlpha = al;
+      ctx.save(); ctx.translate(px, py); ctx.rotate(Math.sin(t * 0.1 + i) * 0.5);
+      ctx.fillRect(-3, -4, 6, 8); ctx.strokeRect(-3, -4, 6, 8);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+    // effort sweat drops off the head
+    ctx.fillStyle = "rgba(150, 210, 255, 0.9)";
+    for (let i = 0; i < 2; i++) {
+      const sp = (t * 2 + i * 18) % 36;
+      ctx.beginPath();
+      ctx.arc(40 + i * 6, 24 + sp * 0.5, 2.2, 0, PI2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // ---- Cold Beer: a raised can toast right after drinking -----------------
+  if ((f.akiraBeerTicks || 0) > AKIRA_BEER_BUFF_TICKS - 50) {
+    ctx.save();
+    const cx = 38, cy = 26;
+    ctx.save();
+    ctx.translate(cx, cy); ctx.rotate(-0.35);
+    // can body (gold)
+    ctx.fillStyle = "#e6b325";
+    ctx.strokeStyle = "#020617"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.rect(-5, -8, 10, 16); ctx.fill(); ctx.stroke();
+    // silver top + tab
+    ctx.fillStyle = "#cbd5e1";
+    ctx.fillRect(-5, -8, 10, 3);
+    // red label band
+    ctx.fillStyle = "#c1121f";
+    ctx.fillRect(-5, -1, 10, 4);
+    ctx.restore();
+    // foam / bubbles rising
+    ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+    for (let i = 0; i < 4; i++) {
+      const bp = (t * 1.4 + i * 15) % 30;
+      ctx.globalAlpha = Math.max(0, 1 - bp / 30);
+      ctx.beginPath();
+      ctx.arc(cx + 2 + Math.sin(t * 0.2 + i) * 3, cy - 10 - bp * 0.5, 1.6, 0, PI2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+}
+
+// ZEALOT_TEAL_FX_PATCH: world-space teal effects for the Zealot's mobility
+// kit - the Charge dash trail, the Whirlwind blade ring (drawn out here so it
+// stays circular while the body spins), and the Warp Reinforcements ultimate
+// aura + warp rings.
+function drawZealotAbilityFx(f) {
+  if (!f || f.ko || f.lying) return;
+  const PI2 = Math.PI * 2;
+  const c = getFighterCenter(f);
+  const midY = f.y + f.h * 0.5;
+  const dir = f.dir || 1;
+  const TEAL = (a) => `rgba(45, 212, 191, ${a})`;
+  const TEAL_HI = (a) => `rgba(153, 246, 228, ${a})`;
+
+  // ---- Charge / dash: teal streaks + leading glow ------------------------
+  if ((f.zealotChargeTicks || 0) > 0) {
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    // trailing speed streaks
+    ctx.lineCap = "round";
+    for (let i = 0; i < 5; i++) {
+      const yy = f.y + 24 + i * 14;
+      const jitter = Math.sin(frame * 0.8 + i) * 3;
+      ctx.strokeStyle = TEAL(0.4 - i * 0.04);
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(c.x - dir * 14, yy + jitter);
+      ctx.lineTo(c.x - dir * (52 + (i % 2) * 14), yy + jitter);
+      ctx.stroke();
+    }
+    // leading edge flare
+    ctx.fillStyle = TEAL(0.28 + Math.sin(frame * 0.6) * 0.08);
+    ctx.beginPath();
+    ctx.ellipse(c.x + dir * 22, midY, 16, 30, 0, 0, PI2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // ---- Whirlwind: circular teal blade ring + ground dust -----------------
+  if ((f.zealotWhirlTicks || 0) > 0) {
+    const spin = frame * 0.85;
+    const rx = 46, ry = 22;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    // motion-blur ring
+    ctx.strokeStyle = TEAL(0.28);
+    ctx.lineWidth = 10;
+    ctx.beginPath();
+    ctx.ellipse(c.x, midY + 6, rx, ry, 0, 0, PI2);
+    ctx.stroke();
+    // three sweeping blades
+    for (let i = 0; i < 3; i++) {
+      const a = spin + i * (PI2 / 3);
+      const x1 = c.x + Math.cos(a) * rx * 0.32;
+      const y1 = midY + 6 + Math.sin(a) * ry * 0.32;
+      const x2 = c.x + Math.cos(a) * rx;
+      const y2 = midY + 6 + Math.sin(a) * ry;
+      ctx.strokeStyle = TEAL(0.75);
+      ctx.lineWidth = 6;
+      ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      ctx.strokeStyle = TEAL_HI(0.95);
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    }
+    ctx.restore();
+    // ground dust ring kicked up by the spin
+    ctx.save();
+    ctx.strokeStyle = TEAL(0.3);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(c.x, GROUND - 4, rx * (0.7 + (frame % 20) / 40), 8, 0, 0, PI2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // ---- Warp Reinforcements ult: teal aura + warp rings -------------------
+  if ((f.zealotUltTicks || 0) > 0) {
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    // pulsing body aura
+    const pulse = 1 + Math.sin(frame * 0.25) * 0.08;
+    ctx.fillStyle = TEAL(0.12);
+    ctx.beginPath();
+    ctx.ellipse(c.x, midY, 30 * pulse, 52 * pulse, 0, 0, PI2);
+    ctx.fill();
+    ctx.strokeStyle = TEAL(0.4);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(c.x, midY, 30 * pulse, 52 * pulse, 0, 0, PI2);
+    ctx.stroke();
+    // rising warp motes
+    for (let i = 0; i < 6; i++) {
+      const ph = (frame * 1.5 + i * 40) % 90;
+      const px = c.x + Math.sin((frame + i * 30) * 0.06) * 26;
+      const py = GROUND - 4 - ph * 0.9;
+      ctx.globalAlpha = Math.max(0, 1 - ph / 90);
+      ctx.fillStyle = TEAL_HI(0.9);
+      ctx.beginPath(); ctx.arc(px, py, 2, 0, PI2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+    // fresh warp-in double ring for the first moments of the ult
+    if ((f.zealotWarpTimer || 0) > 0) {
+      const wt = 1 - (f.zealotWarpTimer || 0) / 40;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = TEAL(0.7 * (1 - wt));
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.ellipse(c.x, GROUND - 6, 20 + wt * 60, 10 + wt * 22, 0, 0, PI2);
+      ctx.stroke();
+      ctx.strokeStyle = TEAL_HI(0.5 * (1 - wt));
+      ctx.beginPath();
+      ctx.ellipse(c.x, midY, 14 + wt * 44, 26 + wt * 50, 0, 0, PI2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+}
+
 function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   // VECNA_PATCH: melted into the Upside Down - no body, just a dark pool
   // rippling along the ground where he's moving.
@@ -17902,6 +18259,13 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   const davidMech = davidUltActive(f) && !f.ko && !f.lying;
   const bulkX = f.technique === "brawler" ? 1.16 : davidMech ? 1.22 : 1;
   const bulkY = f.technique === "brawler" ? 1.1 : davidMech ? 1.5 : 1;
+  // ZEALOT_WHIRL_SPIN_PATCH: during Whirlwind the WHOLE body spins - the
+  // horizontal scale sweeps through zero (edge-on) and flips sign, reading as
+  // a fast pirouetting top rather than just the blades circling. The magnitude
+  // is floored so he never fully vanishes at the edge-on moment.
+  const whirling = isZealot(f) && (f.zealotWhirlTicks || 0) > 0 && !f.ko && !f.lying;
+  const whirlCos = whirling ? Math.cos(frame * 0.85) : 1;
+  const whirlSpinX = whirling ? Math.sign(whirlCos || 1) * (0.22 + 0.78 * Math.abs(whirlCos)) : 1;
   if (f.ko || f.lying) {
     ctx.translate(f.x + f.w / 2, f.y + f.h);
     ctx.rotate(f.koFallDir * f.koRotation);
@@ -17909,7 +18273,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.translate(-f.w / 2, -f.h);
   } else {
     ctx.translate(f.x + f.w / 2, f.y - bob + idle * 0.7 + f.h);
-    ctx.scale(f.dir * bulkX, bulkY);
+    ctx.scale(f.dir * bulkX * whirlSpinX, bulkY);
     ctx.translate(-f.w / 2, -f.h);
   }
 
@@ -18288,33 +18652,14 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     // THRAGG_EMPEROR_PATCH: the Grand Regent robes from the reference -
     // blood-red outer robe (the torso is already red) with red coat
     // panels flaring over the sides of the legs, a grey inner robe strip
-    // and belt, the Viltrumite chest emblem, and a big grey-white fur
-    // collar. (Torso base fill is red via the palette.)
-    // red coat panels flaring down over the outer legs (drawn first, they
-    // sit over the leg tops but leave the shins visible for the walk)
-    ctx.fillStyle = "#a02a23";
-    ctx.beginPath();
-    ctx.moveTo(11, 60);
-    ctx.quadraticCurveTo(2, 84, 6, 108);
-    ctx.lineTo(16, 106);
-    ctx.quadraticCurveTo(16, 84, 20, 66);
-    ctx.closePath();
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(43, 60);
-    ctx.quadraticCurveTo(52, 84, 48, 108);
-    ctx.lineTo(38, 106);
-    ctx.quadraticCurveTo(38, 84, 34, 66);
-    ctx.closePath();
-    ctx.fill();
-    // darker robe folds
-    ctx.strokeStyle = "rgba(90, 20, 16, 0.7)";
-    ctx.lineWidth = 1.6;
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(9, 70); ctx.quadraticCurveTo(7, 88, 10, 104);
-    ctx.moveTo(45, 70); ctx.quadraticCurveTo(47, 88, 44, 104);
-    ctx.stroke();
+    // and belt, and the Viltrumite chest emblem. (Torso base fill is red
+    // via the palette.) THRAGG_NO_PANTS_PANEL_PATCH: the red leg coat-panels
+    // were removed per request; the fur collar stays on the base emperor
+    // (drawn below) and is dropped only for the Viltrumite skin.
+    // SKINS_PATCH: the Viltrumite skin skips the emperor robe ornaments
+    // entirely - its clean white torso (via the palette) shows through and
+    // the tight-suit plating is added by drawSkinOutfitOverlay.
+    if (!isViltrumite(f)) {
     // grey inner-robe strip down the center chest-to-hem
     ctx.fillStyle = "#c2c7cf";
     ctx.beginPath();
@@ -18366,40 +18711,42 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.moveTo(27, 46);
     ctx.lineTo(27, 50);
     ctx.stroke();
-    // THRAGG_EMPEROR_PATCH: the big grey-white fur collar standing up
-    // around the neck and over the shoulders.
-    ctx.fillStyle = "#e7eaee";
-    // left and right fur masses sweeping up off the shoulders
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(23, 42);
-    ctx.quadraticCurveTo(12, 40, 6, 26);
-    ctx.quadraticCurveTo(3, 33, 5, 40);
-    ctx.quadraticCurveTo(2, 44, 8, 47);
-    ctx.quadraticCurveTo(16, 49, 23, 45);
-    ctx.closePath();
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(31, 42);
-    ctx.quadraticCurveTo(42, 40, 48, 26);
-    ctx.quadraticCurveTo(51, 33, 49, 40);
-    ctx.quadraticCurveTo(52, 44, 46, 47);
-    ctx.quadraticCurveTo(38, 49, 31, 45);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-    // fur shading strands
-    ctx.strokeStyle = "rgba(150, 156, 164, 0.7)";
-    ctx.lineWidth = 1;
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(8, 30); ctx.lineTo(11, 40);
-    ctx.moveTo(13, 32); ctx.lineTo(15, 42);
-    ctx.moveTo(18, 40); ctx.lineTo(20, 45);
-    ctx.moveTo(46, 30); ctx.lineTo(43, 40);
-    ctx.moveTo(41, 32); ctx.lineTo(39, 42);
-    ctx.moveTo(36, 40); ctx.lineTo(34, 45);
-    ctx.stroke();
+    }
+    // THRAGG_EMPEROR_PATCH: the big grey-white fur collar standing up around
+    // the neck and over the shoulders. SKINS_PATCH: the Viltrumite battlesuit
+    // skin drops the fur for the clean tight uniform.
+    if (!isViltrumite(f)) {
+      ctx.fillStyle = "#e7eaee";
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(23, 42);
+      ctx.quadraticCurveTo(12, 40, 6, 26);
+      ctx.quadraticCurveTo(3, 33, 5, 40);
+      ctx.quadraticCurveTo(2, 44, 8, 47);
+      ctx.quadraticCurveTo(16, 49, 23, 45);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(31, 42);
+      ctx.quadraticCurveTo(42, 40, 48, 26);
+      ctx.quadraticCurveTo(51, 33, 49, 40);
+      ctx.quadraticCurveTo(52, 44, 46, 47);
+      ctx.quadraticCurveTo(38, 49, 31, 45);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      ctx.strokeStyle = "rgba(150, 156, 164, 0.7)";
+      ctx.lineWidth = 1;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(8, 30); ctx.lineTo(11, 40);
+      ctx.moveTo(13, 32); ctx.lineTo(15, 42);
+      ctx.moveTo(18, 40); ctx.lineTo(20, 45);
+      ctx.moveTo(46, 30); ctx.lineTo(43, 40);
+      ctx.moveTo(41, 32); ctx.lineTo(39, 42);
+      ctx.moveTo(36, 40); ctx.lineTo(34, 45);
+      ctx.stroke();
+    }
   } else if (f.technique === "blackleg") {
     // SANJI_PATCH: black double-breasted suit over a blue shirt with a
     // dark tie - lapels open in a V at the chest.
@@ -19594,10 +19941,15 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   // the Zealot's psi blades can emit from the actual hands and follow the
   // hand movement, instead of fixed torso positions.
   const zealotHands = [];
-  const drawArmRig = (shoulder, elbow, hand, color = f.technique === "shrine" ? skinColor : bodyColor, handColor = skinColor) => {
+  const shibuyaSleeve = isShibuya(f);
+  // SKINS_PATCH: Shibuya Sukuna's sleeve navy; base Sukuna's arms stay bare skin.
+  const shrineArmColor = shibuyaSleeve ? "#1b2742" : skinColor;
+  const drawArmRig = (shoulder, elbow, hand, color = f.technique === "shrine" ? shrineArmColor : bodyColor, handColor = skinColor) => {
     if (isZealot(f)) zealotHands.push({ elbow: { x: elbow.x, y: elbow.y }, hand: { x: hand.x, y: hand.y } });
-    const useOutline = f.technique !== "shrine";
-    const isShrineArm = f.technique === "shrine";
+    // SKINS_PATCH: Shibuya Sukuna's arms get a black outline (they're sleeved,
+    // not bare) and skip the bare-arm tattoo bands.
+    const useOutline = f.technique !== "shrine" || shibuyaSleeve;
+    const isShrineArm = f.technique === "shrine" && !shibuyaSleeve;
     const strokeArm = (strokeColor, width) => {
       ctx.strokeStyle = strokeColor;
       ctx.lineWidth = width;
@@ -19662,7 +20014,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     drawArmRig({ x: 41, y: 48 }, { x: 54, y: 49 }, { x: 57, y: 61 });
     drawArmRig({ x: 12, y: 50 }, { x: 23, y: 58 }, { x: 30, y: 52 });
   }
-  if (f.technique === "shrine" && !f.attacking && !jumpPose && !f.blocking) {
+  if (f.technique === "shrine" && !shibuyaSleeve && !f.attacking && !jumpPose && !f.blocking) {
     const lowerBreath = running ? runCenterLift * 0.12 : idle * 2;
     const lowerSwing = running ? armSwing * (backpedal ? 1.1 : 8) : idle * 1.2; // EQUAL_ARM_PATCH: same backpedal sway as the upper pair
     drawArmRig(
@@ -19696,7 +20048,8 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
         { shoulder: { x: 44, y: 64 }, elbowY: 66, handY: 62, delay: 2.4 },
         { shoulder: { x: 9, y: 65 }, elbowY: 72, handY: 75, delay: 3.6 }
       ];
-      armSet.forEach((arm, index) => {
+      // SKINS_PATCH: Shibuya Sukuna throws with just the one pair of arms.
+      (shibuyaSleeve ? armSet.slice(0, 2) : armSet).forEach((arm, index) => {
         const thrust = Math.max(0, Math.sin(barragePhase + arm.delay));
         const recoil = Math.max(0, -Math.sin(barragePhase + arm.delay)) * 5;
         const reach = 52 + thrust * 27 - recoil;
@@ -19706,7 +20059,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
           arm.shoulder,
           { x: elbowX, y: arm.elbowY + Math.cos(barragePhase + index) * 2 },
           hand,
-          skinColor
+          shrineArmColor
         );
         if (thrust > 0.65) {
           ctx.strokeStyle = `rgba(251, 146, 60, ${0.25 + thrust * 0.28})`;
@@ -19724,15 +20077,15 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
         { x: 42, y: 48 },
         { x: 57, y: 47 + holdPulse },
         { x: 68, y: 53 + holdPulse },
-        f.technique === "shrine" ? skinColor : bodyColor
+        f.technique === "shrine" ? shrineArmColor : bodyColor
       );
       drawArmRig(
         { x: 12, y: 50 },
         { x: 29, y: 47 - holdPulse },
         { x: 42, y: 54 - holdPulse },
-        f.technique === "shrine" ? skinColor : bodyColor
+        f.technique === "shrine" ? shrineArmColor : bodyColor
       );
-      if (f.technique === "shrine") {
+      if (f.technique === "shrine" && !shibuyaSleeve) {
         drawArmRig(
           { x: 44, y: 64 },
           { x: 58, y: 63 - holdPulse },
@@ -19758,7 +20111,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
         { x: 25 - pull * 20, y: 60 + pull * 5 },
         { x: 34 - pull * 42, y: 63 + pull * 7 }
       );
-      if (f.technique === "shrine") {
+      if (f.technique === "shrine" && !shibuyaSleeve) {
         drawArmRig(
           { x: 44, y: 64 },
           { x: 53 - pull * 18, y: 75 },
@@ -19930,6 +20283,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
         { x: -8 - airSwing, y: 65 },
         skinColor
       );
+      if (!shibuyaSleeve) {
       drawArmRig(
         { x: 43, y: 63 },
         { x: 50 - airSwing * 0.25, y: 75 },
@@ -19942,6 +20296,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
         { x: 9 + airSwing, y: 88 },
         skinColor
       );
+      }
     } else if (jumpRetreating) {
       const armWave = jumpCycle * 2;
       drawArmRig({ x: 41, y: 48 }, { x: 56, y: 50 + armWave }, { x: 69, y: 46 + armWave });
@@ -20014,13 +20369,13 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       { x: 42, y: 50 },
       { x: 53 + recoil * 7, y: 44 - recoil * 9 },
       { x: 59 + recoil * 9, y: 33 - recoil * 12 },
-      f.technique === "shrine" ? skinColor : bodyColor
+      f.technique === "shrine" ? shrineArmColor : bodyColor
     );
     drawArmRig(
       { x: 11, y: 53 },
       { x: 1 - recoil * 5, y: 61 + recoil * 7 },
       { x: -6 - recoil * 7, y: 72 + recoil * 11 },
-      f.technique === "shrine" ? skinColor : bodyColor
+      f.technique === "shrine" ? shrineArmColor : bodyColor
     );
   } else if (!f.blocking) {
     if (f.technique === "shrine") {
@@ -20030,13 +20385,13 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
         { x: 44, y: 48 + upperBreath },
         { x: 55 - upperSwing * 0.4, y: 57 + upperBreath },
         { x: 59 - upperSwing, y: 67 + upperBreath * 0.3 },
-        skinColor
+        shrineArmColor
       );
       drawArmRig(
         { x: 9, y: 49 + upperBreath },
         { x: -2 + upperSwing * 0.4, y: 58 + upperBreath },
         { x: -6 + upperSwing, y: 68 + upperBreath * 0.3 },
-        skinColor
+        shrineArmColor
       );
     } else if (backpedal) {
       // BACKPEDAL arm carriage: elbows bent and held near the ribs, hands
@@ -20094,16 +20449,16 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       const bow = 3.4; // curve bow
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
-      // outer glow
-      ctx.fillStyle = "rgba(56, 189, 248, 0.32)";
+      // outer glow (teal)
+      ctx.fillStyle = "rgba(45, 212, 191, 0.32)";
       ctx.beginPath();
       ctx.moveTo(bx + nx * (w0 + 3), by + ny * (w0 + 3));
       ctx.quadraticCurveTo(bx + Math.cos(ang) * len * 0.5 + nx * (bow + 4), by + Math.sin(ang) * len * 0.5 + ny * (bow + 4), tipX, tipY);
       ctx.quadraticCurveTo(bx + Math.cos(ang) * len * 0.5 - nx * (bow - 1), by + Math.sin(ang) * len * 0.5 - ny * (bow - 1), bx - nx * (w0 + 3), by - ny * (w0 + 3));
       ctx.closePath();
       ctx.fill();
-      // blade body
-      ctx.fillStyle = "rgba(125, 211, 252, 0.85)";
+      // blade body (teal)
+      ctx.fillStyle = "rgba(45, 212, 191, 0.9)";
       ctx.beginPath();
       ctx.moveTo(bx + nx * w0, by + ny * w0);
       ctx.quadraticCurveTo(bx + Math.cos(ang) * len * 0.5 + nx * bow, by + Math.sin(ang) * len * 0.5 + ny * bow, tipX, tipY);
@@ -20126,27 +20481,10 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       ctx.restore();
     };
     if ((f.zealotWhirlTicks || 0) > 0) {
-      // whirlwind: sweeping ring of blade light around the body
-      const spin = frame * 0.9;
-      ctx.save();
-      ctx.globalCompositeOperation = "lighter";
-      for (let i = 0; i < 3; i += 1) {
-        const a = spin + i * (Math.PI * 2 / 3);
-        ctx.strokeStyle = "rgba(125, 211, 252, 0.7)";
-        ctx.lineWidth = 6;
-        ctx.lineCap = "round";
-        ctx.beginPath();
-        ctx.moveTo(26 + Math.cos(a) * 14, 60 + Math.sin(a) * 8);
-        ctx.lineTo(26 + Math.cos(a) * 44, 60 + Math.sin(a) * 24);
-        ctx.stroke();
-        ctx.strokeStyle = "rgba(235, 250, 255, 0.9)";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(26 + Math.cos(a) * 16, 60 + Math.sin(a) * 9);
-        ctx.lineTo(26 + Math.cos(a) * 42, 60 + Math.sin(a) * 23);
-        ctx.stroke();
-      }
-      ctx.restore();
+      // ZEALOT_WHIRL_SPIN_PATCH: the sweeping teal blade ring is drawn in
+      // world space (drawZealotWhirlAura, after the body restore) so it stays
+      // circular while the whole body pirouettes inside it. Nothing here - the
+      // hand blades are suppressed during the spin.
     } else {
       // ARTANIS_HANDBLADE_PATCH: a psi blade grows from each HAND, aimed
       // along the forearm (elbow -> hand) and running out past the hand,
@@ -20267,11 +20605,17 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   }
   ctx.restore();
 
+  // AKIRA_PROPS_PATCH: ability props (bike / battery / laptop / beer) render
+  // over the body in the feet-anchored, dir-scaled space.
+  if (f.technique === "akira") drawAkiraProps(f);
+
   // DAVID_PATCH: mech legs + gauntlets drawn over the body so his own arms
   // and legs are hidden inside the Cyber Skeleton.
   if (davidUltActive(f) && !f.ko && !f.lying) drawDavidCyberSkeletonFront(f);
 
   ctx.restore();
+
+  if (isZealot(f)) drawZealotAbilityFx(f);
 
   drawRctEffect(f);
   drawInfinityField(f);
@@ -20302,7 +20646,7 @@ function drawTechniquePreview(canvasEl, technique, skinId) {
     h: 128,
     dir: 1,
     color: technique === "shrine" ? "#dc2626" : technique === "deathnote" ? "#111827" : technique === "brawler" ? "#eceef2" : technique === "blackleg" ? "#16181f" : technique === "hivemind" ? "#54322c" : technique === "zealot" ? "#c8a13a" : technique === "spider" ? "#c0242c" : technique === "beast" ? "#caa079" : technique === "jiji" ? "#d23a2a" : technique === "david" ? "#26282e" : technique === "akira" ? "#1fa38c" : "#2563eb",
-    accent: technique === "shrine" ? "#991b1b" : technique === "deathnote" ? "#b91c1c" : technique === "brawler" ? "#dc2626" : technique === "blackleg" ? "#facc15" : technique === "hivemind" ? "#7f1d1d" : technique === "zealot" ? "#38e0f0" : technique === "spider" ? "#1e3a8a" : technique === "beast" ? "#4a5568" : technique === "jiji" ? "#a855f7" : technique === "david" ? "#31d7e0" : technique === "akira" ? "#e04b3a" : "#1d4ed8"
+    accent: technique === "shrine" ? "#991b1b" : technique === "deathnote" ? "#b91c1c" : technique === "brawler" ? "#dc2626" : technique === "blackleg" ? "#facc15" : technique === "hivemind" ? "#7f1d1d" : technique === "zealot" ? "#2dd4bf" : technique === "spider" ? "#1e3a8a" : technique === "beast" ? "#4a5568" : technique === "jiji" ? "#a855f7" : technique === "david" ? "#31d7e0" : technique === "akira" ? "#e04b3a" : "#1d4ed8"
   });
   previewFighter.technique = technique;
   previewFighter.skinId = skinId || getSelectedSkin(technique); // SKINS_PATCH
@@ -20953,7 +21297,7 @@ function drawZealotUnits() {
     if (u.warpFlash > 0) {
       ctx.globalAlpha = 0.4 + 0.6 * (1 - u.warpFlash / 18);
       ctx.globalCompositeOperation = "lighter";
-      ctx.fillStyle = "rgba(56, 224, 240, 0.5)";
+      ctx.fillStyle = "rgba(45, 212, 191, 0.5)";
       ctx.beginPath();
       ctx.ellipse(0, -12, 20, 30 * (u.warpFlash / 18 + 0.2), 0, 0, Math.PI * 2);
       ctx.fill();
@@ -20973,7 +21317,7 @@ function drawZealotUnits() {
       ctx.beginPath(); ctx.moveTo(-4, -28); ctx.lineTo(-8, -18); ctx.moveTo(4, -28); ctx.lineTo(8, -18); ctx.stroke();
       // psi blades
       ctx.globalCompositeOperation = "lighter";
-      ctx.strokeStyle = "rgba(56, 224, 240, 0.9)"; ctx.lineWidth = 3;
+      ctx.strokeStyle = "rgba(45, 212, 191, 0.9)"; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.moveTo(11, -8); ctx.lineTo(28, -14); ctx.stroke();
       ctx.globalCompositeOperation = "source-over";
     } else if (u.kind === "stalker") {
@@ -20987,14 +21331,14 @@ function drawZealotUnits() {
       ctx.stroke();
       ctx.fillStyle = "#5a4a86"; ctx.strokeStyle = "#020617"; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.ellipse(0, -18, 13, 9, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = "#38e0f0"; ctx.beginPath(); ctx.arc(6, -18, 2.4, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#2dd4bf"; ctx.beginPath(); ctx.arc(6, -18, 2.4, 0, Math.PI * 2); ctx.fill();
     } else {
       // sentry: floating orb + barrier shimmer
       ctx.fillStyle = "#b98b2e"; ctx.strokeStyle = "#020617"; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(0, -16, 11, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = "#38e0f0"; ctx.beginPath(); ctx.arc(0, -16, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#2dd4bf"; ctx.beginPath(); ctx.arc(0, -16, 4, 0, Math.PI * 2); ctx.fill();
       ctx.globalCompositeOperation = "lighter";
-      ctx.strokeStyle = `rgba(56, 224, 240, ${0.3 + Math.sin(frame * 0.2) * 0.15})`;
+      ctx.strokeStyle = `rgba(45, 212, 191, ${0.3 + Math.sin(frame * 0.2) * 0.15})`;
       ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(0, -14, 22, 0, Math.PI * 2); ctx.stroke();
       ctx.globalCompositeOperation = "source-over";
@@ -21010,21 +21354,21 @@ function drawOrbitalBeams() {
     if (!b.struck) {
       const t = 1 - b.warnTicks / 40;
       ctx.globalAlpha = 0.4 + t * 0.4;
-      ctx.strokeStyle = "rgba(56, 224, 240, 0.85)";
+      ctx.strokeStyle = "rgba(45, 212, 191, 0.85)";
       ctx.lineWidth = 2.5;
       ctx.beginPath();
       ctx.ellipse(b.x, GROUND - 3, ZEALOT_ORBITAL_RADIUS * (0.5 + t * 0.5), 9, 0, 0, Math.PI * 2);
       ctx.stroke();
       ctx.globalAlpha = 0.3;
-      ctx.fillStyle = "rgba(56, 224, 240, 0.5)";
+      ctx.fillStyle = "rgba(45, 212, 191, 0.5)";
       ctx.fillRect(b.x - 3, 0, 6, GROUND);
     } else if (b.flash > 0) {
       ctx.globalAlpha = b.flash / 14;
       ctx.globalCompositeOperation = "lighter";
       const grad = ctx.createLinearGradient(b.x, 0, b.x, GROUND);
       grad.addColorStop(0, "rgba(224, 255, 255, 0.95)");
-      grad.addColorStop(0.5, "rgba(56, 224, 240, 0.9)");
-      grad.addColorStop(1, "rgba(8, 145, 178, 0.7)");
+      grad.addColorStop(0.5, "rgba(45, 212, 191, 0.9)");
+      grad.addColorStop(1, "rgba(13, 148, 136, 0.7)");
       ctx.fillStyle = grad;
       ctx.fillRect(b.x - ZEALOT_ORBITAL_RADIUS * 0.4, 0, ZEALOT_ORBITAL_RADIUS * 0.8, GROUND);
       ctx.fillStyle = "rgba(224, 255, 255, 0.9)";
@@ -22288,7 +22632,7 @@ function drawProjectiles() {
       // ZEALOT_PATCH: the Stalker's particle-disruptor bolt - a cyan dart.
       ctx.scale(p.dir, 1);
       ctx.globalCompositeOperation = "lighter";
-      ctx.fillStyle = "rgba(56, 224, 240, 0.4)";
+      ctx.fillStyle = "rgba(45, 212, 191, 0.4)";
       ctx.beginPath();
       ctx.ellipse(0, 0, 16, 6, 0, 0, Math.PI * 2);
       ctx.fill();
