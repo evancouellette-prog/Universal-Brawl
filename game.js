@@ -229,6 +229,45 @@ const KEY_BINDING_LABELS = {
 let keyBindings = loadKeyBindings();
 let listeningForKeybind = null;
 
+// SKINS_PATCH: cosmetic alternate outfits per character. "default" is always
+// the base look; the extra ids are drawn as overrides in getTechniqueSkin and
+// drawFighter. Selection is saved locally.
+const CHARACTER_SKINS = {
+  limitless: [{ id: "default", name: "Gojo" }, { id: "finalfight", name: "Final Fight" }],
+  shrine:    [{ id: "default", name: "Sukuna" }, { id: "shibuya", name: "Shibuya" }],
+  brawler:   [{ id: "default", name: "Emperor" }, { id: "viltrumite", name: "Viltrumite" }],
+  deathnote: [{ id: "default", name: "Light" }, { id: "sweats", name: "Sweats" }],
+  david:     [{ id: "default", name: "Edgerunner" }, { id: "schoolwear", name: "School" }]
+};
+const SKINS_STORAGE_KEY = "brawlCharacterSkinsV1";
+let selectedSkins = loadSelectedSkins();
+function loadSelectedSkins() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SKINS_STORAGE_KEY) || "{}");
+    return saved && typeof saved === "object" ? saved : {};
+  } catch (e) { return {}; }
+}
+function saveSelectedSkins() {
+  try { localStorage.setItem(SKINS_STORAGE_KEY, JSON.stringify(selectedSkins)); } catch (e) {}
+}
+function getSelectedSkin(technique) {
+  const list = CHARACTER_SKINS[technique];
+  if (!list) return "default";
+  const chosen = selectedSkins[technique];
+  return list.some(s => s.id === chosen) ? chosen : "default";
+}
+function setSelectedSkin(technique, skinId) {
+  selectedSkins[technique] = skinId;
+  saveSelectedSkins();
+}
+// Read a fighter's active skin (real fighters carry skinId; fall back to the
+// saved selection so previews and edge cases still work).
+function skinOf(f) {
+  if (!f) return "default";
+  if (f.skinId) return f.skinId;
+  return getSelectedSkin(f.technique);
+}
+
 let localPlayerName = "Player";
 let buttonSfxVolume = 0.45;
 let gameSfxVolume = 0.75;
@@ -6206,6 +6245,9 @@ function resetRoundActors() {
     enemy.technique = gameMode === "cpu" ? cpuOpponentTechnique : "limitless";
   }
   if (pacifistBot) enemy.technique = "dummy";
+  // SKINS_PATCH: apply the player's chosen cosmetic skin for each character.
+  player.skinId = getSelectedSkin(player.technique);
+  enemy.skinId = getSelectedSkin(enemy.technique);
   applyTechniqueStats(player);
   applyTechniqueStats(enemy);
   applyCpuDifficultyStats();
@@ -16160,7 +16202,134 @@ function drawViewportBackdrop() {
   ctx.fillRect(0, GROUND, W, H - GROUND);
 }
 
+// SKINS_PATCH: draw an alternate outfit over the default torso (local fighter
+// space: torso ~x8-46, y38-92, centre x27). Opaque, so it hides the default.
+function drawSkinOutfitOverlay(f, skinColor) {
+  const skin = skinOf(f);
+  if (skin === "default") return;
+  const PI2 = Math.PI * 2;
+  ctx.lineJoin = "round";
+
+  if (f.technique === "shrine" && skin === "shibuya") {
+    // Sukuna in Itadori's dark-navy school uniform with the red collar.
+    ctx.fillStyle = "#1b2742";
+    ctx.beginPath(); ctx.moveTo(12, 38); ctx.lineTo(42, 39); ctx.lineTo(43, 90); ctx.lineTo(11, 90); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#101a30"; // centre opening
+    ctx.beginPath(); ctx.moveTo(24, 40); ctx.lineTo(30, 40); ctx.lineTo(29, 90); ctx.lineTo(25, 90); ctx.closePath(); ctx.fill();
+    // red high collar / scarf
+    ctx.fillStyle = "#d5352d";
+    ctx.beginPath(); ctx.moveTo(15, 41); ctx.quadraticCurveTo(27, 33, 39, 41); ctx.lineTo(37, 48); ctx.quadraticCurveTo(27, 42, 17, 48); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = "#8f1f1a"; ctx.lineWidth = 1; ctx.stroke();
+    // gold buttons
+    ctx.fillStyle = "#e8c14a";
+    ctx.beginPath(); ctx.arc(31, 52, 1.6, 0, PI2); ctx.arc(31, 62, 1.6, 0, PI2); ctx.arc(31, 72, 1.6, 0, PI2); ctx.fill();
+    ctx.strokeStyle = "rgba(2,6,23,0.5)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(22, 40); ctx.lineTo(22, 90); ctx.stroke();
+    return;
+  }
+
+  if (f.technique === "brawler" && skin === "viltrumite") {
+    // white Viltrumite battle-suit with grey plates and the chest emblem.
+    // Wide + tall enough to hide the default red robe panels underneath.
+    ctx.fillStyle = "#e9ecf1";
+    ctx.beginPath(); ctx.moveTo(4, 37); ctx.lineTo(50, 37); ctx.lineTo(49, 98); ctx.lineTo(5, 98); ctx.closePath(); ctx.fill();
+    // grey shoulder yoke
+    ctx.fillStyle = "#c7ccd3";
+    ctx.beginPath(); ctx.moveTo(6, 37); ctx.quadraticCurveTo(27, 45, 48, 37); ctx.lineTo(45, 53); ctx.quadraticCurveTo(27, 59, 9, 53); ctx.closePath(); ctx.fill();
+    // diagonal grey chest seams
+    ctx.strokeStyle = "#aeb4bc"; ctx.lineWidth = 2.4;
+    ctx.beginPath(); ctx.moveTo(12, 60); ctx.lineTo(24, 66); ctx.moveTo(42, 60); ctx.lineTo(30, 66); ctx.stroke();
+    // grey belt
+    ctx.fillStyle = "#b3b9c1"; ctx.fillRect(10, 72, 34, 8);
+    ctx.strokeStyle = "#8a9099"; ctx.strokeRect(10, 72, 34, 8);
+    // Viltrumite emblem - grey ring + hooked glyph
+    ctx.fillStyle = "#cdd2d9"; ctx.beginPath(); ctx.arc(27, 60, 6, 0, PI2); ctx.fill();
+    ctx.fillStyle = "#9aa1aa"; ctx.beginPath(); ctx.arc(27, 60, 4, 0, PI2); ctx.fill();
+    ctx.strokeStyle = "#e9ecf1"; ctx.lineWidth = 1.6; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.arc(27, 60, 2.4, Math.PI * 0.25, Math.PI * 1.75); ctx.moveTo(27, 57.5); ctx.lineTo(27, 62.5); ctx.stroke();
+    return;
+  }
+
+  if (f.technique === "david" && skin === "schoolwear") {
+    // grey school blazer, white shirt + tie, red side accents. Starts high
+    // enough to hide the default yellow popped collar.
+    ctx.fillStyle = "#3b3e47";
+    ctx.beginPath(); ctx.moveTo(9, 34); ctx.lineTo(45, 34); ctx.lineTo(46, 92); ctx.lineTo(8, 92); ctx.closePath(); ctx.fill();
+    // grey collar over the old yellow one
+    ctx.fillStyle = "#2b2e36";
+    ctx.beginPath(); ctx.moveTo(18, 34); ctx.lineTo(27, 44); ctx.lineTo(36, 34); ctx.closePath(); ctx.fill();
+    // white shirt centre
+    ctx.fillStyle = "#eef1f5";
+    ctx.beginPath(); ctx.moveTo(22, 40); ctx.lineTo(32, 40); ctx.lineTo(31, 78); ctx.lineTo(23, 78); ctx.closePath(); ctx.fill();
+    // dark tie
+    ctx.fillStyle = "#16233d";
+    ctx.beginPath(); ctx.moveTo(27, 42); ctx.lineTo(30, 48); ctx.lineTo(29, 74); ctx.lineTo(25, 74); ctx.lineTo(24, 48); ctx.closePath(); ctx.fill();
+    // blazer lapels
+    ctx.fillStyle = "#2b2e36";
+    ctx.beginPath(); ctx.moveTo(22, 40); ctx.lineTo(16, 40); ctx.lineTo(20, 62); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(32, 40); ctx.lineTo(38, 40); ctx.lineTo(34, 62); ctx.closePath(); ctx.fill();
+    // red accent trim down the sides
+    ctx.strokeStyle = "#d33b34"; ctx.lineWidth = 2.6; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(12, 44); ctx.lineTo(12, 88); ctx.moveTo(42, 44); ctx.lineTo(42, 88); ctx.stroke();
+    // school emblem badge
+    ctx.fillStyle = "#c9a227"; ctx.beginPath(); ctx.arc(35, 58, 2.4, 0, PI2); ctx.fill();
+    return;
+  }
+
+  if (f.technique === "limitless" && skin === "finalfight") {
+    // black tee (torso already black via palette) + a black cloth sash.
+    ctx.fillStyle = "#0f1114";
+    ctx.fillRect(10, 70, 34, 7);
+    ctx.beginPath(); ctx.moveTo(24, 76); ctx.lineTo(30, 76); ctx.lineTo(28, 93); ctx.lineTo(26, 93); ctx.closePath(); ctx.fill();
+    // teal collar hint of the tee
+    ctx.strokeStyle = "#39c6c0"; ctx.lineWidth = 1.4; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(20, 40); ctx.quadraticCurveTo(27, 45, 34, 40); ctx.stroke();
+    return;
+  }
+
+  if (f.technique === "deathnote" && skin === "sweats") {
+    // grey zip hoodie over the default outfit.
+    ctx.fillStyle = "#8b9099";
+    ctx.beginPath(); ctx.moveTo(9, 38); ctx.lineTo(45, 38); ctx.lineTo(46, 92); ctx.lineTo(8, 92); ctx.closePath(); ctx.fill();
+    // hood behind the neck
+    ctx.fillStyle = "#767b83";
+    ctx.beginPath(); ctx.moveTo(17, 40); ctx.quadraticCurveTo(27, 30, 37, 40); ctx.quadraticCurveTo(27, 45, 17, 40); ctx.closePath(); ctx.fill();
+    // zip + drawstrings
+    ctx.strokeStyle = "#5a5f68"; ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.moveTo(27, 42); ctx.lineTo(27, 90); ctx.stroke();
+    ctx.strokeStyle = "#dfe3e8"; ctx.lineWidth = 1.2; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(24, 44); ctx.lineTo(24, 54); ctx.moveTo(30, 44); ctx.lineTo(30, 53); ctx.stroke();
+    // kangaroo pocket
+    ctx.strokeStyle = "#6b7078"; ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.moveTo(15, 74); ctx.lineTo(39, 74); ctx.stroke();
+    return;
+  }
+}
+
+// SKINS_PATCH: wrap the base palette with per-skin colour overrides.
 function getTechniqueSkin(f, flash) {
+  const base = getBaseTechniqueSkin(f, flash);
+  if (!flash && f) applySkinPalette(f, base);
+  return base;
+}
+
+function applySkinPalette(f, pal) {
+  const skin = skinOf(f);
+  if (skin === "default") return;
+  if (f.technique === "limitless" && skin === "finalfight") {
+    pal.body = "#16181d"; pal.accent = "#39c6c0"; pal.pants = "#d3e6e1"; pal.shoe = "#111318"; pal.hair = "#eaedf3";
+  } else if (f.technique === "shrine" && skin === "shibuya") {
+    pal.body = "#1b2742"; pal.accent = "#d33b34"; pal.pants = "#141a2a";
+  } else if (f.technique === "brawler" && skin === "viltrumite") {
+    pal.body = "#e9ecf1"; pal.accent = "#9aa1aa"; pal.pants = "#c7ccd3"; pal.shoe = "#8a9099";
+  } else if (f.technique === "deathnote" && skin === "sweats") {
+    pal.body = "#8b9099"; pal.accent = "#5a5f68"; pal.pants = "#71767e"; pal.shoe = "#dfe3e8";
+  } else if (f.technique === "david" && skin === "schoolwear") {
+    pal.body = "#3b3e47"; pal.accent = "#d13b34"; pal.pants = "#2b2e36"; pal.shoe = "#14161b";
+  }
+}
+
+function getBaseTechniqueSkin(f, flash) {
   if (!flash && f?.technique === "deathnote") {
     return {
       body: "#b88955",
@@ -18690,6 +18859,8 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.fillStyle = "rgba(255, 255, 255, 0.22)";
     ctx.fillRect(18, 45, 18, 8);
   }
+  // SKINS_PATCH: alternate outfits drawn over the default torso.
+  if (f && !f.ko) drawSkinOutfitOverlay(f, skinColor);
   // HEAD_OUTLINE_PATCH: every head gets the same black outline the limbs
   // and torso already have - previously bare on the dummy and Light, whose
   // hair doesn't wrap the whole head.
@@ -20121,7 +20292,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   }
 }
 
-function drawTechniquePreview(canvasEl, technique) {
+function drawTechniquePreview(canvasEl, technique, skinId) {
   if (!canvasEl) return;
   const previewCtx = canvasEl.getContext("2d");
   const previousCtx = ctx;
@@ -20134,6 +20305,7 @@ function drawTechniquePreview(canvasEl, technique) {
     accent: technique === "shrine" ? "#991b1b" : technique === "deathnote" ? "#b91c1c" : technique === "brawler" ? "#dc2626" : technique === "blackleg" ? "#facc15" : technique === "hivemind" ? "#7f1d1d" : technique === "zealot" ? "#38e0f0" : technique === "spider" ? "#1e3a8a" : technique === "beast" ? "#4a5568" : technique === "jiji" ? "#a855f7" : technique === "david" ? "#31d7e0" : technique === "akira" ? "#e04b3a" : "#1d4ed8"
   });
   previewFighter.technique = technique;
+  previewFighter.skinId = skinId || getSelectedSkin(technique); // SKINS_PATCH
   previewFighter.y = GROUND - previewFighter.h;
   applyTechniqueStats(previewFighter);
 
@@ -24364,6 +24536,160 @@ function drawWorldSlashEffects() {
       window.removeEventListener("touchstart", once);
     }, { passive: true, once: true });
     setInterval(visibilityTick, 150);
+  }
+  if (document.readyState === "loading") window.addEventListener("DOMContentLoaded", init);
+  else init();
+})();
+
+// ==========================================================================
+// SKINS_PATCH: the Skins gallery. A button on the home + character-select
+// screens opens a modal where you pick a cosmetic outfit per character. The
+// choice is saved and applied to that character in every fight.
+// ==========================================================================
+(function setupSkinsGallery() {
+  function injectStyle() {
+    if (document.getElementById("skinsGalleryStyle")) return;
+    const s = document.createElement("style");
+    s.id = "skinsGalleryStyle";
+    s.textContent = `
+      #skinsScreen { position: fixed; inset: 0; z-index: 40; display: none;
+        align-items: center; justify-content: center; padding: 16px;
+        background: rgba(8, 11, 18, 0.9); }
+      #skinsScreen.show { display: flex; }
+      #skinsScreen .skins-panel { width: min(860px, calc(100vw - 20px));
+        max-height: calc(100dvh - 24px); overflow-y: auto; background: #111725;
+        border: 3px solid #edf2ff; border-radius: 10px; padding: 18px 20px 22px;
+        box-shadow: 0 22px 70px rgba(0,0,0,0.55); }
+      #skinsScreen .skins-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+      #skinsScreen h2 { margin: 0; color: #ffe071; text-transform: uppercase; font-size: 24px; }
+      #skinsScreen .skins-close { min-width: 44px; background: #c4b5fd; box-shadow: 0 4px 0 #5b21b6; }
+      #skinsScreen .skin-char { margin-bottom: 16px; }
+      #skinsScreen .skin-char > strong { display: block; color: #cfe0ff; text-transform: uppercase;
+        font-size: 14px; letter-spacing: .5px; margin-bottom: 6px; }
+      #skinsScreen .skin-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 10px; }
+      #skinsScreen .skin-card { cursor: pointer; border: 3px solid rgba(120,140,180,0.5);
+        border-radius: 8px; background: #dbeafe; padding: 6px; display: flex; flex-direction: column;
+        align-items: center; gap: 4px; -webkit-tap-highlight-color: transparent; }
+      #skinsScreen .skin-card.selected { border-color: #ffe071; box-shadow: 0 0 0 2px #ffe071, 0 4px 0 #b8860b; }
+      #skinsScreen .skin-card canvas { width: 100%; max-width: 100px; height: 84px; border-radius: 6px;
+        border: 2px solid rgba(2,6,23,0.72); background: linear-gradient(180deg,#172033,#090d17); }
+      #skinsScreen .skin-card span { font: 800 12px system-ui; text-transform: uppercase; color: #0b1220; }
+      #openSkinsHome, #openSkinsSelect { background: #a7f3d0; box-shadow: 0 4px 0 #047857; }
+    `;
+    document.head.appendChild(s);
+  }
+
+  let screen = null;
+  function build() {
+    injectStyle();
+    if (screen) return;
+    screen = document.createElement("div");
+    screen.id = "skinsScreen";
+    const panel = document.createElement("div");
+    panel.className = "skins-panel";
+    const head = document.createElement("div");
+    head.className = "skins-head";
+    const h2 = document.createElement("h2");
+    h2.textContent = "Skins";
+    const close = document.createElement("button");
+    close.className = "skins-close";
+    close.type = "button";
+    close.textContent = "Done";
+    close.addEventListener("click", closeGallery);
+    head.appendChild(h2); head.appendChild(close);
+    panel.appendChild(head);
+
+    const nameOf = (t) => getTechniqueCharacterName(t);
+    Object.keys(CHARACTER_SKINS).forEach((tech) => {
+      const block = document.createElement("div");
+      block.className = "skin-char";
+      const title = document.createElement("strong");
+      title.textContent = nameOf(tech);
+      block.appendChild(title);
+      const row = document.createElement("div");
+      row.className = "skin-row";
+      CHARACTER_SKINS[tech].forEach((sk) => {
+        const card = document.createElement("div");
+        card.className = "skin-card";
+        card.dataset.tech = tech;
+        card.dataset.skin = sk.id;
+        const cv = document.createElement("canvas");
+        cv.width = 180; cv.height = 160;
+        const label = document.createElement("span");
+        label.textContent = sk.name;
+        card.appendChild(cv); card.appendChild(label);
+        card.addEventListener("click", () => {
+          setSelectedSkin(tech, sk.id);
+          refreshSelected();
+          if (typeof renderTechniquePreviews === "function") renderTechniquePreviews();
+        });
+        row.appendChild(card);
+      });
+      block.appendChild(row);
+      panel.appendChild(block);
+    });
+    screen.appendChild(panel);
+    document.body.appendChild(screen);
+    screen.addEventListener("click", (e) => { if (e.target === screen) closeGallery(); });
+  }
+
+  function refreshSelected() {
+    if (!screen) return;
+    screen.querySelectorAll(".skin-card").forEach((card) => {
+      card.classList.toggle("selected", getSelectedSkin(card.dataset.tech) === card.dataset.skin);
+    });
+  }
+  function renderGalleryPreviews() {
+    if (!screen) return;
+    screen.querySelectorAll(".skin-card").forEach((card) => {
+      const cv = card.querySelector("canvas");
+      if (cv) drawTechniquePreview(cv, card.dataset.tech, card.dataset.skin);
+    });
+  }
+  function openGallery() {
+    build();
+    screen.classList.add("show");
+    refreshSelected();
+    // render after layout so the canvases have size
+    requestAnimationFrame(renderGalleryPreviews);
+    setTimeout(renderGalleryPreviews, 60);
+  }
+  function closeGallery() {
+    if (screen) screen.classList.remove("show");
+  }
+
+  function addButtons() {
+    // Home screen: put a Skins button in the start actions row.
+    const startActions = document.querySelector(".start-actions");
+    if (startActions && !document.getElementById("openSkinsHome")) {
+      const b = document.createElement("button");
+      b.id = "openSkinsHome";
+      b.type = "button";
+      b.textContent = "Skins";
+      b.addEventListener("click", openGallery);
+      startActions.appendChild(b);
+    }
+    // Character select: put a Skins button under the heading.
+    const panel = document.querySelector("#techniqueScreen .technique-panel");
+    if (panel && !document.getElementById("openSkinsSelect")) {
+      const b = document.createElement("button");
+      b.id = "openSkinsSelect";
+      b.type = "button";
+      b.textContent = "Skins";
+      b.style.cssText = "justify-self:center;margin-bottom:6px;";
+      b.addEventListener("click", openGallery);
+      const h2 = panel.querySelector("h2");
+      if (h2 && h2.nextSibling) panel.insertBefore(b, h2.nextSibling);
+      else panel.appendChild(b);
+    }
+  }
+
+  function init() {
+    injectStyle();
+    addButtons();
+    // re-add in case the character-select panel is built later
+    setTimeout(addButtons, 400);
+    setTimeout(addButtons, 1200);
   }
   if (document.readyState === "loading") window.addEventListener("DOMContentLoaded", init);
   else init();
