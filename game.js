@@ -24038,3 +24038,285 @@ function drawWorldSlashEffects() {
     else openPause();
   });
 })();
+
+// ==========================================================================
+// MOBILE_PATCH: touch controls. Detects touch devices, swaps in an on-screen
+// gamepad, and (if detection is uncertain) asks the player PC vs Mobile. All
+// buttons drive the exact same input paths as the keyboard/mouse, so every
+// character works identically on a phone.
+// ==========================================================================
+(function setupMobileControls() {
+  const STORE_KEY = "brawlControlMode"; // "auto" | "pc" | "mobile"
+  let controlMode = localStorage.getItem(STORE_KEY) || "auto";
+
+  function hasTouch() {
+    return ("ontouchstart" in window) || (navigator.maxTouchPoints || 0) > 0;
+  }
+  function looksMobile() {
+    const ua = /Android|iPhone|iPad|iPod|Mobile|Silk|Kindle|Opera Mini|IEMobile/i.test(navigator.userAgent || "");
+    const smallish = Math.min(window.innerWidth, window.innerHeight) <= 820;
+    return hasTouch() && (ua || smallish);
+  }
+  function mobileActive() {
+    if (controlMode === "mobile") return true;
+    if (controlMode === "pc") return false;
+    return looksMobile();
+  }
+
+  // ---- input helpers (reuse the real keyboard/mouse paths) ----------------
+  function synthKey(type, key, code) {
+    try {
+      window.dispatchEvent(new KeyboardEvent(type, { key, code, bubbles: true }));
+    } catch (e) {
+      const ev = document.createEvent("Event");
+      ev.initEvent(type, true, true);
+      ev.key = key; ev.code = code;
+      window.dispatchEvent(ev);
+    }
+  }
+  function mobileFighter() {
+    return (typeof gameMode !== "undefined" && gameMode === "online" && onlineRole === "p2") ? enemy : player;
+  }
+  function aimTowardOpponent() {
+    const f = mobileFighter();
+    if (!f) return mouseAimWorld;
+    const opp = f === player ? enemy : player;
+    if (opp && !opp.ko) { const c = getFighterCenter(opp); return { x: c.x, y: c.y }; }
+    const c = getFighterCenter(f);
+    return { x: c.x + (f.dir || 1) * 220, y: c.y };
+  }
+  function inPlay() {
+    return !homeOpen && !paused && gameState === "playing";
+  }
+  function touchTechnique(slot, down) {
+    if (!inPlay()) return;
+    const aim = aimTowardOpponent();
+    mouseAimWorld = aim;
+    const online = gameMode === "online" && onlineRole === "p2";
+    const target = online ? enemy : player;
+    if (down) {
+      useTechniqueInput(target, slot, aim);
+      if (online) sendOnlineInput(slot === 1 ? "ct1" : "ct2", aim);
+    } else {
+      releaseTechniqueInput(target, slot, aim);
+      if (online) sendOnlineInput(slot === 1 ? "ct1-release" : "ct2-release", aim);
+    }
+  }
+
+  // Button spec: [id, label, {key,code} | special, mode] mode: "hold"|"tap"
+  const KEYMAP = {
+    left:  { key: "a", code: "KeyA", hold: true },
+    right: { key: "d", code: "KeyD", hold: true },
+    jump:  { key: " ", code: "Space", hold: true },
+    block: { key: "q", code: "KeyQ", hold: true },
+    aimS:  { key: "s", code: "KeyS", hold: true },
+    ult:   { key: "c", code: "KeyC", hold: true },
+    light: { key: "w", code: "KeyW", hold: false },
+    heavy: { key: "e", code: "KeyE", hold: false },
+    dodge: { key: "Shift", code: "ShiftLeft", hold: false },
+    throw: { key: "Tab", code: "Tab", hold: false },
+    rkey:  { key: "r", code: "KeyR", hold: false },
+    fkey:  { key: "f", code: "KeyF", hold: false },
+    tkey:  { key: "t", code: "KeyT", hold: false }
+  };
+
+  function pressKeyBtn(name) {
+    const m = KEYMAP[name];
+    if (!m) return;
+    if (name === "aimS" || name === "ult") mouseAimWorld = aimTowardOpponent();
+    synthKey("keydown", m.key, m.code);
+  }
+  function releaseKeyBtn(name) {
+    const m = KEYMAP[name];
+    if (!m) return;
+    synthKey("keyup", m.key, m.code);
+  }
+
+  // ---- DOM / CSS ----------------------------------------------------------
+  function injectStyle() {
+    if (document.getElementById("mobileControlsStyle")) return;
+    const s = document.createElement("style");
+    s.id = "mobileControlsStyle";
+    s.textContent = `
+      #mobileControls { position: fixed; inset: 0; z-index: 60; pointer-events: none;
+        display: none; touch-action: none; -webkit-user-select: none; user-select: none; }
+      body.mobile-controls-on #mobileControls.playing { display: block; }
+      .mc-btn { position: absolute; pointer-events: auto; touch-action: none;
+        display: flex; align-items: center; justify-content: center; text-align: center;
+        border-radius: 999px; border: 2px solid rgba(255,255,255,0.5);
+        background: radial-gradient(circle at 35% 30%, rgba(255,255,255,0.22), rgba(15,23,42,0.62));
+        color: #f4f7fb; font: 800 13px/1.05 system-ui, sans-serif; letter-spacing: .3px;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.35); -webkit-tap-highlight-color: transparent;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.6); backdrop-filter: blur(1px); }
+      .mc-btn:active, .mc-btn.mc-active { background: radial-gradient(circle at 35% 30%, rgba(255,255,255,0.42), rgba(56,120,220,0.7));
+        transform: scale(0.94); border-color: #cfe4ff; }
+      .mc-btn.mc-lg { width: 74px; height: 74px; font-size: 22px; }
+      .mc-btn.mc-md { width: 62px; height: 62px; font-size: 15px; }
+      .mc-btn.mc-sm { width: 48px; height: 48px; font-size: 12px; }
+      .mc-btn.mc-sp1 { border-color: #93c5fd; } .mc-btn.mc-sp2 { border-color: #fca5a5; }
+      .mc-btn.mc-ult { border-color: #fde68a; background: radial-gradient(circle at 35% 30%, rgba(255,240,180,0.3), rgba(120,80,10,0.6)); }
+      #mcModeToggle { position: fixed; top: 8px; right: 8px; z-index: 62; pointer-events: auto;
+        width: 40px; height: 40px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.4);
+        background: rgba(15,23,42,0.7); color:#fff; font-size:18px; display:flex; align-items:center;
+        justify-content:center; cursor:pointer; -webkit-tap-highlight-color: transparent; }
+      #mcPrompt { position: fixed; inset: 0; z-index: 80; display: none;
+        align-items: center; justify-content: center; background: rgba(2,6,20,0.8); }
+      #mcPrompt.show { display: flex; }
+      #mcPrompt .mc-card { background: #0f172a; border: 2px solid #38507a; border-radius: 16px;
+        padding: 24px 22px; text-align: center; max-width: 88vw; }
+      #mcPrompt h2 { color: #f4f7fb; font: 800 20px system-ui; margin: 0 0 6px; }
+      #mcPrompt p { color: #9fb2cc; font: 500 13px system-ui; margin: 0 0 18px; }
+      #mcPrompt .mc-row { display: flex; gap: 14px; justify-content: center; }
+      #mcPrompt button { flex: 1; min-width: 110px; padding: 16px 10px; border-radius: 12px;
+        border: 2px solid #4b6ea8; background: #17233b; color: #fff; font: 800 15px system-ui; cursor: pointer; }
+      #mcPrompt button:active { background: #24406e; }
+      @media (max-width: 820px), (pointer: coarse) {
+        body.mobile-controls-on .shell { touch-action: none; }
+      }
+    `;
+    document.head.appendChild(s);
+  }
+
+  let root = null;
+  function bindHold(el, onDown, onUp) {
+    let active = false;
+    const down = (e) => { e.preventDefault(); if (active) return; active = true; el.classList.add("mc-active"); onDown(); };
+    const up = (e) => { if (e) e.preventDefault(); if (!active) return; active = false; el.classList.remove("mc-active"); onUp(); };
+    el.addEventListener("touchstart", down, { passive: false });
+    el.addEventListener("touchend", up, { passive: false });
+    el.addEventListener("touchcancel", up, { passive: false });
+    el.addEventListener("mousedown", down);
+    el.addEventListener("mouseup", up);
+    el.addEventListener("mouseleave", up);
+  }
+  function bindTap(el, onTap) {
+    const fire = (e) => { e.preventDefault(); el.classList.add("mc-active"); onTap(); setTimeout(() => el.classList.remove("mc-active"), 90); };
+    el.addEventListener("touchstart", fire, { passive: false });
+    el.addEventListener("mousedown", fire);
+  }
+
+  function makeBtn(cls, label) {
+    const b = document.createElement("div");
+    b.className = "mc-btn " + cls;
+    b.textContent = label;
+    root.appendChild(b);
+    return b;
+  }
+
+  function layout() {
+    if (!root) return;
+    const W = window.innerWidth, H = window.innerHeight;
+    const BM = 26; // bottom margin to clear phone chrome / safe area
+    const B = H - BM;
+    const pos = (el, x, y) => { el.style.left = x + "px"; el.style.top = y + "px"; };
+    // left movement cluster
+    pos(root._left, 16, B - 74);
+    pos(root._right, 16 + 82, B - 74);
+    pos(root._jump, 16 + 30, B - 154);
+    pos(root._block, 16, B - 154);
+    pos(root._dodge, 16 + 82, B - 154);
+    // right action cluster
+    const rx = W - 16;
+    pos(root._sp1, rx - 74, B - 154);
+    pos(root._sp2, rx - 74 - 82, B - 116);
+    pos(root._light, rx - 74, B - 74);
+    pos(root._heavy, rx - 74 - 82, B - 36);
+    pos(root._ult, rx - 74 - 150, B - 74);
+    pos(root._aimS, rx - 74 - 150, B - 154);
+    // utility strip (top-right, under mode toggle)
+    let ux = W - 56;
+    [root._throw, root._rkey, root._fkey, root._tkey].forEach((el) => { pos(el, ux, 56); ux -= 54; });
+  }
+
+  function build() {
+    injectStyle();
+    if (root) return;
+    root = document.createElement("div");
+    root.id = "mobileControls";
+    document.body.appendChild(root);
+
+    const holdKey = (el, name) => bindHold(el, () => pressKeyBtn(name), () => releaseKeyBtn(name));
+    const tapKey = (el, name) => bindTap(el, () => { pressKeyBtn(name); setTimeout(() => releaseKeyBtn(name), 60); });
+
+    root._left = makeBtn("mc-lg", "◀");   holdKey(root._left, "left");
+    root._right = makeBtn("mc-lg", "▶");  holdKey(root._right, "right");
+    root._jump = makeBtn("mc-md", "JUMP"); holdKey(root._jump, "jump");
+    root._block = makeBtn("mc-sm", "BLK"); holdKey(root._block, "block");
+    root._dodge = makeBtn("mc-sm", "DDG"); tapKey(root._dodge, "dodge");
+
+    root._sp1 = makeBtn("mc-lg mc-sp1", "①"); bindHold(root._sp1, () => touchTechnique(1, true), () => touchTechnique(1, false));
+    root._sp2 = makeBtn("mc-md mc-sp2", "②"); bindHold(root._sp2, () => touchTechnique(2, true), () => touchTechnique(2, false));
+    root._light = makeBtn("mc-lg", "LIGHT"); tapKey(root._light, "light");
+    root._heavy = makeBtn("mc-md", "HEAVY"); tapKey(root._heavy, "heavy");
+    root._ult = makeBtn("mc-md mc-ult", "ULT"); bindHold(root._ult, () => pressKeyBtn("ult"), () => releaseKeyBtn("ult"));
+    root._aimS = makeBtn("mc-sm", "S");  bindHold(root._aimS, () => pressKeyBtn("aimS"), () => releaseKeyBtn("aimS"));
+
+    root._throw = makeBtn("mc-sm", "THR"); tapKey(root._throw, "throw");
+    root._rkey = makeBtn("mc-sm", "R"); tapKey(root._rkey, "rkey");
+    root._fkey = makeBtn("mc-sm", "F"); tapKey(root._fkey, "fkey");
+    root._tkey = makeBtn("mc-sm", "T"); tapKey(root._tkey, "tkey");
+
+    layout();
+    window.addEventListener("resize", layout);
+    window.addEventListener("orientationchange", () => setTimeout(layout, 300));
+  }
+
+  // ---- mode toggle + first-run prompt -------------------------------------
+  function applyMode() {
+    const on = mobileActive();
+    document.body.classList.toggle("mobile-controls-on", on);
+    if (on) build();
+    const tgl = document.getElementById("mcModeToggle");
+    if (tgl) tgl.textContent = on ? "📱" : "🖥️";
+  }
+  function setMode(mode) {
+    controlMode = mode;
+    localStorage.setItem(STORE_KEY, mode);
+    applyMode();
+  }
+  function buildToggle() {
+    if (document.getElementById("mcModeToggle")) return;
+    if (!hasTouch() && !looksMobile()) return; // desktop without touch: no toggle needed
+    const b = document.createElement("button");
+    b.id = "mcModeToggle";
+    b.title = "Toggle PC / Mobile controls";
+    b.addEventListener("click", () => setMode(mobileActive() ? "pc" : "mobile"));
+    document.body.appendChild(b);
+  }
+  function maybePrompt() {
+    if (localStorage.getItem(STORE_KEY)) return;       // already chosen
+    if (!hasTouch()) return;                            // clearly desktop
+    const wrap = document.createElement("div");
+    wrap.id = "mcPrompt";
+    wrap.innerHTML = `
+      <div class="mc-card">
+        <h2>How are you playing?</h2>
+        <p>Pick your controls — you can switch anytime with the button in the corner.</p>
+        <div class="mc-row">
+          <button data-mode="pc">🖥️ PC<br><span style="font-weight:500;font-size:11px;opacity:.8">keyboard &amp; mouse</span></button>
+          <button data-mode="mobile">📱 Mobile<br><span style="font-weight:500;font-size:11px;opacity:.8">touch controls</span></button>
+        </div>
+      </div>`;
+    document.body.appendChild(wrap);
+    requestAnimationFrame(() => wrap.classList.add("show"));
+    wrap.querySelectorAll("button").forEach((btn) => btn.addEventListener("click", () => {
+      setMode(btn.getAttribute("data-mode"));
+      wrap.remove();
+    }));
+  }
+
+  // Show the pad only during actual gameplay.
+  function visibilityTick() {
+    if (root) root.classList.toggle("playing", mobileActive() && typeof gameState !== "undefined" && gameState === "playing" && !homeOpen && !paused);
+  }
+
+  function init() {
+    injectStyle();
+    buildToggle();
+    applyMode();
+    maybePrompt();
+    setInterval(visibilityTick, 150);
+  }
+  if (document.readyState === "loading") window.addEventListener("DOMContentLoaded", init);
+  else init();
+})();
