@@ -10015,6 +10015,128 @@ function isDavidCommitted(f) {
   return Boolean(f && ((f.davidGorillaTicks || 0) > 0 || (f.davidForcedTicks || 0) > 0 || (f.davidCollapseStun || 0) > 0));
 }
 
+// DAVID_PATCH: the Cyber Skeleton - a bulky grey mech exoskeleton with big
+// rounded pauldrons, armoured legs, red accent panels and a green energy
+// blade. Drawn in the fighter's local space (0..52 wide, feet at y=124),
+// behind the body so his torso reads in the centre of the frame.
+function drawDavidCyberSkeleton(f) {
+  const grey = "#8a8f98";
+  const greyDark = "#5a5f68";
+  const greyLight = "#b6bbc4";
+  const red = "#d8342c";
+  const outline = "#1a1d22";
+  const t = frame * 0.08;
+  const hum = Math.sin(t) * 1.5;
+  ctx.save();
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = outline;
+
+  // rounded armour-plate helper
+  const plate = (x, y, w, h, fill) => {
+    ctx.fillStyle = fill;
+    ctx.beginPath();
+    ctx.moveTo(x + 5, y);
+    ctx.lineTo(x + w - 5, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + 5);
+    ctx.lineTo(x + w, y + h - 5);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - 5, y + h);
+    ctx.lineTo(x + 5, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - 5);
+    ctx.lineTo(x, y + 5);
+    ctx.quadraticCurveTo(x, y, x + 5, y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  };
+
+  // ---- back leg / armour masses (drawn widest, behind everything) ----
+  plate(-24, 74 + hum, 26, 46, greyDark);   // left outer leg armour
+  plate(50, 74 - hum, 26, 46, greyDark);    // right outer leg armour
+  plate(-20, 118, 24, 10, grey);            // left foot
+  plate(48, 118, 24, 10, grey);             // right foot
+
+  // ---- big rounded shoulder pauldrons (the signature "wings") ----
+  const pauldron = (cx, cy) => {
+    ctx.fillStyle = grey;
+    ctx.beginPath();
+    ctx.moveTo(cx - 16, cy - 6);
+    ctx.quadraticCurveTo(cx - 20, cy - 20, cx - 6, cy - 22);
+    ctx.quadraticCurveTo(cx + 14, cy - 22, cx + 16, cy - 4);
+    ctx.quadraticCurveTo(cx + 16, cy + 16, cx, cy + 20);
+    ctx.quadraticCurveTo(cx - 16, cy + 16, cx - 16, cy - 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // bevel highlight
+    ctx.strokeStyle = greyLight;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(cx - 12, cy - 12); ctx.quadraticCurveTo(cx - 2, cy - 18, cx + 8, cy - 12);
+    ctx.stroke();
+    ctx.strokeStyle = outline;
+    ctx.lineWidth = 2;
+    // red accent bars
+    ctx.fillStyle = red;
+    ctx.fillRect(cx - 12, cy - 2, 7, 3);
+    ctx.fillRect(cx + 3, cy - 2, 7, 3);
+    ctx.fillRect(cx - 5, cy + 6, 7, 3);
+  };
+  pauldron(-8, 42 + hum);   // left pauldron (up and out)
+  pauldron(60, 42 - hum);   // right pauldron
+
+  // ---- upper-arm actuator struts to the pauldrons ----
+  ctx.strokeStyle = greyDark;
+  ctx.lineWidth = 5;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(14, 50); ctx.lineTo(-6, 44 + hum);
+  ctx.moveTo(38, 50); ctx.lineTo(58, 44 - hum);
+  ctx.stroke();
+  ctx.strokeStyle = outline;
+  ctx.lineWidth = 2;
+
+  // ---- central chest frame behind the torso (spine + red core) ----
+  plate(20, 44, 12, 30, greyDark);
+  ctx.fillStyle = red;
+  ctx.fillRect(23, 52, 6, 4);
+  ctx.fillRect(23, 60, 6, 4);
+
+  // ---- green energy blade extending from the right hand ----
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  const bladeX = 44, bladeY = 66;
+  const grd = ctx.createLinearGradient(bladeX, bladeY, bladeX + 30, bladeY - 26);
+  grd.addColorStop(0, "rgba(180,255,180,0.95)");
+  grd.addColorStop(1, "rgba(40,220,90,0)");
+  ctx.strokeStyle = grd;
+  ctx.lineWidth = 4 + Math.sin(t * 2) * 0.6;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(bladeX, bladeY);
+  ctx.lineTo(bladeX + 30, bladeY - 26);
+  ctx.stroke();
+  ctx.strokeStyle = "rgba(255,255,255,0.9)";
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(bladeX, bladeY);
+  ctx.lineTo(bladeX + 27, bladeY - 23);
+  ctx.stroke();
+  ctx.restore();
+
+  // subtle red rim glow behind the whole rig
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.globalAlpha = 0.25 + Math.sin(t) * 0.08;
+  ctx.fillStyle = "rgba(216,52,44,0.5)";
+  ctx.beginPath();
+  ctx.ellipse(26, 70, 46, 60, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.restore();
+}
+
 function davidOutgoing(f) {
   return getOutgoingDamageMultiplier(f);
 }
@@ -15479,17 +15601,18 @@ function getTechniqueSkin(f, flash) {
     };
   }
 
-  // DAVID_PATCH: dark spiky hair, tan skin, a black jacket with red accents
-  // and visible chrome cyberware. Skin turns pale with red glow in psychosis.
+  // DAVID_PATCH: dark spiky hair, tan skin, his iconic bright-yellow tech
+  // jacket with cyan reflective stripes over a black shirt, and blue-grey
+  // baggy jeans. Skin turns pale with a red glow during Cyberpsychosis.
   if (f.technique === "david") {
     const psycho = (f.davidPsychosisTicks || 0) > 0;
     return {
-      body: "#26282e",
+      body: "#f3d211",
       skin: psycho ? "#e8d0d0" : "#dda87e",
-      accent: "#e23b2e",
-      pants: "#1c1e24",
-      shoe: "#0f1116",
-      hair: "#161418",
+      accent: "#bfe6ff",
+      pants: "#6f7c8c",
+      shoe: "#20242c",
+      hair: "#241a13",
       eye: psycho ? "#ff2d2d" : "#3a2a20",
       mark: "#c9ccd2"
     };
@@ -16930,6 +17053,9 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.translate(-f.w / 2, -f.h);
   }
 
+  // DAVID_PATCH: the Cyber Skeleton exoskeleton frames him during the ult.
+  if (davidUltActive(f) && !f.ko && !f.lying) drawDavidCyberSkeleton(f);
+
   const hipY = 74;
   const kneeY = jumpPose ? 104 : 101;
   const footY = 124;
@@ -17740,53 +17866,81 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       ctx.restore();
     }
   } else if (f.technique === "david") {
-    // DAVID_PATCH: dark bomber jacket over a shirt, with red trim and glowing
-    // chrome cyberware ports. Gorilla-arm forearms are heavier (drawn on arms).
+    // DAVID_PATCH: his iconic open bright-yellow tech jacket with cyan/white
+    // reflective stripes, over a black shirt with a gold cross necklace.
     const psycho = (f.davidPsychosisTicks || 0) > 0;
-    // jacket panels (torso base is dark)
-    ctx.fillStyle = "#2e3038";
+    // black inner shirt (behind the open jacket)
+    ctx.fillStyle = "#15161a";
     ctx.beginPath();
-    ctx.moveTo(10, 40); ctx.lineTo(23, 43); ctx.lineTo(21, 92); ctx.lineTo(9, 90); ctx.closePath();
+    ctx.moveTo(21, 42); ctx.lineTo(33, 42); ctx.lineTo(32, 92); ctx.lineTo(22, 92); ctx.closePath();
     ctx.fill();
+    // gold cross necklace on the shirt
+    ctx.strokeStyle = "#e8c14a";
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(44, 40); ctx.lineTo(31, 43); ctx.lineTo(33, 92); ctx.lineTo(45, 90); ctx.closePath();
-    ctx.fill();
-    // inner dark shirt
-    ctx.fillStyle = "#181a20";
-    ctx.beginPath();
-    ctx.moveTo(23, 43); ctx.lineTo(31, 43); ctx.lineTo(30, 90); ctx.lineTo(24, 90); ctx.closePath();
-    ctx.fill();
-    // red jacket trim
-    ctx.strokeStyle = "#e23b2e";
-    ctx.lineWidth = 2;
+    ctx.moveTo(23, 44); ctx.quadraticCurveTo(27, 50, 31, 44);
+    ctx.stroke();
+    ctx.strokeStyle = "#f5d23a";
+    ctx.lineWidth = 2.4;
     ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.moveTo(23, 43); ctx.lineTo(21, 92);
-    ctx.moveTo(31, 43); ctx.lineTo(33, 92);
+    ctx.moveTo(27, 52); ctx.lineTo(27, 62);
+    ctx.moveTo(24, 56); ctx.lineTo(30, 56);
     ctx.stroke();
-    // collar
-    ctx.strokeStyle = "#3a3d46";
-    ctx.lineWidth = 3.4;
+    // open yellow jacket panels (torso base is already yellow)
+    ctx.fillStyle = "#efc80f";
     ctx.beginPath();
-    ctx.moveTo(20, 40); ctx.lineTo(27, 49); ctx.lineTo(34, 40);
+    ctx.moveTo(9, 39); ctx.lineTo(22, 43); ctx.lineTo(20, 93); ctx.lineTo(8, 90); ctx.quadraticCurveTo(6, 64, 9, 39); ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(45, 39); ctx.lineTo(32, 43); ctx.lineTo(34, 93); ctx.lineTo(46, 90); ctx.quadraticCurveTo(48, 64, 45, 39); ctx.closePath();
+    ctx.fill();
+    // big popped collar
+    ctx.fillStyle = "#f3d211";
+    ctx.beginPath();
+    ctx.moveTo(18, 40); ctx.lineTo(23, 42); ctx.lineTo(22, 33); ctx.lineTo(15, 36); ctx.closePath();
+    ctx.moveTo(36, 40); ctx.lineTo(31, 42); ctx.lineTo(32, 33); ctx.lineTo(39, 36); ctx.closePath();
+    ctx.fill();
+    // cyan collar inner lining
+    ctx.strokeStyle = "#7ec8f0";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(15, 36); ctx.lineTo(22, 33);
+    ctx.moveTo(39, 36); ctx.lineTo(32, 33);
     ctx.stroke();
-    // chrome cyberware ports on the chest/neck
+    // cyan/white reflective stripes across the jacket panels
+    ctx.strokeStyle = skin.accent;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(9, 58); ctx.lineTo(20, 60);
+    ctx.moveTo(46, 58); ctx.lineTo(34, 60);
+    ctx.stroke();
+    ctx.strokeStyle = "#eef7ff";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(9, 58); ctx.lineTo(20, 60);
+    ctx.moveTo(46, 58); ctx.lineTo(34, 60);
+    // vertical seam stripes
+    ctx.moveTo(13, 45); ctx.lineTo(12, 88);
+    ctx.moveTo(41, 45); ctx.lineTo(42, 88);
+    ctx.stroke();
+    // small chrome cyberware port at the neck
     ctx.fillStyle = "#c9ccd2";
     ctx.strokeStyle = "#5a5e66";
     ctx.lineWidth = 0.8;
-    [[15, 50], [39, 50], [17, 62]].forEach(([px, py]) => {
-      ctx.beginPath(); ctx.arc(px, py, 2, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    });
-    // glowing cyber spine line (red in psychosis, cyan otherwise)
-    ctx.save();
-    ctx.globalCompositeOperation = "lighter";
-    ctx.globalAlpha = 0.5 + Math.sin(frame * (psycho ? 0.5 : 0.2)) * 0.25;
-    ctx.strokeStyle = psycho ? "#ff2d2d" : "#31d7e0";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(27, 50); ctx.lineTo(27, 88);
-    ctx.stroke();
-    ctx.restore();
+    ctx.beginPath(); ctx.arc(33, 40, 1.6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    if (psycho) {
+      // red glitch veins over the shirt during Cyberpsychosis
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = 0.5 + Math.sin(frame * 0.5) * 0.25;
+      ctx.strokeStyle = "#ff2d2d";
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(27, 50); ctx.lineTo(27, 90);
+      ctx.stroke();
+      ctx.restore();
+    }
   } else if (isPracticeDummy(f)) {
     ctx.strokeStyle = "#111827";
     ctx.lineWidth = 3;
