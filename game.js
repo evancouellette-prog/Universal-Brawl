@@ -1951,6 +1951,38 @@ const EVILEYE_RUSH_RANGE = 150;
 const JIJI_ULT_TICKS = 12 * 60;   // Spiritual Acceptance
 const EVILEYE_ULT_TICKS = 10 * 60; // Full Possession
 
+// DAVID_PATCH: David Martinez (Cyberpunk: Edgerunners). Easy, high-speed
+// brawler. Cyberware Load is the resource - it builds automatically and at
+// 100 forces Cyberpsychosis (a powerful but dangerous auto state).
+const DAVID_LOAD_MAX = 100;
+const DAVID_LOAD_ON_ABILITY = 8;
+const DAVID_LOAD_ON_TAKE = 5;
+const DAVID_LOAD_ON_DEAL = 4;
+const DAVID_LOAD_SPEED_BONUS = 0.15;   // up to +15% move speed from Load
+const DAVID_LOAD_DAMAGE_BONUS = 0.10;  // up to +10% ability damage from Load
+const DAVID_PSYCHOSIS_TICKS = 10 * 60;
+const DAVID_PSYCHOSIS_SPEED = 1.35;
+const DAVID_PSYCHOSIS_DAMAGE = 1.30;
+const DAVID_PSYCHOSIS_HP_DRAIN = 0.02; // 2% max HP per second
+const DAVID_PSYCHOSIS_COLLAPSE_FRAC = 0.15;
+const DAVID_PSYCHOSIS_COLLAPSE_STUN = 2 * 60;
+const DAVID_PSYCHOSIS_LOSS_INTERVAL = 3.5 * 60;
+const DAVID_AFTER_SLOW_TICKS = 4 * 60;
+const DAVID_AFTER_SLOW = 0.20;
+const DAVID_AFTER_CD_TICKS = 5 * 60;
+const DAVID_SANDEVISTAN_TICKS = 3 * 60;
+const DAVID_SANDEVISTAN_SPEED = 1.7;
+const DAVID_SANDEVISTAN_COOLDOWN = 10 * 60;
+const DAVID_GORILLA_DAMAGE = 18;
+const DAVID_GORILLA_RANGE = 62;
+const DAVID_GORILLA_COOLDOWN = 7 * 60;
+const DAVID_LAUNCHER_DAMAGE = 14;
+const DAVID_LAUNCHER_COOLDOWN = 9 * 60;
+const DAVID_ULT_TICKS = 15 * 60;
+const DAVID_ULT_DAMAGE = 1.25;
+const DAVID_ULT_DEFENSE = 0.80;        // takes 20% less
+const DAVID_ULT_SPEED = 1.15;
+
 const TECHNIQUE_STATS = {
   limitless: {
     maxHealth: 540,
@@ -2048,6 +2080,17 @@ const TECHNIQUE_STATS = {
     maxCe: 100,
     damageTakenMultiplier: 1,
     knockbackTakenMultiplier: 0.95,
+    ceRegenRate: CE_REGEN_RATE,
+    ceLowRegenBonus: CE_LOW_REGEN_BONUS
+  },
+  // DAVID_PATCH: highest HP in the roster (Edgerunners "Health: 1050"),
+  // durable and fast - an easy beginner bruiser.
+  david: {
+    maxHealth: 900,
+    healthBars: 9,
+    maxCe: 100,
+    damageTakenMultiplier: 0.96,
+    knockbackTakenMultiplier: 0.9,
     ceRegenRate: CE_REGEN_RATE,
     ceLowRegenBonus: CE_LOW_REGEN_BONUS
   }
@@ -2718,6 +2761,7 @@ function getTechniqueCharacterName(technique) {
   if (technique === "spider") return "Spider-Man"; // SPIDER_PATCH
   if (technique === "beast") return "Inosuke"; // INOSUKE_PATCH
   if (technique === "jiji") return "Jiji"; // JIJI_PATCH
+  if (technique === "david") return "David"; // DAVID_PATCH
   return "Gojo";
 }
 
@@ -2985,7 +3029,11 @@ const techniqueMoves = {
   spiritBlast: { cost: 0, damage: 11, speed: 12, radius: 13, knockback: 14, life: 90 },
   soccerStrike: { cost: 0, damage: 14, speed: 11, radius: 12, knockback: 24, life: 150 },
   evilBlast: { cost: 0, damage: 10, speed: 17, radius: 11, knockback: 12, life: 70 },
-  berserkerRush: { cost: 0, damage: EVILEYE_RUSH_FINISH_DAMAGE, speed: 0, radius: 1, knockback: 0, life: 1 }
+  berserkerRush: { cost: 0, damage: EVILEYE_RUSH_FINISH_DAMAGE, speed: 0, radius: 1, knockback: 0, life: 1 },
+  // DAVID_PATCH: gorilla punch is melee (handled in startTechnique); launcher
+  // is an explosive projectile.
+  gorillaArms: { cost: 0, damage: DAVID_GORILLA_DAMAGE, speed: 0, radius: 1, knockback: 0, life: 1 },
+  projectileLauncher: { cost: 0, damage: DAVID_LAUNCHER_DAMAGE, speed: 11, radius: 16, knockback: 26, life: 120 }
 };
 
 function getTechniqueMoveKey(f, slot) {
@@ -3002,6 +3050,7 @@ function getTechniqueMoveKey(f, slot) {
     if (f.jijiForm === "evileye") return slot === 2 ? "berserkerRush" : "evilBlast";
     return slot === 2 ? "soccerStrike" : "spiritBlast";
   }
+  if (f.technique === "david") return slot === 2 ? "projectileLauncher" : "gorillaArms"; // DAVID_PATCH
   if (f.technique === "hivemind") return slot === 2 ? "demodogHunt" : "demobatSwarm"; // VECNA_PATCH
   return "blue";
 }
@@ -3033,6 +3082,9 @@ function getTechniqueDisplayName(move) {
   if (move === "evilBlast") return "EVIL BLAST"; // JIJI_PATCH
   if (move === "berserkerRush") return "BERSERKER"; // JIJI_PATCH
   if (move === "jijiTransform") return "TRANSFORM"; // JIJI_PATCH
+  if (move === "gorillaArms") return "GORILLA ARMS"; // DAVID_PATCH
+  if (move === "projectileLauncher") return "LAUNCHER"; // DAVID_PATCH
+  if (move === "sandevistan") return "SANDEVISTAN"; // DAVID_PATCH
   return move.toUpperCase();
 }
 
@@ -3071,6 +3123,10 @@ function getTechniqueCooldownTicks(move, f = null) {
   if (move === "evilBlast") return EVILEYE_BLAST_COOLDOWN;
   if (move === "berserkerRush") return EVILEYE_RUSH_COOLDOWN;
   if (move === "jijiTransform") return JIJI_TRANSFORM_COOLDOWN_TICKS;
+  // DAVID_PATCH:
+  if (move === "gorillaArms") return DAVID_GORILLA_COOLDOWN;
+  if (move === "projectileLauncher") return DAVID_LAUNCHER_COOLDOWN;
+  if (move === "sandevistan") return DAVID_SANDEVISTAN_COOLDOWN;
   let base = move === "red" || move === "cleave" ? TECHNIQUE_HEAVY_COOLDOWN : TECHNIQUE_FAST_COOLDOWN;
   if (move === "cleave" && hasBindingVow(f, "cleave")) base = Math.max(10, Math.ceil(base * 0.55));
   return base;
@@ -3118,14 +3174,15 @@ function pickRandomTechnique() {
   if (roll < 0.54) return "brawler";
   if (roll < 0.65) return "blackleg"; // SANJI_PATCH
   if (roll < 0.76) return "hivemind"; // VECNA_PATCH
-  if (roll < 0.84) return "zealot"; // ZEALOT_PATCH
-  if (roll < 0.91) return "spider"; // SPIDER_PATCH
-  if (roll < 0.96) return "beast"; // INOSUKE_PATCH
-  return "jiji"; // JIJI_PATCH
+  if (roll < 0.82) return "zealot"; // ZEALOT_PATCH
+  if (roll < 0.88) return "spider"; // SPIDER_PATCH
+  if (roll < 0.93) return "beast"; // INOSUKE_PATCH
+  if (roll < 0.97) return "jiji"; // JIJI_PATCH
+  return "david"; // DAVID_PATCH
 }
 
 function isValidTechnique(technique) {
-  return technique === "limitless" || technique === "shrine" || technique === "deathnote" || technique === "brawler" || technique === "blackleg" || technique === "hivemind" || technique === "zealot" || technique === "spider" || technique === "beast" || technique === "jiji"; // + INOSUKE + JIJI
+  return technique === "limitless" || technique === "shrine" || technique === "deathnote" || technique === "brawler" || technique === "blackleg" || technique === "hivemind" || technique === "zealot" || technique === "spider" || technique === "beast" || technique === "jiji" || technique === "david"; // + INOSUKE + JIJI + DAVID
 }
 
 function rollCpuOpponentTechnique(reason = "") {
@@ -3453,6 +3510,24 @@ function makeFighter(config) {
     jijiRushHit: false,
     jijiUltTicks: 0,             // active ultimate timer
     jijiUltForm: null,           // which ult is running ("jiji"/"evileye")
+    // DAVID_PATCH: Cyberware Load state.
+    davidLoad: 0,                // 0..DAVID_LOAD_MAX
+    davidPsychosisTicks: 0,      // Cyberpsychosis active timer
+    davidAfterSlowTicks: 0,      // post-psychosis slow
+    davidAfterCdTicks: 0,        // post-psychosis slower cooldowns
+    davidCollapseStun: 0,        // collapse stun after low-HP psychosis end
+    davidLossTimer: 0,           // loss-of-control countdown in psychosis
+    davidForcedTicks: 0,         // involuntary action window
+    davidForcedKind: null,
+    davidGlitch: 0,              // screen-glitch intensity
+    davidSandevistanTicks: 0,    // Sandevistan active
+    davidSandevistanCooldown: 0,
+    davidSandeMeleeArmed: false, // next melee gets the Sande bonus
+    davidGorillaCooldown: 0,
+    davidGorillaTicks: 0,
+    davidGorillaHit: false,
+    davidLauncherCooldown: 0,
+    davidUltTicks: 0,            // Cyber Skeleton active
     blocking: false,
     shieldTicks: SHIELD_MAX_TICKS,
     shieldCooldown: 0,
@@ -3505,7 +3580,7 @@ function applyTechniqueStats(f, preserveMeters = false) {
   const stats = TECHNIQUE_STATS[f.technique] || TECHNIQUE_STATS.limitless;
   const healthRatio = f.maxHealth > 0 ? f.health / f.maxHealth : 1;
   const ceRatio = f.maxCe > 0 ? f.ce / f.maxCe : 1;
-  f.speed = BASE_MOVE_SPEED * (f.technique === "limitless" ? LIMITLESS_MOVE_MULTIPLIER : f.technique === "deathnote" ? 0.94 : f.technique === "brawler" ? THRAGG_MOVE_MULTIPLIER : f.technique === "blackleg" ? SANJI_MOVE_MULTIPLIER : f.technique === "hivemind" ? VECNA_MOVE_MULTIPLIER : f.technique === "zealot" ? ZEALOT_MOVE_MULTIPLIER : f.technique === "spider" ? SPIDER_MOVE_MULTIPLIER : f.technique === "beast" ? BEAST_MOVE_MULTIPLIER : f.technique === "jiji" ? (f.jijiForm === "evileye" ? EVILEYE_MOVE_MULTIPLIER : JIJI_MOVE_MULTIPLIER) : 1); // + INOSUKE + JIJI
+  f.speed = BASE_MOVE_SPEED * (f.technique === "limitless" ? LIMITLESS_MOVE_MULTIPLIER : f.technique === "deathnote" ? 0.94 : f.technique === "brawler" ? THRAGG_MOVE_MULTIPLIER : f.technique === "blackleg" ? SANJI_MOVE_MULTIPLIER : f.technique === "hivemind" ? VECNA_MOVE_MULTIPLIER : f.technique === "zealot" ? ZEALOT_MOVE_MULTIPLIER : f.technique === "spider" ? SPIDER_MOVE_MULTIPLIER : f.technique === "beast" ? BEAST_MOVE_MULTIPLIER : f.technique === "jiji" ? (f.jijiForm === "evileye" ? EVILEYE_MOVE_MULTIPLIER : JIJI_MOVE_MULTIPLIER) : f.technique === "david" ? 1.08 : 1); // + INOSUKE + JIJI + DAVID
   f.maxHealth = stats.maxHealth;
   f.healthBars = stats.healthBars || 3;
   f.maxCe = stats.maxCe;
@@ -3624,6 +3699,25 @@ function applyTechniqueStats(f, preserveMeters = false) {
     f.jijiRushTicks = 0;
     f.jijiOutOfCombatTicks = 0;
   }
+  // DAVID_PATCH: reset the Cyberware kit when switching off David.
+  if (f.technique !== "david" || !preserveMeters) {
+    f.davidLoad = 0;
+    f.davidPsychosisTicks = 0;
+    f.davidAfterSlowTicks = 0;
+    f.davidAfterCdTicks = 0;
+    f.davidCollapseStun = 0;
+    f.davidForcedTicks = 0;
+    f.davidForcedKind = null;
+    f.davidLossTimer = 0;
+    f.davidGlitch = 0;
+    f.davidSandevistanTicks = 0;
+    f.davidSandevistanCooldown = 0;
+    f.davidSandeMeleeArmed = false;
+    f.davidGorillaTicks = 0;
+    f.davidGorillaCooldown = 0;
+    f.davidLauncherCooldown = 0;
+    f.davidUltTicks = 0;
+  }
 }
 
 function applyCpuDifficultyStats() {
@@ -3664,6 +3758,7 @@ function getTechniqueHudMoves(f) {
     if (f.jijiForm === "evileye") return ["evilBlast", "berserkerRush", "jijiTransform"];
     return ["spiritBlast", "soccerStrike", "jijiTransform"];
   }
+  if (f.technique === "david") return ["gorillaArms", "projectileLauncher", "sandevistan"]; // DAVID_PATCH
   return ["blue", "red", "teleport"];
 }
 
@@ -3746,6 +3841,20 @@ function getTechniqueHudState(f, move) {
       blocked
     };
   }
+  // DAVID_PATCH: all specials are Load/cooldown-gated, no CE.
+  if (move === "gorillaArms" || move === "projectileLauncher" || move === "sandevistan") {
+    const cooldown = move === "gorillaArms" ? (f.davidGorillaCooldown || 0)
+      : move === "projectileLauncher" ? (f.davidLauncherCooldown || 0)
+      : (f.davidSandevistanCooldown || 0);
+    return {
+      cost: 0,
+      cooling: cooldown > 0,
+      cooldown,
+      maxCooldown: getTechniqueCooldownTicks(move, f),
+      lowCe: false,
+      blocked
+    };
+  }
   // JIJI_PATCH: all specials are Rage/cooldown-gated, no CE.
   if (move === "spiritBlast" || move === "evilBlast" || move === "soccerStrike" || move === "berserkerRush" || move === "jijiTransform") {
     const cooldown = move === "soccerStrike" ? (f.jijiSoccerCooldown || 0)
@@ -3815,6 +3924,7 @@ function updateTechniqueCooldownHud(f, slots) {
     hud.slot.classList.toggle("spider-cooldown", f.technique === "spider"); // SPIDER_PATCH
     hud.slot.classList.toggle("beast-cooldown", f.technique === "beast"); // INOSUKE_PATCH
     hud.slot.classList.toggle("jiji-cooldown", f.technique === "jiji"); // JIJI_PATCH
+    hud.slot.classList.toggle("david-cooldown", f.technique === "david"); // DAVID_PATCH
   });
 }
 
@@ -3953,6 +4063,23 @@ function pinStationaryPracticeDummy(f = enemy) {
   f.jijiRushTicks = 0;
   f.jijiUltTicks = 0;
   f.jijiUltForm = null;
+  // DAVID_PATCH: reset the Cyberware kit each round.
+  f.davidLoad = 0;
+  f.davidPsychosisTicks = 0;
+  f.davidAfterSlowTicks = 0;
+  f.davidAfterCdTicks = 0;
+  f.davidCollapseStun = 0;
+  f.davidForcedTicks = 0;
+  f.davidForcedKind = null;
+  f.davidLossTimer = 0;
+  f.davidGlitch = 0;
+  f.davidSandevistanTicks = 0;
+  f.davidSandevistanCooldown = 0;
+  f.davidSandeMeleeArmed = false;
+  f.davidGorillaTicks = 0;
+  f.davidGorillaCooldown = 0;
+  f.davidLauncherCooldown = 0;
+  f.davidUltTicks = 0;
   // SANJI_PATCH: clear mid-move Black Leg state.
   f.sanjiDiableTicks = 0;
   f.sanjiDiveKickTicks = 0;
@@ -4617,6 +4744,75 @@ function installJijiHudStyle() {
 window.addEventListener("DOMContentLoaded", installJijiHudStyle);
 window.setTimeout(installJijiHudStyle, 0);
 
+// DAVID_PATCH: HUD in cyber cyan/red, plus the Cyberware Load bar (cyan that
+// flashes red as it nears Cyberpsychosis).
+function installDavidHudStyle() {
+  if (document.getElementById("davidEffectsStyle")) return;
+  const style = document.createElement("style");
+  style.id = "davidEffectsStyle";
+  style.textContent = `
+    .ct-slot.david-cooldown,
+    .extra-cooldown.david-cooldown,
+    .ct-slot.david-cooldown.ready,
+    .ct-slot.david-cooldown.cooling,
+    .extra-cooldown.david-cooldown.ready,
+    .extra-cooldown.david-cooldown.cooling {
+      background: linear-gradient(180deg, rgba(14, 26, 32, 0.92), rgba(8, 14, 18, 0.95)) !important;
+      border: 3px solid #e23b2e !important;
+      box-shadow: 0 3px 0 #401210, 0 0 14px rgba(49, 215, 224, 0.4) !important;
+    }
+    .ct-slot.david-cooldown .ct-label,
+    .ct-slot.david-cooldown .ct-status,
+    .extra-cooldown.david-cooldown .ct-label,
+    .extra-cooldown.david-cooldown .ct-status,
+    .extra-cooldown.david-cooldown .extra-cooldown-label,
+    .extra-cooldown.david-cooldown .extra-cooldown-status {
+      color: #a5f3fc !important;
+      text-shadow: 0 0 6px rgba(49, 215, 224, 0.75) !important;
+    }
+    .ct-slot.david-cooldown .ct-meter,
+    .extra-cooldown.david-cooldown .ct-meter {
+      background: rgba(8, 16, 20, 0.75) !important;
+      border-color: rgba(49, 215, 224, 0.4) !important;
+    }
+    .ct-slot.david-cooldown .ct-fill,
+    .ct-slot.david-cooldown.ready .ct-fill,
+    .ct-slot.david-cooldown.low-ce .ct-fill,
+    .ct-slot.david-cooldown.blocked .ct-fill,
+    .extra-cooldown.david-cooldown .ct-fill,
+    .extra-cooldown.david-cooldown.ready .ct-fill,
+    .extra-cooldown.david-cooldown .extra-cooldown-fill {
+      background: linear-gradient(90deg, #0e7490, #31d7e0, #a5f3fc) !important;
+      box-shadow: 0 0 12px rgba(49, 215, 224, 0.5), inset 0 1px 0 rgba(220, 250, 255, 0.25) !important;
+    }
+    .ct-slot.david-cooldown.cooling .ct-fill,
+    .ct-slot.david-cooldown.charging .ct-fill,
+    .extra-cooldown.david-cooldown.cooling .ct-fill,
+    .extra-cooldown.david-cooldown.cooling .extra-cooldown-fill {
+      background: linear-gradient(90deg, #16252b, #24404a, #2f5560) !important;
+      opacity: 0.92 !important;
+    }
+    /* Cyberware Load bar (repurposed CE bar) - cyan, flashing red near max */
+    .david-load-fill {
+      background: linear-gradient(90deg, #0e7490, #22b8c4, #67e8f9) !important;
+    }
+    .david-load-fill.david-load-warn {
+      background: linear-gradient(90deg, #b45309, #f59e0b, #fbbf24) !important;
+    }
+    .david-load-fill.david-load-critical {
+      background: linear-gradient(90deg, #b01020, #ff2438, #ff6a7c) !important;
+      animation: davidLoadPulse 0.5s ease-in-out infinite;
+    }
+    @keyframes davidLoadPulse {
+      0%, 100% { filter: brightness(1); box-shadow: 0 0 6px rgba(255, 40, 60, 0.6); }
+      50% { filter: brightness(1.6); box-shadow: 0 0 16px rgba(255, 40, 60, 0.95); }
+    }
+  `;
+  document.head.appendChild(style);
+}
+window.addEventListener("DOMContentLoaded", installDavidHudStyle);
+window.setTimeout(installDavidHudStyle, 0);
+
 
 function installLightTechniqueOption() {
   installUniversalBrawlRename();
@@ -4722,6 +4918,10 @@ function getTechniqueControlHtml(technique) {
     // JIJI_PATCH: shared body, two forms. S transforms between them.
     return '<span><kbd>S</kbd> Transform (Jiji &harr; Evil Eye)</span><span><kbd>Jiji · Left Click</kbd> Spirit Blast</span><span><kbd>Jiji · Right Click</kbd> Soccer Strike</span><span><kbd>Evil Eye · Left Click</kbd> Evil Spirit Blast</span><span><kbd>Evil Eye · Right Click</kbd> Berserker Rush</span><span><kbd>C</kbd> Spiritual Acceptance / Full Possession</span>';
   }
+  if (technique === "david") {
+    // DAVID_PATCH: simple, three-button cyber brawler.
+    return '<span><kbd>Left Click</kbd> Gorilla Arms (launcher)</span><span><kbd>Right Click</kbd> Projectile Launcher</span><span><kbd>S</kbd> Sandevistan (speed burst)</span><span><kbd>C</kbd> Cyber Skeleton</span>';
+  }
   return '<span><kbd>Left Click</kbd> Blue</span><span><kbd>Right Click</kbd> Red</span><span><kbd>Hold S</kbd> Teleport</span><span><kbd>Hold T</kbd> Blue Punch</span><span><kbd>F</kbd> Infinity</span><span><kbd>Hold C</kbd> Aim Ultimate</span><span><kbd>R</kbd> hold RCT</span>';
 }
 
@@ -4739,6 +4939,7 @@ function getExtraBattleControlHtml(technique) {
   if (technique === "spider") return '<span><kbd>Spider Sense</kbd> perfect dodge = speed boost + cooldown refund</span><span><kbd>Marked</kbd> +10% combo damage, full combos extend the mark</span>'; // SPIDER_PATCH
   if (technique === "beast") return '<span><kbd>Beast Instinct</kbd> -10% hitstun, speed burst after combos, resists DoT</span>'; // INOSUKE_PATCH
   if (technique === "jiji") return '<span><kbd>Shared Body</kbd> both forms share HP &amp; Ultimate · 8s transform cooldown</span><span><kbd>Rage</kbd> builds only as Evil Eye · at 100 the Eye takes over &amp; forces revert</span><span><kbd>Loss of Control</kbd> high Rage = involuntary attacks · <kbd>Kind Heart</kbd> Jiji regens out of combat</span>'; // JIJI_PATCH
+  if (technique === "david") return '<span><kbd>Built Different</kbd> Cyberware Load builds as you fight → +speed &amp; +damage</span><span><kbd>Cyberpsychosis</kbd> at 100 Load he rampages: huge buffs, no block, bleeds HP, acts on his own</span>'; // DAVID_PATCH
   return '<span><kbd>X</kbd> Domain Expansion</span><span><kbd>Z</kbd> Simple Domain</span>';
 }
 
@@ -5115,7 +5316,9 @@ function applyJoinerFighterStateOnHost(remoteFighter) {
     // INOSUKE_PATCH
     "beastPierceCooldown", "beastPierceTicks", "beastDevourCooldown", "beastDevourTicks", "beastCrazyCooldown", "beastCrazyTicks", "beastSpatialCooldown", "beastSpatialTicks", "beastExplosiveCooldown", "beastExplosiveTicks", "beastWhirlCooldown", "beastWhirlTicks", "beastUltTicks", "beastComboSpeedTicks", "bleedTicks",
     // JIJI_PATCH
-    "jijiForm", "jijiRage", "jijiTransformCooldown", "jijiTransformAnimTicks", "jijiTransformTo", "jijiRevertLockTicks", "jijiOutOfCombatTicks", "jijiForcedActionTicks", "jijiForcedActionKind", "jijiLossTimer", "jijiLaughTicks", "jijiBlastCooldown", "jijiSoccerCooldown", "jijiRushCooldown", "jijiRushTicks", "jijiUltTicks", "jijiUltForm"
+    "jijiForm", "jijiRage", "jijiTransformCooldown", "jijiTransformAnimTicks", "jijiTransformTo", "jijiRevertLockTicks", "jijiOutOfCombatTicks", "jijiForcedActionTicks", "jijiForcedActionKind", "jijiLossTimer", "jijiLaughTicks", "jijiBlastCooldown", "jijiSoccerCooldown", "jijiRushCooldown", "jijiRushTicks", "jijiUltTicks", "jijiUltForm",
+    // DAVID_PATCH
+    "davidLoad", "davidPsychosisTicks", "davidAfterSlowTicks", "davidAfterCdTicks", "davidCollapseStun", "davidLossTimer", "davidForcedTicks", "davidForcedKind", "davidGlitch", "davidSandevistanTicks", "davidSandevistanCooldown", "davidSandeMeleeArmed", "davidGorillaCooldown", "davidGorillaTicks", "davidLauncherCooldown", "davidUltTicks"
   ];
 
   fields.forEach((field) => {
@@ -5221,6 +5424,7 @@ if (data.type === "role") {
       if (data.action === "beast-whirl") startBeastWhirl(enemy); // INOSUKE_PATCH
       if (data.action === "beast-explosive") startBeastExplosive(enemy); // INOSUKE_PATCH
       if (data.action === "jiji-transform") startJijiTransform(enemy); // JIJI_PATCH
+      if (data.action === "david-sande") startSandevistan(enemy); // DAVID_PATCH
       if (data.action === "dodge") startDodge(enemy, getVectorFromInput(remoteInput));
       if (data.action === "jump") jumpFighterWithMove(enemy, (remoteInput.right ? 1 : 0) - (remoteInput.left ? 1 : 0));
       if (data.action === "infinity" && !hasCtLock(enemy)) toggleInfinity(enemy);
@@ -5864,7 +6068,17 @@ function getSukunaPassiveDamageMultiplier(f) {
 
 function getOutgoingDamageMultiplier(f) {
   const simpleDomainBonus = hasSimpleDomain(f) ? SIMPLE_DOMAIN_CT_DAMAGE_MULTIPLIER : 1;
-  return (f?.outgoingDamageMultiplier || 1) * getSukunaPassiveDamageMultiplier(f) * simpleDomainBonus * getJijiDamageMultiplier(f);
+  return (f?.outgoingDamageMultiplier || 1) * getSukunaPassiveDamageMultiplier(f) * simpleDomainBonus * getJijiDamageMultiplier(f) * getDavidDamageMultiplier(f);
+}
+
+// DAVID_PATCH: Cyberware Load adds up to +10% ability damage; Cyberpsychosis
+// and the Cyber Skeleton ultimate stack their own damage boosts.
+function getDavidDamageMultiplier(f) {
+  if (!f || f.technique !== "david") return 1;
+  let m = 1 + Math.min(1, (f.davidLoad || 0) / DAVID_LOAD_MAX) * DAVID_LOAD_DAMAGE_BONUS;
+  if ((f.davidPsychosisTicks || 0) > 0) m *= DAVID_PSYCHOSIS_DAMAGE;
+  if ((f.davidUltTicks || 0) > 0) m *= DAVID_ULT_DAMAGE;
+  return m;
 }
 
 // JIJI_PATCH: Spiritual Acceptance grants Evil Eye +15% damage; Full
@@ -6138,6 +6352,21 @@ function getExtraCooldownItems(f) {
     return items;
   }
 
+  // DAVID_PATCH: Sandevistan state + Cyberpsychosis / Cyber Skeleton timers.
+  if (f.technique === "david") {
+    if ((f.davidPsychosisTicks || 0) > 0) {
+      items.push({ name: "CYBERPSYCHO", current: f.davidPsychosisTicks, max: DAVID_PSYCHOSIS_TICKS, mode: "active" });
+    } else if ((f.davidSandevistanTicks || 0) > 0) {
+      items.push({ name: "SANDEVISTAN", current: f.davidSandevistanTicks, max: DAVID_SANDEVISTAN_TICKS, mode: "active" });
+    } else {
+      items.push({ name: "SANDEVISTAN", current: f.davidSandevistanCooldown || 0, max: DAVID_SANDEVISTAN_COOLDOWN });
+    }
+    if ((f.davidUltTicks || 0) > 0) {
+      items.push({ name: "SKELETON", current: f.davidUltTicks, max: DAVID_ULT_TICKS, mode: "active" });
+    }
+    return items;
+  }
+
   // SPIDER_PATCH: Spider Rush + ultimate timer, nothing JJK.
   if (f.technique === "spider") {
     const opp = getOpponent(f);
@@ -6242,7 +6471,7 @@ function updateExtraCooldownHud(container, f) {
       : ready ? 100 : Math.max(4, ratio * 100);
 
     const row = document.createElement("div");
-    row.className = `extra-cooldown ct-slot ${ready ? "ready" : "cooling"} ${f.technique === "shrine" ? "sukuna-cooldown" : f.technique === "deathnote" ? "light-cooldown" : f.technique === "brawler" ? "thragg-cooldown" : f.technique === "blackleg" ? "sanji-cooldown" : f.technique === "hivemind" ? "vecna-cooldown" : f.technique === "zealot" ? "zealot-cooldown" : f.technique === "spider" ? "spider-cooldown" : f.technique === "beast" ? "beast-cooldown" : f.technique === "jiji" ? "jiji-cooldown" : "gojo-cooldown"} ${item.style || ""}`;
+    row.className = `extra-cooldown ct-slot ${ready ? "ready" : "cooling"} ${f.technique === "shrine" ? "sukuna-cooldown" : f.technique === "deathnote" ? "light-cooldown" : f.technique === "brawler" ? "thragg-cooldown" : f.technique === "blackleg" ? "sanji-cooldown" : f.technique === "hivemind" ? "vecna-cooldown" : f.technique === "zealot" ? "zealot-cooldown" : f.technique === "spider" ? "spider-cooldown" : f.technique === "beast" ? "beast-cooldown" : f.technique === "jiji" ? "jiji-cooldown" : f.technique === "david" ? "david-cooldown" : "gojo-cooldown"} ${item.style || ""}`;
 
     const label = document.createElement("span");
     label.className = "extra-cooldown-label ct-label";
@@ -6305,7 +6534,7 @@ function updateResourceBarLabels() {
   const playerUltFrame = playerUltimateEl ? playerUltimateEl.closest(".ultimate-frame") : null;
   const enemyUltFrame = enemyUltimateEl ? enemyUltimateEl.closest(".ultimate-frame") : null;
 
-  ensureResourceBarLabel(playerCeFrame, isLight(player) ? "Information" : player?.technique === "jiji" ? "Rage" : player?.technique === "brawler" || player?.technique === "blackleg" || player?.technique === "hivemind" || player?.technique === "zealot" || player?.technique === "spider" || player?.technique === "beast" ? "" : "Cursed Energy", "ce"); // + INOSUKE + JIJI
+  ensureResourceBarLabel(playerCeFrame, isLight(player) ? "Information" : player?.technique === "jiji" ? "Rage" : player?.technique === "david" ? "Cyberware Load" : player?.technique === "brawler" || player?.technique === "blackleg" || player?.technique === "hivemind" || player?.technique === "zealot" || player?.technique === "spider" || player?.technique === "beast" ? "" : "Cursed Energy", "ce"); // + INOSUKE + JIJI + DAVID
   ensureResourceBarLabel(playerUltFrame, isLight(player) ? "Name" : "Ultimate", "ultimate");
 
   // DUMMY_HUD_NO_WORDS_PATCH:
@@ -6316,8 +6545,18 @@ function updateResourceBarLabels() {
     return;
   }
 
-  ensureResourceBarLabel(enemyCeFrame, isLight(enemy) ? "Information" : enemy?.technique === "jiji" ? "Rage" : enemy?.technique === "brawler" || enemy?.technique === "blackleg" || enemy?.technique === "hivemind" || enemy?.technique === "zealot" || enemy?.technique === "spider" || enemy?.technique === "beast" ? "" : "Cursed Energy", "ce"); // + INOSUKE + JIJI
+  ensureResourceBarLabel(enemyCeFrame, isLight(enemy) ? "Information" : enemy?.technique === "jiji" ? "Rage" : enemy?.technique === "david" ? "Cyberware Load" : enemy?.technique === "brawler" || enemy?.technique === "blackleg" || enemy?.technique === "hivemind" || enemy?.technique === "zealot" || enemy?.technique === "spider" || enemy?.technique === "beast" ? "" : "Cursed Energy", "ce"); // + INOSUKE + JIJI + DAVID
   ensureResourceBarLabel(enemyUltFrame, isLight(enemy) ? "Name" : "Ultimate", "ultimate");
+}
+
+// DAVID_PATCH: colour the Cyberware Load bar (cyan), flashing red as it fills.
+function applyDavidLoadBarState(ceEl, f) {
+  if (!ceEl) return;
+  const isDavid = f && f.technique === "david";
+  ceEl.classList.toggle("david-load-fill", Boolean(isDavid));
+  const load = isDavid ? (f.davidLoad || 0) : 0;
+  ceEl.classList.toggle("david-load-warn", Boolean(isDavid && load >= 70 && load < 90));
+  ceEl.classList.toggle("david-load-critical", Boolean(isDavid && (load >= 90 || (f.davidPsychosisTicks || 0) > 0)));
 }
 
 // JIJI_PATCH: colour the Rage bar (maroon), pulsing red once it's critical.
@@ -6403,8 +6642,8 @@ function updateHud() {
   enemyNameEl.classList.toggle("cpu-name", gameMode === "cpu");
   renderSegmentedHealth(playerHealthEl, player);
   renderSegmentedHealth(enemyHealthEl, enemy);
-  const playerInfoRatio = isLight(player) ? Math.max(0, Math.min(1, (player.informationMeter || 0) / LIGHT_INFO_MAX)) : player.technique === "jiji" ? Math.max(0, Math.min(1, (player.jijiRage || 0) / RAGE_MAX)) : Math.max(0, player.ce / player.maxCe);
-  const enemyInfoRatio = isLight(enemy) ? Math.max(0, Math.min(1, (enemy.informationMeter || 0) / LIGHT_INFO_MAX)) : enemy.technique === "jiji" ? Math.max(0, Math.min(1, (enemy.jijiRage || 0) / RAGE_MAX)) : Math.max(0, enemy.ce / enemy.maxCe);
+  const playerInfoRatio = isLight(player) ? Math.max(0, Math.min(1, (player.informationMeter || 0) / LIGHT_INFO_MAX)) : player.technique === "jiji" ? Math.max(0, Math.min(1, (player.jijiRage || 0) / RAGE_MAX)) : player.technique === "david" ? Math.max(0, Math.min(1, (player.davidLoad || 0) / DAVID_LOAD_MAX)) : Math.max(0, player.ce / player.maxCe);
+  const enemyInfoRatio = isLight(enemy) ? Math.max(0, Math.min(1, (enemy.informationMeter || 0) / LIGHT_INFO_MAX)) : enemy.technique === "jiji" ? Math.max(0, Math.min(1, (enemy.jijiRage || 0) / RAGE_MAX)) : enemy.technique === "david" ? Math.max(0, Math.min(1, (enemy.davidLoad || 0) / DAVID_LOAD_MAX)) : Math.max(0, enemy.ce / enemy.maxCe);
   const playerNameRatio = isLight(player) ? Math.max(0, Math.min(1, (player.identityProgress || 0) / LIGHT_IDENTITY_MAX)) : Math.max(0, Math.min(1, (player.ultimateMeter || 0) / 100));
   const enemyNameRatio = isLight(enemy) ? Math.max(0, Math.min(1, (enemy.identityProgress || 0) / LIGHT_IDENTITY_MAX)) : Math.max(0, Math.min(1, (enemy.ultimateMeter || 0) / 100));
 
@@ -6413,6 +6652,9 @@ function updateHud() {
   // JIJI_PATCH: the Rage bar flashes red as it nears takeover.
   applyJijiRageBarState(playerCeEl, player);
   applyJijiRageBarState(enemyCeEl, enemy);
+  // DAVID_PATCH: the Cyberware Load bar flashes as it nears Cyberpsychosis.
+  applyDavidLoadBarState(playerCeEl, player);
+  applyDavidLoadBarState(enemyCeEl, enemy);
   if (playerUltimateEl) playerUltimateEl.style.width = `${playerNameRatio * 100}%`;
   if (enemyUltimateEl) enemyUltimateEl.style.width = `${enemyNameRatio * 100}%`;
   updateTechniqueCooldownHud(player, ctHud.player);
@@ -6660,6 +6902,12 @@ function getTakenDamage(defender, rawDamage) {
   if (hasSimpleDomain(defender) && isDomainVictim(defender, "malevolentShrine")) {
     multiplier *= SIMPLE_DOMAIN_SHRINE_DAMAGE_TAKEN_MULTIPLIER;
   }
+  // DAVID_PATCH: Cyber Skeleton armours him (-20%); Cyberpsychosis makes him
+  // reckless and 15% more fragile.
+  if (defender.technique === "david") {
+    if ((defender.davidUltTicks || 0) > 0) multiplier *= DAVID_ULT_DEFENSE;
+    if ((defender.davidPsychosisTicks || 0) > 0) multiplier *= 1.15;
+  }
   return Math.max(1, Math.ceil(rawDamage * multiplier));
 }
 
@@ -6822,7 +7070,7 @@ function isSpiderCommitted(f) {
 function isSpecialLocked(f) {
   const owner = getFighterOwner(f);
   const clashing = Boolean(owner && domainClash?.attempts?.[owner]);
-  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || isSanjiCommitted(f) || isZealotCommitted(f) || isSpiderCommitted(f) || isBeastCommitted(f) || isJijiCommitted(f) || (f?.vecnaSlipTicks || 0) > 0 || (f?.domainStartup || 0) > 0 || clashing || (f?.potatoVulnerableTicks || 0) > 0; // + INOSUKE + JIJI
+  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || isSanjiCommitted(f) || isZealotCommitted(f) || isSpiderCommitted(f) || isBeastCommitted(f) || isJijiCommitted(f) || isDavidCommitted(f) || (f?.vecnaSlipTicks || 0) > 0 || (f?.domainStartup || 0) > 0 || clashing || (f?.potatoVulnerableTicks || 0) > 0; // + INOSUKE + JIJI + DAVID
 }
 
 // DOMAIN_MOVEMENT_FIX
@@ -6831,7 +7079,7 @@ function isSpecialLocked(f) {
 function isMovementLocked(f) {
   const owner = getFighterOwner(f);
   const clashing = Boolean(owner && domainClash?.attempts?.[owner]);
-  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || (f?.sanjiMuttonTicks || 0) > 0 || (f?.sanjiCookTicks || 0) > 0 || (f?.zealotFlurryTicks || 0) > 0 || (f?.zealotWhirlTicks || 0) > 0 || (f?.spiderRushTicks || 0) > 0 || (f?.cocoonTicks || 0) > 0 || (f?.beastCrazyTicks || 0) > 0 || (f?.beastWhirlTicks || 0) > 0 || (f?.beastDevourTicks || 0) > 0 || (f?.jijiTransformAnimTicks || 0) > 0 || (f?.jijiForcedActionTicks || 0) > 0 || clashing; // + INOSUKE roots + JIJI
+  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || (f?.sanjiMuttonTicks || 0) > 0 || (f?.sanjiCookTicks || 0) > 0 || (f?.zealotFlurryTicks || 0) > 0 || (f?.zealotWhirlTicks || 0) > 0 || (f?.spiderRushTicks || 0) > 0 || (f?.cocoonTicks || 0) > 0 || (f?.beastCrazyTicks || 0) > 0 || (f?.beastWhirlTicks || 0) > 0 || (f?.beastDevourTicks || 0) > 0 || (f?.jijiTransformAnimTicks || 0) > 0 || (f?.jijiForcedActionTicks || 0) > 0 || (f?.davidGorillaTicks || 0) > 0 || (f?.davidForcedTicks || 0) > 0 || (f?.davidCollapseStun || 0) > 0 || clashing; // + INOSUKE roots + JIJI + DAVID
 }
 
 function getMoveInputForFighter(f) {
@@ -9738,6 +9986,323 @@ function isJijiSuperArmor(f) {
   return jijiEvilEye(f) && jijiUltActive(f) && f.jijiUltForm === "evileye";
 }
 
+// ==========================================================================
+// DAVID_PATCH: David Martinez (Cyberpunk: Edgerunners). A simple, fast, hard-
+// hitting bruiser. Cyberware Load builds automatically; at 100 it forces
+// Cyberpsychosis - a huge but self-destructive rampage the player can't fully
+// control. Three abilities (Sandevistan, Gorilla Arms, Projectile Launcher)
+// and the Cyber Skeleton ultimate.
+// ==========================================================================
+
+function isDavid(f) {
+  return Boolean(f && f.technique === "david");
+}
+
+function davidPsychosisActive(f) {
+  return isDavid(f) && (f.davidPsychosisTicks || 0) > 0;
+}
+
+function davidUltActive(f) {
+  return isDavid(f) && (f.davidUltTicks || 0) > 0;
+}
+
+// Super armour on abilities during Cyberpsychosis and the Cyber Skeleton ult.
+function isDavidSuperArmor(f) {
+  return isDavid(f) && (davidPsychosisActive(f) || davidUltActive(f));
+}
+
+function isDavidCommitted(f) {
+  return Boolean(f && ((f.davidGorillaTicks || 0) > 0 || (f.davidForcedTicks || 0) > 0 || (f.davidCollapseStun || 0) > 0));
+}
+
+function davidOutgoing(f) {
+  return getOutgoingDamageMultiplier(f);
+}
+
+function gainDavidLoad(f, amount) {
+  if (!isDavid(f) || amount <= 0 || f.ko) return;
+  if (davidPsychosisActive(f)) return; // already maxed / rampaging
+  let scale = davidUltActive(f) ? 2 : 1; // Cyber Skeleton fills Load twice as fast
+  f.davidLoad = Math.min(DAVID_LOAD_MAX, (f.davidLoad || 0) + amount * scale);
+}
+
+function applyDavidLoadFromCombat(attacker, defender) {
+  if (isDavid(attacker)) gainDavidLoad(attacker, DAVID_LOAD_ON_DEAL);
+  if (isDavid(defender)) gainDavidLoad(defender, DAVID_LOAD_ON_TAKE);
+}
+
+function canStartDavidSpecial(f) {
+  return Boolean(
+    f && !gameOver && !paused && !isSpecialLocked(f) && !f.ko &&
+    f.stun <= 0 && f.dodging <= 0 && !f.knockdown && !f.attacking &&
+    (f.davidForcedTicks || 0) <= 0 && (f.davidCollapseStun || 0) <= 0
+  );
+}
+
+// A cooldown factor - post-psychosis, cooldowns recover 30% slower.
+function davidCooldownRate(f) {
+  return (f.davidAfterCdTicks || 0) > 0 ? 0.7 : 1;
+}
+
+// ---- Cyberpsychosis --------------------------------------------------------
+
+function startDavidPsychosis(f) {
+  if (!isDavid(f) || davidPsychosisActive(f)) return;
+  f.davidPsychosisTicks = DAVID_PSYCHOSIS_TICKS;
+  f.davidLossTimer = DAVID_PSYCHOSIS_LOSS_INTERVAL;
+  f.davidGlitch = 1;
+  f.davidSandevistanTicks = 0; // can't use Sande while unstable
+  f.blocking = false;
+  // Cyber Skeleton breaks if Cyberpsychosis triggers during the ultimate.
+  if (davidUltActive(f)) { f.davidUltTicks = 0; showActionWarning("SKELETON SHATTERED"); }
+  else showActionWarning("CYBERPSYCHOSIS");
+  shake = Math.max(shake, 16);
+  spawnHitSpark(f.x + f.w / 2, f.y + f.h * 0.4, f.dir, "heavy");
+  updateHud();
+}
+
+function endDavidPsychosis(f, collapsed) {
+  f.davidPsychosisTicks = 0;
+  f.davidLoad = 0;
+  f.davidForcedTicks = 0;
+  f.davidForcedKind = null;
+  f.davidGlitch = 0;
+  f.davidAfterSlowTicks = DAVID_AFTER_SLOW_TICKS;
+  f.davidAfterCdTicks = DAVID_AFTER_CD_TICKS;
+  if (collapsed) {
+    f.davidCollapseStun = DAVID_PSYCHOSIS_COLLAPSE_STUN;
+    f.stun = Math.max(f.stun, DAVID_PSYCHOSIS_COLLAPSE_STUN);
+    f.attacking = null;
+    f.vx = 0;
+    showActionWarning("SYSTEM COLLAPSE");
+    shake = Math.max(shake, 14);
+  }
+  updateHud();
+}
+
+function performDavidForcedAction(f, opponent) {
+  if (!opponent || opponent.ko) return;
+  const toward = getFighterCenter(opponent).x >= getFighterCenter(f).x ? 1 : -1;
+  const r = Math.random();
+  if (r < 0.4 && (f.davidGorillaCooldown || 0) <= 0) {
+    f.dir = toward;
+    startGorillaArms(f, true);
+  } else if (r < 0.7 && (f.davidLauncherCooldown || 0) <= 0) {
+    f.dir = toward;
+    startProjectileLauncher(f, true);
+  } else {
+    // a wild dash
+    f.dir = Math.random() < 0.85 ? toward : -toward;
+    f.davidForcedKind = "dash";
+    f.davidForcedTicks = 20;
+    f.vx = f.dir * (f.speed || BASE_MOVE_SPEED) * 2.4;
+  }
+}
+
+function updateDavidForcedAction(f) {
+  if ((f.davidForcedTicks || 0) <= 0) return;
+  f.davidForcedTicks -= 1;
+  if (f.davidForcedKind === "dash") f.vx = f.dir * (f.speed || BASE_MOVE_SPEED) * 2.1;
+  if (f.davidForcedTicks <= 0) f.davidForcedKind = null;
+}
+
+// ---- CT1: Sandevistan ------------------------------------------------------
+
+function startSandevistan(f) {
+  if (!isDavid(f) || gameOver || paused || f.ko) return false;
+  if (davidPsychosisActive(f)) { showActionWarning("TOO UNSTABLE"); return false; }
+  if ((f.davidSandevistanCooldown || 0) > 0 || (f.davidSandevistanTicks || 0) > 0) return false;
+  f.davidSandevistanCooldown = DAVID_SANDEVISTAN_COOLDOWN;
+  f.davidSandevistanTicks = DAVID_SANDEVISTAN_TICKS;
+  f.davidSandeMeleeArmed = true;
+  gainDavidLoad(f, DAVID_LOAD_ON_ABILITY);
+  showActionWarning("SANDEVISTAN");
+  shake = Math.max(shake, 6);
+  updateHud();
+  return true;
+}
+
+// ---- CT2: Gorilla Arms -----------------------------------------------------
+
+function startGorillaArms(f, forced = false) {
+  if (!isDavid(f) || (!forced && !canStartDavidSpecial(f))) return false;
+  if ((f.davidGorillaCooldown || 0) > 0) return false;
+  const opponent = getOpponent(f);
+  if (opponent) f.dir = getFighterCenter(opponent).x >= getFighterCenter(f).x ? 1 : -1;
+  f.davidGorillaCooldown = DAVID_GORILLA_COOLDOWN;
+  f.davidGorillaTicks = 20;
+  f.davidGorillaHit = false;
+  f.blocking = false;
+  f.vx = f.dir * 3;
+  gainDavidLoad(f, DAVID_LOAD_ON_ABILITY);
+  showActionWarning("GORILLA ARMS");
+  return true;
+}
+
+function updateGorillaArms(f, opponent) {
+  if ((f.davidGorillaTicks || 0) <= 0) return;
+  if (f.ko || (f.stun > 0 && !isDavidSuperArmor(f)) || f.knockdown) { f.davidGorillaTicks = 0; return; }
+  f.davidGorillaTicks -= 1;
+  f.vx *= 0.8;
+  const range = DAVID_GORILLA_RANGE * (davidUltActive(f) ? 1.4 : 1);
+  // the punch lands mid-swing
+  if (!f.davidGorillaHit && f.davidGorillaTicks <= 12 && opponent && !opponent.ko && opponent.dodging <= 0 && !isUntargetable(opponent) &&
+      Math.abs(getFighterCenter(opponent).x - getFighterCenter(f).x) < range && Math.abs(getFighterCenter(opponent).y - getFighterCenter(f).y) < 70) {
+    f.davidGorillaHit = true;
+    const blocked = isBlockingAttack(opponent, f.dir);
+    let dmg = Math.ceil(DAVID_GORILLA_DAMAGE * davidOutgoing(f));
+    if (f.davidSandeMeleeArmed) { dmg = Math.ceil(dmg * 1.5); f.davidSandeMeleeArmed = false; }
+    dmg = blocked ? 0 : getTakenDamage(opponent, dmg);
+    if (blocked) { damageShield(opponent, DAVID_GORILLA_DAMAGE); opponent.vx = f.dir * getTakenKnockback(opponent, 14); }
+    else {
+      applyFighterDamage(opponent, dmg);
+      // launcher: knocks up and breaks armour (combo starter)
+      opponent.vx = f.dir * getTakenKnockback(opponent, 30);
+      opponent.vy = -11; opponent.grounded = false;
+      opponent.knockdown = true; opponent.knockdownTimer = 24;
+      opponent.stun = Math.max(opponent.stun, 22);
+      opponent.blocking = false;
+      breakDavidArmor(opponent);
+      gainUltimate(f, dmg * ULT_DAMAGE_GAIN_SCALE);
+      gainDavidLoad(f, DAVID_LOAD_ON_DEAL);
+    }
+    const c = getFighterCenter(opponent);
+    spawnHitSpark(c.x, c.y, f.dir, "heavy");
+    shake = Math.max(shake, 11);
+    hitStopTicks = Math.max(hitStopTicks, HITSTOP_HEAVY + 2);
+    updateHud();
+  }
+}
+
+// "Breaks armor" - strips shield and defensive buffs briefly.
+function breakDavidArmor(defender) {
+  if (!defender) return;
+  defender.shieldTicks = 0;
+  defender.shieldCooldown = Math.max(defender.shieldCooldown || 0, 90);
+  if (defender.technique === "zealot") defender.zealotShield = Math.max(0, (defender.zealotShield || 0) - 40);
+}
+
+// ---- CT3: Projectile Launcher ---------------------------------------------
+
+function startProjectileLauncher(f, forced = false) {
+  if (!isDavid(f) || (!forced && !canStartDavidSpecial(f))) return false;
+  if ((f.davidLauncherCooldown || 0) > 0) return false;
+  const opponent = getOpponent(f);
+  if (opponent) f.dir = getFighterCenter(opponent).x >= getFighterCenter(f).x ? 1 : -1;
+  f.davidLauncherCooldown = DAVID_LAUNCHER_COOLDOWN;
+  gainDavidLoad(f, DAVID_LOAD_ON_ABILITY);
+  const big = davidUltActive(f);
+  const center = getFighterCenter(f);
+  playTechniqueShootSfx(f, "red");
+  projectiles.push({
+    owner: f === player ? "player" : "enemy",
+    move: "davidRocket",
+    x: center.x + f.dir * (f.w * 0.5 + 6), y: center.y - 4,
+    vx: f.dir * 11, vy: 0, baseVx: f.dir * 11, baseVy: 0,
+    radius: big ? 22 : 16,
+    damage: Math.ceil(DAVID_LAUNCHER_DAMAGE * (big ? 1.25 : 1) * davidOutgoing(f)),
+    knockback: 26, dir: f.dir, aimX: f.dir, aimY: 0, angle: f.dir > 0 ? 0 : Math.PI,
+    maxTravel: Infinity, traveled: 0, life: 120, maxLife: 120, davidBig: big, hit: false
+  });
+  showActionWarning("LAUNCHER");
+  updateHud();
+  return true;
+}
+
+// ---- Ultimate: Cyber Skeleton ---------------------------------------------
+
+function startDavidUltimate(f) {
+  if (!isDavid(f) || davidUltActive(f)) return false;
+  if (davidPsychosisActive(f)) { showActionWarning("TOO UNSTABLE"); return false; }
+  if (!canStartUltimate(f)) {
+    const warning = getUltimateFailureMessage(f);
+    if (warning) showActionWarning(warning);
+    return false;
+  }
+  f.ultimateMeter = 0;
+  f.davidUltTicks = DAVID_ULT_TICKS;
+  showActionWarning("CYBER SKELETON");
+  shake = Math.max(shake, 12);
+  spawnHitSpark(f.x + f.w / 2, f.y + f.h * 0.4, f.dir, "heavy");
+  updateHud();
+  return true;
+}
+
+// ---- Per-frame driver ------------------------------------------------------
+
+function updateDavidSystems(f, opponent) {
+  if (!isDavid(f)) return;
+
+  const cdRate = davidCooldownRate(f);
+  const dec = (v) => Math.max(0, v - cdRate);
+  if ((f.davidGorillaCooldown || 0) > 0 && (f.davidGorillaTicks || 0) <= 0) f.davidGorillaCooldown = dec(f.davidGorillaCooldown);
+  if ((f.davidLauncherCooldown || 0) > 0) f.davidLauncherCooldown = dec(f.davidLauncherCooldown);
+  if ((f.davidSandevistanCooldown || 0) > 0 && (f.davidSandevistanTicks || 0) <= 0) f.davidSandevistanCooldown = dec(f.davidSandevistanCooldown);
+  if ((f.davidAfterSlowTicks || 0) > 0) f.davidAfterSlowTicks -= 1;
+  if ((f.davidAfterCdTicks || 0) > 0) f.davidAfterCdTicks -= 1;
+  if ((f.davidCollapseStun || 0) > 0) { f.davidCollapseStun -= 1; f.stun = Math.max(f.stun, 2); }
+  if ((f.davidGlitch || 0) > 0 && !davidPsychosisActive(f)) f.davidGlitch = Math.max(0, f.davidGlitch - 0.05);
+
+  // Sandevistan active window
+  if ((f.davidSandevistanTicks || 0) > 0) {
+    f.davidSandevistanTicks -= 1;
+    if (frame % 3 === 0) spawnHitSpark(getFighterCenter(f).x - f.dir * 14, getFighterCenter(f).y, -f.dir, "block");
+    if (f.davidSandevistanTicks <= 0) f.davidSandeMeleeArmed = false;
+  }
+
+  // Cyber Skeleton ultimate
+  if (davidUltActive(f)) {
+    f.davidUltTicks -= 1;
+    if (frame % 4 === 0) spawnHitSpark(f.x + f.w / 2 + (Math.random() - 0.5) * 26, f.y + f.h - 6, f.dir, "block");
+    // Load builds passively toward Cyberpsychosis (doubled inside gainDavidLoad)
+    gainDavidLoad(f, 0.05);
+  }
+
+  // Cyberpsychosis
+  if (davidPsychosisActive(f)) {
+    f.davidPsychosisTicks -= 1;
+    f.davidGlitch = 0.7 + Math.sin(frame * 0.5) * 0.3;
+    f.blocking = false;
+    // constant HP drain (2% max HP per second)
+    if (frame % 6 === 0) {
+      const drain = Math.max(1, Math.round(f.maxHealth * DAVID_PSYCHOSIS_HP_DRAIN / 10));
+      f.health = Math.max(1, f.health - drain);
+      updateHud();
+    }
+    if (frame % 3 === 0) spawnHitSpark(f.x + f.w / 2 + (Math.random() - 0.5) * 30, f.y + Math.random() * f.h, f.dir, "heavy");
+    // collapse if pushed too low
+    if (f.health <= f.maxHealth * DAVID_PSYCHOSIS_COLLAPSE_FRAC) {
+      endDavidPsychosis(f, true);
+    } else if (f.davidPsychosisTicks <= 0) {
+      endDavidPsychosis(f, false);
+    } else {
+      // loss of control: periodic involuntary action
+      if ((f.davidForcedTicks || 0) <= 0 && (f.davidGorillaTicks || 0) <= 0 && !f.ko && f.stun <= 0 && !f.knockdown) {
+        f.davidLossTimer = (f.davidLossTimer || 0) - 1;
+        if (f.davidLossTimer <= 0) {
+          performDavidForcedAction(f, opponent);
+          f.davidLossTimer = DAVID_PSYCHOSIS_LOSS_INTERVAL + Math.floor(Math.random() * 40);
+        }
+      }
+    }
+  } else if ((f.davidLoad || 0) >= DAVID_LOAD_MAX) {
+    // Load full -> forced Cyberpsychosis (player can't choose)
+    startDavidPsychosis(f);
+  }
+
+  updateDavidForcedAction(f);
+  updateGorillaArms(f, opponent);
+
+  // speed: base + Load bonus (up to +15%) + Sande + psychosis + ult + slows.
+  const cpuMult = gameMode === "cpu" && f === enemy ? (cpuSettings[cpuDifficulty] || cpuSettings.medium).speedMultiplier : 1;
+  let mult = 1 + Math.min(1, (f.davidLoad || 0) / DAVID_LOAD_MAX) * DAVID_LOAD_SPEED_BONUS;
+  if ((f.davidSandevistanTicks || 0) > 0) mult *= DAVID_SANDEVISTAN_SPEED;
+  if (davidPsychosisActive(f)) mult *= DAVID_PSYCHOSIS_SPEED;
+  if (davidUltActive(f)) mult *= DAVID_ULT_SPEED;
+  if ((f.davidAfterSlowTicks || 0) > 0) mult *= (1 - DAVID_AFTER_SLOW);
+  f.speed = BASE_MOVE_SPEED * 1.08 * cpuMult * mult;
+}
+
 function startKnockout(attacker, defender) {
   if (roundEnding || roundResolved) return;
   gameOver = true;
@@ -10055,6 +10620,13 @@ function startTechnique(f, slot, chargeRatio = 0, aimPoint = null, releasingChar
     return;
   }
 
+  // DAVID_PATCH: LC is the Gorilla Arms punch, RC is the arm launcher.
+  if (f.technique === "david") {
+    if (move === "gorillaArms") startGorillaArms(f);
+    else if (move === "projectileLauncher") startProjectileLauncher(f);
+    return;
+  }
+
   if (f.technique === "deathnote") {
     if (move === "ryukStrike") {
       if ((f.lightRyukCooldown || 0) > 0) return;
@@ -10326,7 +10898,7 @@ function getRctHealPerTick(f) {
 }
 
 function canStartRct(f) {
-  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider" || f?.technique === "beast" || f?.technique === "jiji") return false; // NO_JJK all custom chars
+  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider" || f?.technique === "beast" || f?.technique === "jiji" || f?.technique === "david") return false; // NO_JJK all custom chars
   if (!f || gameOver || paused || isSpecialLocked(f) || f.ko || f.knockdown || f.dodging > 0) return false;
   if (f.health >= getCurrentHealthBarCeiling(f) || f.rctCooldown > 0) return false;
   return f.ce >= f.maxCe * RCT_MIN_CE_RATIO;
@@ -10348,7 +10920,7 @@ function cancelRct(f, startCooldown = true) {
 }
 
 function setRctHealing(f, wantsRct) {
-  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider" || f?.technique === "beast" || f?.technique === "jiji") { // NO_JJK all custom chars
+  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider" || f?.technique === "beast" || f?.technique === "jiji" || f?.technique === "david") { // NO_JJK all custom chars
     cancelRct(f, false);
     return;
   }
@@ -10601,6 +11173,7 @@ function startUltimate(f, aimPoint = null) {
   if (f.technique === "spider") return startSpiderUltimate(f); // SPIDER_PATCH
   if (f.technique === "beast") return startBeastUltimate(f); // INOSUKE_PATCH
   if (f.technique === "jiji") return startJijiUltimate(f); // JIJI_PATCH
+  if (f.technique === "david") return startDavidUltimate(f); // DAVID_PATCH
   return beginUltimateAim(f, aimPoint);
 }
 
@@ -10614,6 +11187,7 @@ function beginUltimateAim(f, aimPoint = null) {
   if (f.technique === "spider") return startSpiderUltimate(f); // SPIDER_PATCH
   if (f.technique === "beast") return startBeastUltimate(f); // INOSUKE_PATCH
   if (f.technique === "jiji") return startJijiUltimate(f); // JIJI_PATCH
+  if (f.technique === "david") return startDavidUltimate(f); // DAVID_PATCH
   if (!canStartUltimate(f)) {
     const warning = getUltimateFailureMessage(f);
     if (warning) showActionWarning(warning);
@@ -11029,7 +11603,7 @@ function canStartSimpleDomain(f) {
 }
 
 function startSimpleDomain(f) {
-  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider" || f?.technique === "beast" || f?.technique === "jiji") return false; // NO_JJK all custom chars
+  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider" || f?.technique === "beast" || f?.technique === "jiji" || f?.technique === "david") return false; // NO_JJK all custom chars
   if (!canStartSimpleDomain(f)) {
     showActionWarning(f && f.ce < Math.ceil(f.maxCe * SIMPLE_DOMAIN_CE_COST_RATIO) ? "Not Enough Cursed Energy" : "Can't Use Simple Domain");
     return false;
@@ -11124,7 +11698,7 @@ function getDomainAttemptForFighter(f) {
 }
 
 function canStartDomain(f) {
-  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider" || f?.technique === "beast" || f?.technique === "jiji") return false; // NO_JJK all custom chars
+  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider" || f?.technique === "beast" || f?.technique === "jiji" || f?.technique === "david") return false; // NO_JJK all custom chars
   if (!f || gameState !== "playing" || gameOver || paused || f.ko || f.knockdown || f.stun > 0) return false;
   if (isSpecialLocked(f) || f.attacking || f.dodging > 0 || f.rctHealing || hasCtLock(f)) return false;
   if (activeDomain || domainClash) return false;
@@ -12047,7 +12621,7 @@ function applyHit(attacker, defender) {
 
   // INOSUKE_PATCH: Explosive Rush super armor - a normal melee hit deals
   // half damage and can't stun or knock him out of the charge.
-  if ((isBeastSuperArmor(defender) || isJijiSuperArmor(defender)) && !isBlockingAttack(defender, attacker.dir)) {
+  if ((isBeastSuperArmor(defender) || isJijiSuperArmor(defender) || isDavidSuperArmor(defender)) && !isBlockingAttack(defender, attacker.dir)) {
     attacker.hasHit = true;
     const raw = Math.ceil(attack.damage * getOutgoingDamageMultiplier(attacker));
     const dmg = getTakenDamage(defender, Math.ceil(raw * 0.5));
@@ -12115,6 +12689,7 @@ function applyHit(attacker, defender) {
   }
   gainUltimate(attacker, meleeDamageDealt * (blocked ? ULT_BLOCKED_DAMAGE_GAIN_SCALE : ULT_DAMAGE_GAIN_SCALE));
   if (!blocked) applyJijiRageFromCombat(attacker, defender); // JIJI_PATCH
+  if (!blocked) applyDavidLoadFromCombat(attacker, defender); // DAVID_PATCH
   cancelRct(defender, false);
   defender.hurt = blocked ? 6 : 14;
   defender.stun = getComboHitstun(attacker, attackType, blocked);
@@ -12323,7 +12898,7 @@ function applyProjectileHit(projectile, defender) {
   // interruption from a normal projectile (ultimate projectiles still hit
   // in full).
   const ultProjectile = projectile.move === "purple" || projectile.move === "worldSlash" || projectile.ultimateProjectile;
-  if ((isBeastSuperArmor(defender) || isJijiSuperArmor(defender)) && !ultProjectile && !isBlockingAttack(defender, projectile.dir)) {
+  if ((isBeastSuperArmor(defender) || isJijiSuperArmor(defender) || isDavidSuperArmor(defender)) && !ultProjectile && !isBlockingAttack(defender, projectile.dir)) {
     projectile.hit = true;
     const dmg = getTakenDamage(defender, Math.ceil((projectile.damage || 0) * 0.5));
     const dealt = applyFighterDamage(defender, dmg);
@@ -12358,6 +12933,7 @@ function applyProjectileHit(projectile, defender) {
     gainUltimate(ownerFighter, projectileDamageDealt * (blocked ? ULT_BLOCKED_DAMAGE_GAIN_SCALE : ULT_DAMAGE_GAIN_SCALE));
   }
   if (!blocked) applyJijiRageFromCombat(ownerFighter, defender); // JIJI_PATCH
+  if (!blocked) applyDavidLoadFromCombat(ownerFighter, defender); // DAVID_PATCH
   cancelRct(defender, false);
   defender.hurt = blocked ? 6 : 14;
   defender.stun = projectile.move === "purple" ? 30 : projectile.move === "worldSlash" ? 30 : projectile.move === "blue" ? 10 : projectile.move === "cleave" ? 20 : projectile.move === "fuga" ? 24 : 14;
@@ -12763,6 +13339,14 @@ function updateProjectiles() {
 
 function spawnProjectileDisperse(projectile) {
   if (projectile.move === "cleave") return;
+  // DAVID_PATCH: the arm rocket bursts into a small explosion.
+  if (projectile.move === "davidRocket") {
+    const n = projectile.davidBig ? 10 : 7;
+    for (let i = 0; i < n; i++) {
+      spawnHitSpark(projectile.x + (Math.random() - 0.5) * (projectile.radius * 2), projectile.y + (Math.random() - 0.5) * (projectile.radius * 2), projectile.dir || 1, "heavy");
+    }
+    shake = Math.max(shake, projectile.davidBig ? 11 : 8);
+  }
   projectileDisperses.push({
     x: projectile.x,
     y: projectile.y,
@@ -13754,6 +14338,20 @@ function updateEnemyAi() {
     }
   }
 
+  // DAVID_PATCH: CPU David is a simple pressure bruiser - Gorilla Arms up
+  // close, Launcher at range, Sandevistan to close in. Cyberpsychosis is
+  // automatic in updateDavidSystems.
+  if (enemy.technique === "david" && !pacifistBot && enemy.stun <= 0 && !enemy.knockdown && !gameOver && (enemy.davidForcedTicks || 0) <= 0) {
+    const dGap = Math.abs((player.x + player.w / 2) - (enemy.x + enemy.w / 2));
+    if ((enemy.davidGorillaCooldown || 0) <= 0 && dGap < DAVID_GORILLA_RANGE + 20 && Math.random() < getCpuDecisionChance(0.012, 0.03, 0.06)) {
+      startGorillaArms(enemy);
+    } else if ((enemy.davidLauncherCooldown || 0) <= 0 && dGap > 150 && Math.random() < getCpuDecisionChance(0.02, 0.045, 0.08)) {
+      startProjectileLauncher(enemy);
+    } else if ((enemy.davidSandevistanCooldown || 0) <= 0 && (enemy.davidSandevistanTicks || 0) <= 0 && dGap > 180 && !davidPsychosisActive(enemy) && Math.random() < getCpuDecisionChance(0.01, 0.024, 0.05)) {
+      startSandevistan(enemy);
+    }
+  }
+
   if (gameOver || isSpecialLocked(enemy) || enemy.stun > 0 || enemy.knockdown) return;
 
   enemy.aiCooldown = Number.isFinite(enemy.aiCooldown) ? enemy.aiCooldown - 1 : 0;
@@ -13792,7 +14390,7 @@ function updateEnemyAi() {
 
   if (enemy.ultimateMeter >= MAX_ULTIMATE && enemy.aiCooldown <= 0) {
     const ultimateChance = cpuDifficulty === "hard" ? 0.18 : cpuDifficulty === "medium" ? 0.08 : 0.025;
-    const goodRange = enemy.technique === "blackleg" || enemy.technique === "hivemind" || enemy.technique === "zealot" || enemy.technique === "spider" || enemy.technique === "jiji" ? true : enemy.technique === "shrine" ? distance > 120 : distance > 260; // custom self-buff ults work anywhere
+    const goodRange = enemy.technique === "blackleg" || enemy.technique === "hivemind" || enemy.technique === "zealot" || enemy.technique === "spider" || enemy.technique === "jiji" || enemy.technique === "david" ? true : enemy.technique === "shrine" ? distance > 120 : distance > 260; // custom self-buff ults work anywhere
     if (goodRange && Math.random() < ultimateChance && startUltimate(enemy)) {
       enemy.aiGoal = "ultimate";
       enemy.aiCooldown = cpu.attackCooldown + 48;
@@ -13951,6 +14549,8 @@ function updateFighter(f, opponent) {
   updateBeastSystems(f, opponent);
   // JIJI_PATCH
   updateJijiSystems(f, opponent);
+  // DAVID_PATCH
+  updateDavidSystems(f, opponent);
 
   if (f.ko) {
     f.attacking = null;
@@ -14876,6 +15476,22 @@ function getTechniqueSkin(f, flash) {
       hair: "#cc3a48",
       eye: "#5a3020",
       mark: "#e8722a"
+    };
+  }
+
+  // DAVID_PATCH: dark spiky hair, tan skin, a black jacket with red accents
+  // and visible chrome cyberware. Skin turns pale with red glow in psychosis.
+  if (f.technique === "david") {
+    const psycho = (f.davidPsychosisTicks || 0) > 0;
+    return {
+      body: "#26282e",
+      skin: psycho ? "#e8d0d0" : "#dda87e",
+      accent: "#e23b2e",
+      pants: "#1c1e24",
+      shoe: "#0f1116",
+      hair: "#161418",
+      eye: psycho ? "#ff2d2d" : "#3a2a20",
+      mark: "#c9ccd2"
     };
   }
 
@@ -17123,6 +17739,54 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       ctx.stroke();
       ctx.restore();
     }
+  } else if (f.technique === "david") {
+    // DAVID_PATCH: dark bomber jacket over a shirt, with red trim and glowing
+    // chrome cyberware ports. Gorilla-arm forearms are heavier (drawn on arms).
+    const psycho = (f.davidPsychosisTicks || 0) > 0;
+    // jacket panels (torso base is dark)
+    ctx.fillStyle = "#2e3038";
+    ctx.beginPath();
+    ctx.moveTo(10, 40); ctx.lineTo(23, 43); ctx.lineTo(21, 92); ctx.lineTo(9, 90); ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(44, 40); ctx.lineTo(31, 43); ctx.lineTo(33, 92); ctx.lineTo(45, 90); ctx.closePath();
+    ctx.fill();
+    // inner dark shirt
+    ctx.fillStyle = "#181a20";
+    ctx.beginPath();
+    ctx.moveTo(23, 43); ctx.lineTo(31, 43); ctx.lineTo(30, 90); ctx.lineTo(24, 90); ctx.closePath();
+    ctx.fill();
+    // red jacket trim
+    ctx.strokeStyle = "#e23b2e";
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(23, 43); ctx.lineTo(21, 92);
+    ctx.moveTo(31, 43); ctx.lineTo(33, 92);
+    ctx.stroke();
+    // collar
+    ctx.strokeStyle = "#3a3d46";
+    ctx.lineWidth = 3.4;
+    ctx.beginPath();
+    ctx.moveTo(20, 40); ctx.lineTo(27, 49); ctx.lineTo(34, 40);
+    ctx.stroke();
+    // chrome cyberware ports on the chest/neck
+    ctx.fillStyle = "#c9ccd2";
+    ctx.strokeStyle = "#5a5e66";
+    ctx.lineWidth = 0.8;
+    [[15, 50], [39, 50], [17, 62]].forEach(([px, py]) => {
+      ctx.beginPath(); ctx.arc(px, py, 2, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    });
+    // glowing cyber spine line (red in psychosis, cyan otherwise)
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = 0.5 + Math.sin(frame * (psycho ? 0.5 : 0.2)) * 0.25;
+    ctx.strokeStyle = psycho ? "#ff2d2d" : "#31d7e0";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(27, 50); ctx.lineTo(27, 88);
+    ctx.stroke();
+    ctx.restore();
   } else if (isPracticeDummy(f)) {
     ctx.strokeStyle = "#111827";
     ctx.lineWidth = 3;
@@ -17749,32 +18413,39 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       ctx.moveTo(26, 32.5); ctx.lineTo(26, 34.5);
       ctx.moveTo(31, 31); ctx.lineTo(30, 33);
       ctx.stroke();
-      // glowing purple THIRD EYE on the forehead - concentric rings
+      // big glowing purple THIRD EYE on the forehead - concentric rings
+      const teY = 13;
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
       const tePulse = 0.6 + Math.sin(frame * 0.25) * 0.3;
-      const teGlow = ctx.createRadialGradient(26, 12, 0.5, 26, 12, 8);
+      const teGlow = ctx.createRadialGradient(26, teY, 0.5, 26, teY, 14);
       teGlow.addColorStop(0, `rgba(240, 200, 255, ${tePulse})`);
       teGlow.addColorStop(0.4, `rgba(176, 38, 255, ${tePulse})`);
       teGlow.addColorStop(1, "rgba(120, 20, 200, 0)");
       ctx.fillStyle = teGlow;
       ctx.beginPath();
-      ctx.arc(26, 12, 8, 0, Math.PI * 2);
+      ctx.arc(26, teY, 14, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
+      // filled purple eye body
+      ctx.fillStyle = "#7e22ce";
+      ctx.beginPath();
+      ctx.ellipse(26, teY, 5.6, 8.2, 0, 0, Math.PI * 2);
+      ctx.fill();
       // the vertical eye + concentric ripple rings
-      ctx.strokeStyle = "#d8a0ff";
-      ctx.lineWidth = 1;
-      for (let r = 2; r <= 5; r += 1.5) {
-        ctx.globalAlpha = 0.9 - r * 0.12;
+      ctx.strokeStyle = "#e9b8ff";
+      ctx.lineWidth = 1.2;
+      for (let r = 3; r <= 8; r += 2) {
+        ctx.globalAlpha = 0.95 - r * 0.09;
         ctx.beginPath();
-        ctx.ellipse(26, 12, r * 0.7, r, 0, 0, Math.PI * 2);
+        ctx.ellipse(26, teY, r * 0.68, r, 0, 0, Math.PI * 2);
         ctx.stroke();
       }
       ctx.globalAlpha = 1;
+      // bright vertical slit pupil
       ctx.fillStyle = "#fbe8ff";
       ctx.beginPath();
-      ctx.ellipse(26, 12, 1, 2.2, 0, 0, Math.PI * 2);
+      ctx.ellipse(26, teY, 1.6, 4.2, 0, 0, Math.PI * 2);
       ctx.fill();
       // dangling rainbow earrings on both sides
       const rainbow = ["#ef4444", "#f59e0b", "#facc15", "#22c55e", "#3b82f6", "#a855f7"];
@@ -17795,6 +18466,73 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
           ctx.stroke();
         }
       });
+    }
+  } else if (f.technique === "david") {
+    // DAVID_PATCH: messy dark spiky hair with an undercut, plus a chrome
+    // cyberware temple plate. Glowing red eyes during Cyberpsychosis.
+    const psycho = (f.davidPsychosisTicks || 0) > 0;
+    const sway = idle * 0.4;
+    // spiky black hair
+    ctx.fillStyle = skin.hair;
+    ctx.beginPath();
+    ctx.moveTo(13, 23);
+    ctx.lineTo(12 + sway * 0.5, 9);
+    ctx.lineTo(18, 14);
+    ctx.lineTo(17 + sway, 4);
+    ctx.lineTo(23, 13);
+    ctx.lineTo(24, 3 + sway * 0.4);
+    ctx.lineTo(29, 12);
+    ctx.lineTo(33 + sway, 5);
+    ctx.lineTo(34, 14);
+    ctx.lineTo(40 - sway * 0.5, 9);
+    ctx.lineTo(39, 23);
+    ctx.quadraticCurveTo(37, 15, 30, 14);
+    ctx.quadraticCurveTo(26, 17, 22, 14);
+    ctx.quadraticCurveTo(15, 15, 13, 23);
+    ctx.closePath();
+    ctx.fill();
+    // undercut shave line
+    ctx.strokeStyle = "#3a373e";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(14, 21); ctx.quadraticCurveTo(19, 19, 22, 20);
+    ctx.stroke();
+    // chrome cyberware temple plate (right side)
+    ctx.fillStyle = "#c9ccd2";
+    ctx.strokeStyle = "#5a5e66";
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(33, 18); ctx.lineTo(39, 17); ctx.lineTo(39, 27); ctx.lineTo(34, 27); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // port lights on the plate
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = 0.6 + Math.sin(frame * (psycho ? 0.5 : 0.2)) * 0.3;
+    ctx.fillStyle = psycho ? "#ff2d2d" : "#31d7e0";
+    ctx.beginPath();
+    ctx.arc(36, 20, 1, 0, Math.PI * 2);
+    ctx.arc(36, 24, 1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    // brows / eyes
+    if (psycho) {
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = 0.8;
+      ctx.fillStyle = "#ff2d2d";
+      ctx.beginPath();
+      ctx.arc(21, 22, 1.8, 0, Math.PI * 2);
+      ctx.arc(31, 22, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    } else {
+      ctx.strokeStyle = "#2a2420";
+      ctx.lineWidth = 1.6;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(18, 21); ctx.quadraticCurveTo(21, 19.5, 24, 21);
+      ctx.moveTo(28, 21); ctx.quadraticCurveTo(31, 19.5, 33, 21);
+      ctx.stroke();
     }
   }
   ctx.restore();
@@ -18508,8 +19246,8 @@ function drawTechniquePreview(canvasEl, technique) {
     w: technique === "shrine" ? 52 : technique === "brawler" ? 54 : 50,
     h: 128,
     dir: 1,
-    color: technique === "shrine" ? "#dc2626" : technique === "deathnote" ? "#111827" : technique === "brawler" ? "#eceef2" : technique === "blackleg" ? "#16181f" : technique === "hivemind" ? "#54322c" : technique === "zealot" ? "#c8a13a" : technique === "spider" ? "#c0242c" : technique === "beast" ? "#caa079" : technique === "jiji" ? "#d23a2a" : "#2563eb",
-    accent: technique === "shrine" ? "#991b1b" : technique === "deathnote" ? "#b91c1c" : technique === "brawler" ? "#dc2626" : technique === "blackleg" ? "#facc15" : technique === "hivemind" ? "#7f1d1d" : technique === "zealot" ? "#38e0f0" : technique === "spider" ? "#1e3a8a" : technique === "beast" ? "#4a5568" : technique === "jiji" ? "#a855f7" : "#1d4ed8"
+    color: technique === "shrine" ? "#dc2626" : technique === "deathnote" ? "#111827" : technique === "brawler" ? "#eceef2" : technique === "blackleg" ? "#16181f" : technique === "hivemind" ? "#54322c" : technique === "zealot" ? "#c8a13a" : technique === "spider" ? "#c0242c" : technique === "beast" ? "#caa079" : technique === "jiji" ? "#d23a2a" : technique === "david" ? "#26282e" : "#2563eb",
+    accent: technique === "shrine" ? "#991b1b" : technique === "deathnote" ? "#b91c1c" : technique === "brawler" ? "#dc2626" : technique === "blackleg" ? "#facc15" : technique === "hivemind" ? "#7f1d1d" : technique === "zealot" ? "#38e0f0" : technique === "spider" ? "#1e3a8a" : technique === "beast" ? "#4a5568" : technique === "jiji" ? "#a855f7" : technique === "david" ? "#31d7e0" : "#1d4ed8"
   });
   previewFighter.technique = technique;
   previewFighter.y = GROUND - previewFighter.h;
@@ -18518,7 +19256,7 @@ function drawTechniquePreview(canvasEl, technique) {
   ctx = previewCtx;
   ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
   const backdrop = ctx.createLinearGradient(0, 0, 0, canvasEl.height);
-  backdrop.addColorStop(0, technique === "shrine" ? "#2b1420" : technique === "deathnote" ? "#180b12" : technique === "brawler" ? "#141822" : technique === "blackleg" ? "#221208" : technique === "hivemind" ? "#1c0a10" : technique === "zealot" ? "#0a1a1f" : technique === "spider" ? "#1a0810" : technique === "beast" ? "#1a1712" : technique === "jiji" ? "#160a26" : "#142033");
+  backdrop.addColorStop(0, technique === "shrine" ? "#2b1420" : technique === "deathnote" ? "#180b12" : technique === "brawler" ? "#141822" : technique === "blackleg" ? "#221208" : technique === "hivemind" ? "#1c0a10" : technique === "zealot" ? "#0a1a1f" : technique === "spider" ? "#1a0810" : technique === "beast" ? "#1a1712" : technique === "jiji" ? "#160a26" : technique === "david" ? "#0a1418" : "#142033");
   backdrop.addColorStop(1, "#050814");
   ctx.fillStyle = backdrop;
   ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
@@ -18548,6 +19286,7 @@ function renderTechniquePreviews() {
   drawTechniquePreview(techniquePreviewCanvases.spider, "spider"); // SPIDER_PATCH
   drawTechniquePreview(techniquePreviewCanvases.beast, "beast"); // INOSUKE_PATCH
   drawTechniquePreview(techniquePreviewCanvases.jiji, "jiji"); // JIJI_PATCH
+  drawTechniquePreview(techniquePreviewCanvases.david, "david"); // DAVID_PATCH
 }
 
 // THRAGG_BRAWLER_PATCH: install his character-select card the same way
@@ -18781,6 +19520,37 @@ function installJijiTechniqueOption() {
   renderTechniquePreviews();
 }
 window.addEventListener("DOMContentLoaded", installJijiTechniqueOption);
+
+// DAVID_PATCH: add the David Martinez character select card.
+function installDavidTechniqueOption() {
+  if (!techniqueScreen) return;
+  const existing = techniqueScreen.querySelector('[data-technique="david"]');
+  if (!existing) {
+    const sample = techniqueScreen.querySelector(".technique-button");
+    const button = sample ? sample.cloneNode(true) : document.createElement("button");
+    button.type = "button";
+    button.className = sample ? sample.className : "technique-button";
+    button.dataset.technique = "david";
+    button.innerHTML = `
+      <canvas id="davidPreview" width="320" height="180" aria-hidden="true"></canvas>
+      <strong>David</strong>
+      <span>Cyberpunk: Edgerunners - fast, tanky, simple bruiser</span>
+      <small>Sandevistan, Gorilla Arms, Launcher - Cyberware Load builds to Cyberpsychosis</small>
+    `;
+    const holder = sample?.parentNode || techniqueScreen;
+    holder.appendChild(button);
+  }
+  const canvas = document.getElementById("davidPreview");
+  if (canvas) techniquePreviewCanvases.david = canvas;
+  techniqueButtons = Array.from(document.querySelectorAll(".technique-button"));
+  techniqueButtons.forEach((button) => {
+    if (button.dataset.davidBound === "1") return;
+    button.dataset.davidBound = "1";
+    button.addEventListener("click", () => finishTechniqueSelect(button.dataset.technique));
+  });
+  renderTechniquePreviews();
+}
+window.addEventListener("DOMContentLoaded", installDavidTechniqueOption);
 
 
 function drawSukunaModelCleanup(f) {
@@ -20541,6 +21311,42 @@ function drawProjectiles() {
         ctx.closePath();
         ctx.fill();
       }
+    } else if (p.move === "davidRocket") {
+      // DAVID_PATCH: a stubby arm-launched rocket with a fiery trail.
+      if (hasProjectileAngle) ctx.rotate(projectileAngle); else ctx.scale(p.dir, 1);
+      const rad = p.radius || 16;
+      // exhaust flame
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      const fl = ctx.createRadialGradient(-rad * 0.9, 0, 1, -rad * 0.9, 0, rad * 1.4);
+      fl.addColorStop(0, "rgba(255, 240, 180, 0.95)");
+      fl.addColorStop(0.5, "rgba(255, 140, 40, 0.7)");
+      fl.addColorStop(1, "rgba(255, 60, 20, 0)");
+      ctx.fillStyle = fl;
+      ctx.beginPath();
+      ctx.ellipse(-rad * 0.9, 0, rad * 1.3 + Math.random() * 3, rad * 0.7, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      // rocket body
+      ctx.fillStyle = "#b8bcc4";
+      ctx.strokeStyle = "#20242c";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(rad * 0.9, 0);
+      ctx.lineTo(rad * 0.2, -rad * 0.5);
+      ctx.lineTo(-rad * 0.7, -rad * 0.5);
+      ctx.lineTo(-rad * 0.7, rad * 0.5);
+      ctx.lineTo(rad * 0.2, rad * 0.5);
+      ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      // yellow warning stripe + fins
+      ctx.fillStyle = "#f5c518";
+      ctx.fillRect(-rad * 0.2, -rad * 0.5, rad * 0.25, rad);
+      ctx.fillStyle = "#20242c";
+      ctx.beginPath();
+      ctx.moveTo(-rad * 0.7, -rad * 0.5); ctx.lineTo(-rad * 1.0, -rad * 0.8); ctx.lineTo(-rad * 0.7, -rad * 0.2); ctx.closePath();
+      ctx.moveTo(-rad * 0.7, rad * 0.5); ctx.lineTo(-rad * 1.0, rad * 0.8); ctx.lineTo(-rad * 0.7, rad * 0.2); ctx.closePath();
+      ctx.fill();
     } else if (p.move === "jijiSpirit" || p.move === "jijiEvil" || p.move === "jijiSoccer") {
       // JIJI_PATCH: spirit energy - lavender/white for Jiji, dark maroon for
       // the Evil Eye, and a bouncing translucent orb for Soccer Strike.
@@ -20705,8 +21511,38 @@ function draw() {
   drawShieldBreakEffects();
   ctx.restore();
   drawUltimateScreenEffects();
+  drawDavidGlitchOverlay(); // DAVID_PATCH
   drawBindingVowQuote();
   drawActionWarning();
+}
+
+// DAVID_PATCH: a cyber glitch overlay while any David is in Cyberpsychosis -
+// red/cyan channel-split scanlines and jitter bars.
+function drawDavidGlitchOverlay() {
+  const g = Math.max(player?.technique === "david" ? (player.davidGlitch || 0) : 0, enemy?.technique === "david" ? (enemy.davidGlitch || 0) : 0);
+  if (g <= 0.02) return;
+  ctx.save();
+  ctx.globalAlpha = Math.min(0.35, g * 0.3);
+  // red/cyan edge tint
+  ctx.globalCompositeOperation = "lighter";
+  ctx.fillStyle = "rgba(255, 40, 60, 0.5)";
+  ctx.fillRect(0, 0, 5, H);
+  ctx.fillStyle = "rgba(40, 220, 240, 0.5)";
+  ctx.fillRect(W - 5, 0, 5, H);
+  // random jitter bars
+  ctx.globalCompositeOperation = "source-over";
+  for (let i = 0; i < 4; i++) {
+    if (Math.random() > 0.5) continue;
+    const y = Math.random() * H;
+    const h = 2 + Math.random() * 8;
+    ctx.fillStyle = Math.random() > 0.5 ? "rgba(255, 40, 60, 0.18)" : "rgba(40, 220, 240, 0.18)";
+    ctx.fillRect(0, y, W, h);
+  }
+  // scanlines
+  ctx.globalAlpha = Math.min(0.15, g * 0.12);
+  ctx.fillStyle = "#000";
+  for (let y = 0; y < H; y += 4) ctx.fillRect(0, y, W, 1);
+  ctx.restore();
 }
 
 
@@ -21254,6 +22090,9 @@ window.addEventListener("keydown", (event) => {
     } else if (fighter?.technique === "jiji") {
       // JIJI_PATCH: S / CT3 transforms between Jiji and Evil Eye.
       if (startJijiTransform(fighter) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("jiji-transform");
+    } else if (fighter?.technique === "david") {
+      // DAVID_PATCH: S is the Sandevistan.
+      if (startSandevistan(fighter) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("david-sande");
     }
   }
   if (isEventForAction("ultimate", key, code) && !event.repeat) beginUltimateAim(player, mouseAimWorld);
