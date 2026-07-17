@@ -1983,6 +1983,33 @@ const DAVID_ULT_DAMAGE = 1.25;
 const DAVID_ULT_DEFENSE = 0.80;        // takes 20% less
 const DAVID_ULT_SPEED = 1.15;
 
+// AKIRA_PATCH: Akira Tendo (Zom 100). Average fighter who snowballs by
+// completing Bucket List goals for permanent round buffs. Work is the
+// resource: built with Overtime, spent on Beer or a Work-scaling Ultimate.
+const AKIRA_WORK_MAX = 100;
+const AKIRA_OVERTIME_RATE = 12 / 60;   // 12 Work / second
+const AKIRA_OVERTIME_TICKS = 3 * 60;
+const AKIRA_OVERTIME_COOLDOWN = 8 * 60;
+const AKIRA_BEER_HEAL = 120;
+const AKIRA_BEER_WORK_COST = 20;
+const AKIRA_BEER_BUFF_TICKS = 6 * 60;
+const AKIRA_BEER_COOLDOWN = 12 * 60;
+const AKIRA_JOYRIDE_DAMAGE = 16;
+const AKIRA_JOYRIDE_TICKS = 34;
+const AKIRA_JOYRIDE_SPEED = 13;
+const AKIRA_JOYRIDE_COOLDOWN = 8 * 60;
+const AKIRA_VOLT_DAMAGE = 14;
+const AKIRA_VOLT_TICKS = 16;
+const AKIRA_VOLT_SPEED = 15;
+const AKIRA_VOLT_SLOW_TICKS = 60;
+const AKIRA_VOLT_COOLDOWN = 9 * 60;
+const AKIRA_SHARK_TICKS = 5 * 60;
+const AKIRA_SHARK_COOLDOWN = 18 * 60;
+// Bucket List: each completed goal grants one permanent reward for the round.
+const AKIRA_GOAL_DMG = 0.05;
+const AKIRA_GOAL_SPD = 0.05;
+const AKIRA_GOAL_HP = 75;
+
 const TECHNIQUE_STATS = {
   limitless: {
     maxHealth: 540,
@@ -2093,6 +2120,17 @@ const TECHNIQUE_STATS = {
     knockbackTakenMultiplier: 0.9,
     ceRegenRate: CE_REGEN_RATE,
     ceLowRegenBonus: CE_LOW_REGEN_BONUS
+  },
+  // AKIRA_PATCH: solid all-rounder (Zom 100 "Health: 1000") who grows through
+  // the round via Bucket List goals.
+  akira: {
+    maxHealth: 860,
+    healthBars: 9,
+    maxCe: 100,
+    damageTakenMultiplier: 1,
+    knockbackTakenMultiplier: 1,
+    ceRegenRate: CE_REGEN_RATE,
+    ceLowRegenBonus: CE_LOW_REGEN_BONUS
   }
 };
 const keys = new Set();
@@ -2102,6 +2140,7 @@ let onlineRoom = params.get("room") || "main";
 let onlineSide = params.get("side") || "";
 
 let frame = 0;
+let akiraNotebookOpen = false; // AKIRA_PATCH: Bucket List notebook overlay
 let readyCountdownId = 0;
 let gameOver = false;
 let roundEnding = false;
@@ -2762,6 +2801,7 @@ function getTechniqueCharacterName(technique) {
   if (technique === "beast") return "Inosuke"; // INOSUKE_PATCH
   if (technique === "jiji") return "Jiji"; // JIJI_PATCH
   if (technique === "david") return "David"; // DAVID_PATCH
+  if (technique === "akira") return "Akira"; // AKIRA_PATCH
   return "Gojo";
 }
 
@@ -3033,7 +3073,10 @@ const techniqueMoves = {
   // DAVID_PATCH: gorilla punch is melee (handled in startTechnique); launcher
   // is an explosive projectile.
   gorillaArms: { cost: 0, damage: DAVID_GORILLA_DAMAGE, speed: 0, radius: 1, knockback: 0, life: 1 },
-  projectileLauncher: { cost: 0, damage: DAVID_LAUNCHER_DAMAGE, speed: 11, radius: 16, knockback: 26, life: 120 }
+  projectileLauncher: { cost: 0, damage: DAVID_LAUNCHER_DAMAGE, speed: 11, radius: 16, knockback: 26, life: 120 },
+  // AKIRA_PATCH: both mouse specials are melee dashes, handled in startTechnique.
+  joyRide: { cost: 0, damage: AKIRA_JOYRIDE_DAMAGE, speed: 0, radius: 1, knockback: 0, life: 1 },
+  voltPunch: { cost: 0, damage: AKIRA_VOLT_DAMAGE, speed: 0, radius: 1, knockback: 0, life: 1 }
 };
 
 function getTechniqueMoveKey(f, slot) {
@@ -3051,6 +3094,7 @@ function getTechniqueMoveKey(f, slot) {
     return slot === 2 ? "soccerStrike" : "spiritBlast";
   }
   if (f.technique === "david") return slot === 2 ? "projectileLauncher" : "gorillaArms"; // DAVID_PATCH
+  if (f.technique === "akira") return slot === 2 ? "voltPunch" : "joyRide"; // AKIRA_PATCH
   if (f.technique === "hivemind") return slot === 2 ? "demodogHunt" : "demobatSwarm"; // VECNA_PATCH
   return "blue";
 }
@@ -3085,6 +3129,9 @@ function getTechniqueDisplayName(move) {
   if (move === "gorillaArms") return "GORILLA ARMS"; // DAVID_PATCH
   if (move === "projectileLauncher") return "LAUNCHER"; // DAVID_PATCH
   if (move === "sandevistan") return "SANDEVISTAN"; // DAVID_PATCH
+  if (move === "joyRide") return "JOY RIDE"; // AKIRA_PATCH
+  if (move === "voltPunch") return "VOLT PUNCH"; // AKIRA_PATCH
+  if (move === "overtime") return "OVERTIME"; // AKIRA_PATCH
   return move.toUpperCase();
 }
 
@@ -3127,6 +3174,10 @@ function getTechniqueCooldownTicks(move, f = null) {
   if (move === "gorillaArms") return DAVID_GORILLA_COOLDOWN;
   if (move === "projectileLauncher") return DAVID_LAUNCHER_COOLDOWN;
   if (move === "sandevistan") return DAVID_SANDEVISTAN_COOLDOWN;
+  // AKIRA_PATCH:
+  if (move === "joyRide") return AKIRA_JOYRIDE_COOLDOWN;
+  if (move === "voltPunch") return AKIRA_VOLT_COOLDOWN;
+  if (move === "overtime") return AKIRA_OVERTIME_COOLDOWN;
   let base = move === "red" || move === "cleave" ? TECHNIQUE_HEAVY_COOLDOWN : TECHNIQUE_FAST_COOLDOWN;
   if (move === "cleave" && hasBindingVow(f, "cleave")) base = Math.max(10, Math.ceil(base * 0.55));
   return base;
@@ -3174,15 +3225,16 @@ function pickRandomTechnique() {
   if (roll < 0.54) return "brawler";
   if (roll < 0.65) return "blackleg"; // SANJI_PATCH
   if (roll < 0.76) return "hivemind"; // VECNA_PATCH
-  if (roll < 0.82) return "zealot"; // ZEALOT_PATCH
-  if (roll < 0.88) return "spider"; // SPIDER_PATCH
-  if (roll < 0.93) return "beast"; // INOSUKE_PATCH
-  if (roll < 0.97) return "jiji"; // JIJI_PATCH
-  return "david"; // DAVID_PATCH
+  if (roll < 0.80) return "zealot"; // ZEALOT_PATCH
+  if (roll < 0.86) return "spider"; // SPIDER_PATCH
+  if (roll < 0.91) return "beast"; // INOSUKE_PATCH
+  if (roll < 0.95) return "jiji"; // JIJI_PATCH
+  if (roll < 0.98) return "david"; // DAVID_PATCH
+  return "akira"; // AKIRA_PATCH
 }
 
 function isValidTechnique(technique) {
-  return technique === "limitless" || technique === "shrine" || technique === "deathnote" || technique === "brawler" || technique === "blackleg" || technique === "hivemind" || technique === "zealot" || technique === "spider" || technique === "beast" || technique === "jiji" || technique === "david"; // + INOSUKE + JIJI + DAVID
+  return technique === "limitless" || technique === "shrine" || technique === "deathnote" || technique === "brawler" || technique === "blackleg" || technique === "hivemind" || technique === "zealot" || technique === "spider" || technique === "beast" || technique === "jiji" || technique === "david" || technique === "akira"; // + INOSUKE + JIJI + DAVID + AKIRA
 }
 
 function rollCpuOpponentTechnique(reason = "") {
@@ -3528,6 +3580,34 @@ function makeFighter(config) {
     davidGorillaHit: false,
     davidLauncherCooldown: 0,
     davidUltTicks: 0,            // Cyber Skeleton active
+    // AKIRA_PATCH: Work meter, Bucket List goals, ability + buff state.
+    akiraWork: 0,
+    akiraGoals: null,            // array of 3 active goal objects
+    akiraGoalFlash: 0,           // cross-off animation timer
+    akiraGoalsCompleted: 0,
+    akiraDmgBuff: 0,             // stacked +5% per reward
+    akiraSpdBuff: 0,
+    akiraHpBonusApplied: 0,      // extra max HP granted
+    akiraCdBuff: 0,              // faster cooldowns (count)
+    akiraHealBuff: 0,
+    akiraUltBuff: 0,             // extra ult duration (count)
+    akiraOvertimeTicks: 0,
+    akiraOvertimeCooldown: 0,
+    akiraBeerTicks: 0,           // beer buff active
+    akiraBeerCooldown: 0,
+    akiraJoyrideTicks: 0,
+    akiraJoyrideCooldown: 0,
+    akiraJoyrideHit: false,
+    akiraVoltTicks: 0,
+    akiraVoltCooldown: 0,
+    akiraVoltHit: false,
+    akiraSharkTicks: 0,
+    akiraSharkCooldown: 0,
+    akiraUltTicks: 0,
+    akiraUltTier: 0,
+    akiraJumpCount: 0,
+    akiraTravel: 0,
+    akiraLowHpTimer: 0,
     blocking: false,
     shieldTicks: SHIELD_MAX_TICKS,
     shieldCooldown: 0,
@@ -3580,7 +3660,7 @@ function applyTechniqueStats(f, preserveMeters = false) {
   const stats = TECHNIQUE_STATS[f.technique] || TECHNIQUE_STATS.limitless;
   const healthRatio = f.maxHealth > 0 ? f.health / f.maxHealth : 1;
   const ceRatio = f.maxCe > 0 ? f.ce / f.maxCe : 1;
-  f.speed = BASE_MOVE_SPEED * (f.technique === "limitless" ? LIMITLESS_MOVE_MULTIPLIER : f.technique === "deathnote" ? 0.94 : f.technique === "brawler" ? THRAGG_MOVE_MULTIPLIER : f.technique === "blackleg" ? SANJI_MOVE_MULTIPLIER : f.technique === "hivemind" ? VECNA_MOVE_MULTIPLIER : f.technique === "zealot" ? ZEALOT_MOVE_MULTIPLIER : f.technique === "spider" ? SPIDER_MOVE_MULTIPLIER : f.technique === "beast" ? BEAST_MOVE_MULTIPLIER : f.technique === "jiji" ? (f.jijiForm === "evileye" ? EVILEYE_MOVE_MULTIPLIER : JIJI_MOVE_MULTIPLIER) : f.technique === "david" ? 1.08 : 1); // + INOSUKE + JIJI + DAVID
+  f.speed = BASE_MOVE_SPEED * (f.technique === "limitless" ? LIMITLESS_MOVE_MULTIPLIER : f.technique === "deathnote" ? 0.94 : f.technique === "brawler" ? THRAGG_MOVE_MULTIPLIER : f.technique === "blackleg" ? SANJI_MOVE_MULTIPLIER : f.technique === "hivemind" ? VECNA_MOVE_MULTIPLIER : f.technique === "zealot" ? ZEALOT_MOVE_MULTIPLIER : f.technique === "spider" ? SPIDER_MOVE_MULTIPLIER : f.technique === "beast" ? BEAST_MOVE_MULTIPLIER : f.technique === "jiji" ? (f.jijiForm === "evileye" ? EVILEYE_MOVE_MULTIPLIER : JIJI_MOVE_MULTIPLIER) : f.technique === "david" ? 1.08 : f.technique === "akira" ? 1.0 : 1); // + INOSUKE + JIJI + DAVID + AKIRA
   f.maxHealth = stats.maxHealth;
   f.healthBars = stats.healthBars || 3;
   f.maxCe = stats.maxCe;
@@ -3718,6 +3798,35 @@ function applyTechniqueStats(f, preserveMeters = false) {
     f.davidLauncherCooldown = 0;
     f.davidUltTicks = 0;
   }
+  // AKIRA_PATCH: reset Work, Bucket List and abilities when off Akira or on
+  // a fresh spawn.
+  if (f.technique !== "akira" || !preserveMeters) {
+    f.akiraWork = 0;
+    f.akiraGoals = f.technique === "akira" ? makeAkiraGoals() : null;
+    f.akiraGoalFlash = 0;
+    f.akiraGoalsCompleted = 0;
+    f.akiraDmgBuff = 0;
+    f.akiraSpdBuff = 0;
+    f.akiraHpBonusApplied = 0;
+    f.akiraCdBuff = 0;
+    f.akiraHealBuff = 0;
+    f.akiraUltBuff = 0;
+    f.akiraOvertimeTicks = 0;
+    f.akiraOvertimeCooldown = 0;
+    f.akiraBeerTicks = 0;
+    f.akiraBeerCooldown = 0;
+    f.akiraJoyrideTicks = 0;
+    f.akiraJoyrideCooldown = 0;
+    f.akiraVoltTicks = 0;
+    f.akiraVoltCooldown = 0;
+    f.akiraSharkTicks = 0;
+    f.akiraSharkCooldown = 0;
+    f.akiraUltTicks = 0;
+    f.akiraUltTier = 0;
+    f.akiraJumpCount = 0;
+    f.akiraTravel = 0;
+    f.akiraLowHpTimer = 0;
+  }
 }
 
 function applyCpuDifficultyStats() {
@@ -3759,6 +3868,7 @@ function getTechniqueHudMoves(f) {
     return ["spiritBlast", "soccerStrike", "jijiTransform"];
   }
   if (f.technique === "david") return ["gorillaArms", "projectileLauncher", "sandevistan"]; // DAVID_PATCH
+  if (f.technique === "akira") return ["joyRide", "voltPunch", "overtime"]; // AKIRA_PATCH
   return ["blue", "red", "teleport"];
 }
 
@@ -3855,6 +3965,20 @@ function getTechniqueHudState(f, move) {
       blocked
     };
   }
+  // AKIRA_PATCH: all specials are cooldown-gated, no CE.
+  if (move === "joyRide" || move === "voltPunch" || move === "overtime") {
+    const cooldown = move === "joyRide" ? (f.akiraJoyrideCooldown || 0)
+      : move === "voltPunch" ? (f.akiraVoltCooldown || 0)
+      : (f.akiraOvertimeCooldown || 0);
+    return {
+      cost: 0,
+      cooling: cooldown > 0,
+      cooldown,
+      maxCooldown: getTechniqueCooldownTicks(move, f),
+      lowCe: false,
+      blocked
+    };
+  }
   // JIJI_PATCH: all specials are Rage/cooldown-gated, no CE.
   if (move === "spiritBlast" || move === "evilBlast" || move === "soccerStrike" || move === "berserkerRush" || move === "jijiTransform") {
     const cooldown = move === "soccerStrike" ? (f.jijiSoccerCooldown || 0)
@@ -3925,6 +4049,7 @@ function updateTechniqueCooldownHud(f, slots) {
     hud.slot.classList.toggle("beast-cooldown", f.technique === "beast"); // INOSUKE_PATCH
     hud.slot.classList.toggle("jiji-cooldown", f.technique === "jiji"); // JIJI_PATCH
     hud.slot.classList.toggle("david-cooldown", f.technique === "david"); // DAVID_PATCH
+    hud.slot.classList.toggle("akira-cooldown", f.technique === "akira"); // AKIRA_PATCH
   });
 }
 
@@ -4080,6 +4205,32 @@ function pinStationaryPracticeDummy(f = enemy) {
   f.davidGorillaCooldown = 0;
   f.davidLauncherCooldown = 0;
   f.davidUltTicks = 0;
+  // AKIRA_PATCH: reset Work, goals and abilities each round.
+  f.akiraWork = 0;
+  f.akiraGoals = f.technique === "akira" ? makeAkiraGoals() : null;
+  f.akiraGoalFlash = 0;
+  f.akiraGoalsCompleted = 0;
+  f.akiraDmgBuff = 0;
+  f.akiraSpdBuff = 0;
+  f.akiraHpBonusApplied = 0;
+  f.akiraCdBuff = 0;
+  f.akiraHealBuff = 0;
+  f.akiraUltBuff = 0;
+  f.akiraOvertimeTicks = 0;
+  f.akiraOvertimeCooldown = 0;
+  f.akiraBeerTicks = 0;
+  f.akiraBeerCooldown = 0;
+  f.akiraJoyrideTicks = 0;
+  f.akiraJoyrideCooldown = 0;
+  f.akiraVoltTicks = 0;
+  f.akiraVoltCooldown = 0;
+  f.akiraSharkTicks = 0;
+  f.akiraSharkCooldown = 0;
+  f.akiraUltTicks = 0;
+  f.akiraUltTier = 0;
+  f.akiraJumpCount = 0;
+  f.akiraTravel = 0;
+  f.akiraLowHpTimer = 0;
   // SANJI_PATCH: clear mid-move Black Leg state.
   f.sanjiDiableTicks = 0;
   f.sanjiDiveKickTicks = 0;
@@ -4813,6 +4964,64 @@ function installDavidHudStyle() {
 window.addEventListener("DOMContentLoaded", installDavidHudStyle);
 window.setTimeout(installDavidHudStyle, 0);
 
+// AKIRA_PATCH: HUD in cheerful teal/green with a red accent, plus the Work
+// bar colouring (green filling to gold).
+function installAkiraHudStyle() {
+  if (document.getElementById("akiraEffectsStyle")) return;
+  const style = document.createElement("style");
+  style.id = "akiraEffectsStyle";
+  style.textContent = `
+    .ct-slot.akira-cooldown,
+    .extra-cooldown.akira-cooldown,
+    .ct-slot.akira-cooldown.ready,
+    .ct-slot.akira-cooldown.cooling,
+    .extra-cooldown.akira-cooldown.ready,
+    .extra-cooldown.akira-cooldown.cooling {
+      background: linear-gradient(180deg, rgba(10, 32, 28, 0.92), rgba(6, 18, 16, 0.95)) !important;
+      border: 3px solid #1fa38c !important;
+      box-shadow: 0 3px 0 #0c3a32, 0 0 14px rgba(31, 163, 140, 0.4) !important;
+    }
+    .ct-slot.akira-cooldown .ct-label,
+    .ct-slot.akira-cooldown .ct-status,
+    .extra-cooldown.akira-cooldown .ct-label,
+    .extra-cooldown.akira-cooldown .ct-status,
+    .extra-cooldown.akira-cooldown .extra-cooldown-label,
+    .extra-cooldown.akira-cooldown .extra-cooldown-status {
+      color: #b6f3e4 !important;
+      text-shadow: 0 0 6px rgba(31, 163, 140, 0.75) !important;
+    }
+    .ct-slot.akira-cooldown .ct-meter,
+    .extra-cooldown.akira-cooldown .ct-meter {
+      background: rgba(6, 20, 18, 0.75) !important;
+      border-color: rgba(31, 163, 140, 0.4) !important;
+    }
+    .ct-slot.akira-cooldown .ct-fill,
+    .ct-slot.akira-cooldown.ready .ct-fill,
+    .ct-slot.akira-cooldown.low-ce .ct-fill,
+    .ct-slot.akira-cooldown.blocked .ct-fill,
+    .extra-cooldown.akira-cooldown .ct-fill,
+    .extra-cooldown.akira-cooldown.ready .ct-fill,
+    .extra-cooldown.akira-cooldown .extra-cooldown-fill {
+      background: linear-gradient(90deg, #0f766e, #1fa38c, #6ee7c8) !important;
+      box-shadow: 0 0 12px rgba(31, 163, 140, 0.5), inset 0 1px 0 rgba(220, 255, 245, 0.25) !important;
+    }
+    .ct-slot.akira-cooldown.cooling .ct-fill,
+    .ct-slot.akira-cooldown.charging .ct-fill,
+    .extra-cooldown.akira-cooldown.cooling .ct-fill,
+    .extra-cooldown.akira-cooldown.cooling .extra-cooldown-fill {
+      background: linear-gradient(90deg, #16302b, #24463f, #2f5650) !important;
+      opacity: 0.92 !important;
+    }
+    /* Work bar (repurposed CE bar) - green filling to gold */
+    .akira-work-fill {
+      background: linear-gradient(90deg, #15803d, #22c55e, #eab308) !important;
+    }
+  `;
+  document.head.appendChild(style);
+}
+window.addEventListener("DOMContentLoaded", installAkiraHudStyle);
+window.setTimeout(installAkiraHudStyle, 0);
+
 
 function installLightTechniqueOption() {
   installUniversalBrawlRename();
@@ -4922,6 +5131,10 @@ function getTechniqueControlHtml(technique) {
     // DAVID_PATCH: simple, three-button cyber brawler.
     return '<span><kbd>Left Click</kbd> Gorilla Arms (launcher)</span><span><kbd>Right Click</kbd> Projectile Launcher</span><span><kbd>S</kbd> Sandevistan (speed burst)</span><span><kbd>C</kbd> Cyber Skeleton</span>';
   }
+  if (technique === "akira") {
+    // AKIRA_PATCH: bucket-list brawler.
+    return '<span><kbd>Left Click</kbd> Joy Ride</span><span><kbd>Right Click</kbd> Volt Punch</span><span><kbd>S</kbd> Overtime (build Work)</span><span><kbd>R</kbd> Cold Beer (heal)</span><span><kbd>F</kbd> Shark Suit</span><span><kbd>T</kbd> Bucket List notebook</span><span><kbd>C</kbd> Bucket List! (ult)</span>';
+  }
   return '<span><kbd>Left Click</kbd> Blue</span><span><kbd>Right Click</kbd> Red</span><span><kbd>Hold S</kbd> Teleport</span><span><kbd>Hold T</kbd> Blue Punch</span><span><kbd>F</kbd> Infinity</span><span><kbd>Hold C</kbd> Aim Ultimate</span><span><kbd>R</kbd> hold RCT</span>';
 }
 
@@ -4940,6 +5153,7 @@ function getExtraBattleControlHtml(technique) {
   if (technique === "beast") return '<span><kbd>Beast Instinct</kbd> -10% hitstun, speed burst after combos, resists DoT</span>'; // INOSUKE_PATCH
   if (technique === "jiji") return '<span><kbd>Shared Body</kbd> both forms share HP &amp; Ultimate · 8s transform cooldown</span><span><kbd>Rage</kbd> builds only as Evil Eye · at 100 the Eye takes over &amp; forces revert</span><span><kbd>Loss of Control</kbd> high Rage = involuntary attacks · <kbd>Kind Heart</kbd> Jiji regens out of combat</span>'; // JIJI_PATCH
   if (technique === "david") return '<span><kbd>Built Different</kbd> Cyberware Load builds as you fight → +speed &amp; +damage</span><span><kbd>Cyberpsychosis</kbd> at 100 Load he rampages: huge buffs, no block, bleeds HP, acts on his own</span>'; // DAVID_PATCH
+  if (technique === "akira") return '<span><kbd>Bucket List</kbd> 3 goals active - complete one for a permanent round buff (press T)</span><span><kbd>Work</kbd> build with Overtime, spend on Beer or a Work-scaling Ultimate</span>'; // AKIRA_PATCH
   return '<span><kbd>X</kbd> Domain Expansion</span><span><kbd>Z</kbd> Simple Domain</span>';
 }
 
@@ -5318,7 +5532,9 @@ function applyJoinerFighterStateOnHost(remoteFighter) {
     // JIJI_PATCH
     "jijiForm", "jijiRage", "jijiTransformCooldown", "jijiTransformAnimTicks", "jijiTransformTo", "jijiRevertLockTicks", "jijiOutOfCombatTicks", "jijiForcedActionTicks", "jijiForcedActionKind", "jijiLossTimer", "jijiLaughTicks", "jijiBlastCooldown", "jijiSoccerCooldown", "jijiRushCooldown", "jijiRushTicks", "jijiUltTicks", "jijiUltForm",
     // DAVID_PATCH
-    "davidLoad", "davidPsychosisTicks", "davidAfterSlowTicks", "davidAfterCdTicks", "davidCollapseStun", "davidLossTimer", "davidForcedTicks", "davidForcedKind", "davidGlitch", "davidSandevistanTicks", "davidSandevistanCooldown", "davidSandeMeleeArmed", "davidGorillaCooldown", "davidGorillaTicks", "davidLauncherCooldown", "davidUltTicks"
+    "davidLoad", "davidPsychosisTicks", "davidAfterSlowTicks", "davidAfterCdTicks", "davidCollapseStun", "davidLossTimer", "davidForcedTicks", "davidForcedKind", "davidGlitch", "davidSandevistanTicks", "davidSandevistanCooldown", "davidSandeMeleeArmed", "davidGorillaCooldown", "davidGorillaTicks", "davidLauncherCooldown", "davidUltTicks",
+    // AKIRA_PATCH
+    "akiraWork", "akiraGoalsCompleted", "akiraDmgBuff", "akiraSpdBuff", "akiraCdBuff", "akiraHealBuff", "akiraUltBuff", "akiraOvertimeTicks", "akiraOvertimeCooldown", "akiraBeerTicks", "akiraBeerCooldown", "akiraJoyrideTicks", "akiraJoyrideCooldown", "akiraVoltTicks", "akiraVoltCooldown", "akiraSharkTicks", "akiraSharkCooldown", "akiraUltTicks", "akiraUltTier"
   ];
 
   fields.forEach((field) => {
@@ -5425,6 +5641,9 @@ if (data.type === "role") {
       if (data.action === "beast-explosive") startBeastExplosive(enemy); // INOSUKE_PATCH
       if (data.action === "jiji-transform") startJijiTransform(enemy); // JIJI_PATCH
       if (data.action === "david-sande") startSandevistan(enemy); // DAVID_PATCH
+      if (data.action === "akira-overtime") startOvertime(enemy); // AKIRA_PATCH
+      if (data.action === "akira-beer") drinkBeer(enemy); // AKIRA_PATCH
+      if (data.action === "akira-shark") startSharkSuit(enemy); // AKIRA_PATCH
       if (data.action === "dodge") startDodge(enemy, getVectorFromInput(remoteInput));
       if (data.action === "jump") jumpFighterWithMove(enemy, (remoteInput.right ? 1 : 0) - (remoteInput.left ? 1 : 0));
       if (data.action === "infinity" && !hasCtLock(enemy)) toggleInfinity(enemy);
@@ -6068,7 +6287,7 @@ function getSukunaPassiveDamageMultiplier(f) {
 
 function getOutgoingDamageMultiplier(f) {
   const simpleDomainBonus = hasSimpleDomain(f) ? SIMPLE_DOMAIN_CT_DAMAGE_MULTIPLIER : 1;
-  return (f?.outgoingDamageMultiplier || 1) * getSukunaPassiveDamageMultiplier(f) * simpleDomainBonus * getJijiDamageMultiplier(f) * getDavidDamageMultiplier(f);
+  return (f?.outgoingDamageMultiplier || 1) * getSukunaPassiveDamageMultiplier(f) * simpleDomainBonus * getJijiDamageMultiplier(f) * getDavidDamageMultiplier(f) * getAkiraDamageMultiplier(f);
 }
 
 // DAVID_PATCH: Cyberware Load adds up to +10% ability damage; Cyberpsychosis
@@ -6367,6 +6586,17 @@ function getExtraCooldownItems(f) {
     return items;
   }
 
+  // AKIRA_PATCH: Beer / Shark timers, goals-done tally, active ultimate.
+  if (f.technique === "akira") {
+    if ((f.akiraBeerTicks || 0) > 0) items.push({ name: "BEER", current: f.akiraBeerTicks, max: AKIRA_BEER_BUFF_TICKS, mode: "active" });
+    else items.push({ name: "BEER", current: f.akiraBeerCooldown || 0, max: AKIRA_BEER_COOLDOWN });
+    if ((f.akiraSharkTicks || 0) > 0) items.push({ name: "SHARK", current: f.akiraSharkTicks, max: AKIRA_SHARK_TICKS, mode: "active" });
+    else items.push({ name: "SHARK", current: f.akiraSharkCooldown || 0, max: AKIRA_SHARK_COOLDOWN });
+    items.push({ name: "GOALS", current: Math.min(9, f.akiraGoalsCompleted || 0), max: 9, mode: "resource" });
+    if ((f.akiraUltTicks || 0) > 0) items.push({ name: "BUCKET LIST", current: f.akiraUltTicks, max: DAVID_ULT_TICKS, mode: "active" });
+    return items;
+  }
+
   // SPIDER_PATCH: Spider Rush + ultimate timer, nothing JJK.
   if (f.technique === "spider") {
     const opp = getOpponent(f);
@@ -6471,7 +6701,7 @@ function updateExtraCooldownHud(container, f) {
       : ready ? 100 : Math.max(4, ratio * 100);
 
     const row = document.createElement("div");
-    row.className = `extra-cooldown ct-slot ${ready ? "ready" : "cooling"} ${f.technique === "shrine" ? "sukuna-cooldown" : f.technique === "deathnote" ? "light-cooldown" : f.technique === "brawler" ? "thragg-cooldown" : f.technique === "blackleg" ? "sanji-cooldown" : f.technique === "hivemind" ? "vecna-cooldown" : f.technique === "zealot" ? "zealot-cooldown" : f.technique === "spider" ? "spider-cooldown" : f.technique === "beast" ? "beast-cooldown" : f.technique === "jiji" ? "jiji-cooldown" : f.technique === "david" ? "david-cooldown" : "gojo-cooldown"} ${item.style || ""}`;
+    row.className = `extra-cooldown ct-slot ${ready ? "ready" : "cooling"} ${f.technique === "shrine" ? "sukuna-cooldown" : f.technique === "deathnote" ? "light-cooldown" : f.technique === "brawler" ? "thragg-cooldown" : f.technique === "blackleg" ? "sanji-cooldown" : f.technique === "hivemind" ? "vecna-cooldown" : f.technique === "zealot" ? "zealot-cooldown" : f.technique === "spider" ? "spider-cooldown" : f.technique === "beast" ? "beast-cooldown" : f.technique === "jiji" ? "jiji-cooldown" : f.technique === "david" ? "david-cooldown" : f.technique === "akira" ? "akira-cooldown" : "gojo-cooldown"} ${item.style || ""}`;
 
     const label = document.createElement("span");
     label.className = "extra-cooldown-label ct-label";
@@ -6534,7 +6764,7 @@ function updateResourceBarLabels() {
   const playerUltFrame = playerUltimateEl ? playerUltimateEl.closest(".ultimate-frame") : null;
   const enemyUltFrame = enemyUltimateEl ? enemyUltimateEl.closest(".ultimate-frame") : null;
 
-  ensureResourceBarLabel(playerCeFrame, isLight(player) ? "Information" : player?.technique === "jiji" ? "Rage" : player?.technique === "david" ? "Cyberware Load" : player?.technique === "brawler" || player?.technique === "blackleg" || player?.technique === "hivemind" || player?.technique === "zealot" || player?.technique === "spider" || player?.technique === "beast" ? "" : "Cursed Energy", "ce"); // + INOSUKE + JIJI + DAVID
+  ensureResourceBarLabel(playerCeFrame, isLight(player) ? "Information" : player?.technique === "jiji" ? "Rage" : player?.technique === "david" ? "Cyberware Load" : player?.technique === "akira" ? "Work" : player?.technique === "brawler" || player?.technique === "blackleg" || player?.technique === "hivemind" || player?.technique === "zealot" || player?.technique === "spider" || player?.technique === "beast" ? "" : "Cursed Energy", "ce"); // + INOSUKE + JIJI + DAVID + AKIRA
   ensureResourceBarLabel(playerUltFrame, isLight(player) ? "Name" : "Ultimate", "ultimate");
 
   // DUMMY_HUD_NO_WORDS_PATCH:
@@ -6545,7 +6775,7 @@ function updateResourceBarLabels() {
     return;
   }
 
-  ensureResourceBarLabel(enemyCeFrame, isLight(enemy) ? "Information" : enemy?.technique === "jiji" ? "Rage" : enemy?.technique === "david" ? "Cyberware Load" : enemy?.technique === "brawler" || enemy?.technique === "blackleg" || enemy?.technique === "hivemind" || enemy?.technique === "zealot" || enemy?.technique === "spider" || enemy?.technique === "beast" ? "" : "Cursed Energy", "ce"); // + INOSUKE + JIJI + DAVID
+  ensureResourceBarLabel(enemyCeFrame, isLight(enemy) ? "Information" : enemy?.technique === "jiji" ? "Rage" : enemy?.technique === "david" ? "Cyberware Load" : enemy?.technique === "akira" ? "Work" : enemy?.technique === "brawler" || enemy?.technique === "blackleg" || enemy?.technique === "hivemind" || enemy?.technique === "zealot" || enemy?.technique === "spider" || enemy?.technique === "beast" ? "" : "Cursed Energy", "ce"); // + INOSUKE + JIJI + DAVID + AKIRA
   ensureResourceBarLabel(enemyUltFrame, isLight(enemy) ? "Name" : "Ultimate", "ultimate");
 }
 
@@ -6642,8 +6872,8 @@ function updateHud() {
   enemyNameEl.classList.toggle("cpu-name", gameMode === "cpu");
   renderSegmentedHealth(playerHealthEl, player);
   renderSegmentedHealth(enemyHealthEl, enemy);
-  const playerInfoRatio = isLight(player) ? Math.max(0, Math.min(1, (player.informationMeter || 0) / LIGHT_INFO_MAX)) : player.technique === "jiji" ? Math.max(0, Math.min(1, (player.jijiRage || 0) / RAGE_MAX)) : player.technique === "david" ? Math.max(0, Math.min(1, (player.davidLoad || 0) / DAVID_LOAD_MAX)) : Math.max(0, player.ce / player.maxCe);
-  const enemyInfoRatio = isLight(enemy) ? Math.max(0, Math.min(1, (enemy.informationMeter || 0) / LIGHT_INFO_MAX)) : enemy.technique === "jiji" ? Math.max(0, Math.min(1, (enemy.jijiRage || 0) / RAGE_MAX)) : enemy.technique === "david" ? Math.max(0, Math.min(1, (enemy.davidLoad || 0) / DAVID_LOAD_MAX)) : Math.max(0, enemy.ce / enemy.maxCe);
+  const playerInfoRatio = isLight(player) ? Math.max(0, Math.min(1, (player.informationMeter || 0) / LIGHT_INFO_MAX)) : player.technique === "jiji" ? Math.max(0, Math.min(1, (player.jijiRage || 0) / RAGE_MAX)) : player.technique === "david" ? Math.max(0, Math.min(1, (player.davidLoad || 0) / DAVID_LOAD_MAX)) : player.technique === "akira" ? Math.max(0, Math.min(1, (player.akiraWork || 0) / AKIRA_WORK_MAX)) : Math.max(0, player.ce / player.maxCe);
+  const enemyInfoRatio = isLight(enemy) ? Math.max(0, Math.min(1, (enemy.informationMeter || 0) / LIGHT_INFO_MAX)) : enemy.technique === "jiji" ? Math.max(0, Math.min(1, (enemy.jijiRage || 0) / RAGE_MAX)) : enemy.technique === "david" ? Math.max(0, Math.min(1, (enemy.davidLoad || 0) / DAVID_LOAD_MAX)) : enemy.technique === "akira" ? Math.max(0, Math.min(1, (enemy.akiraWork || 0) / AKIRA_WORK_MAX)) : Math.max(0, enemy.ce / enemy.maxCe);
   const playerNameRatio = isLight(player) ? Math.max(0, Math.min(1, (player.identityProgress || 0) / LIGHT_IDENTITY_MAX)) : Math.max(0, Math.min(1, (player.ultimateMeter || 0) / 100));
   const enemyNameRatio = isLight(enemy) ? Math.max(0, Math.min(1, (enemy.identityProgress || 0) / LIGHT_IDENTITY_MAX)) : Math.max(0, Math.min(1, (enemy.ultimateMeter || 0) / 100));
 
@@ -6655,6 +6885,9 @@ function updateHud() {
   // DAVID_PATCH: the Cyberware Load bar flashes as it nears Cyberpsychosis.
   applyDavidLoadBarState(playerCeEl, player);
   applyDavidLoadBarState(enemyCeEl, enemy);
+  // AKIRA_PATCH: the Work bar (green -> gold as it fills).
+  if (playerCeEl) playerCeEl.classList.toggle("akira-work-fill", player?.technique === "akira");
+  if (enemyCeEl) enemyCeEl.classList.toggle("akira-work-fill", enemy?.technique === "akira");
   if (playerUltimateEl) playerUltimateEl.style.width = `${playerNameRatio * 100}%`;
   if (enemyUltimateEl) enemyUltimateEl.style.width = `${enemyNameRatio * 100}%`;
   updateTechniqueCooldownHud(player, ctHud.player);
@@ -6908,6 +7141,8 @@ function getTakenDamage(defender, rawDamage) {
     if ((defender.davidUltTicks || 0) > 0) multiplier *= DAVID_ULT_DEFENSE;
     if ((defender.davidPsychosisTicks || 0) > 0) multiplier *= 1.15;
   }
+  // AKIRA_PATCH: Shark Suit gives 20% damage reduction.
+  if (defender.technique === "akira" && (defender.akiraSharkTicks || 0) > 0) multiplier *= 0.8;
   return Math.max(1, Math.ceil(rawDamage * multiplier));
 }
 
@@ -7070,7 +7305,7 @@ function isSpiderCommitted(f) {
 function isSpecialLocked(f) {
   const owner = getFighterOwner(f);
   const clashing = Boolean(owner && domainClash?.attempts?.[owner]);
-  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || isSanjiCommitted(f) || isZealotCommitted(f) || isSpiderCommitted(f) || isBeastCommitted(f) || isJijiCommitted(f) || isDavidCommitted(f) || (f?.vecnaSlipTicks || 0) > 0 || (f?.domainStartup || 0) > 0 || clashing || (f?.potatoVulnerableTicks || 0) > 0; // + INOSUKE + JIJI + DAVID
+  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || isSanjiCommitted(f) || isZealotCommitted(f) || isSpiderCommitted(f) || isBeastCommitted(f) || isJijiCommitted(f) || isDavidCommitted(f) || isAkiraCommitted(f) || (f?.vecnaSlipTicks || 0) > 0 || (f?.domainStartup || 0) > 0 || clashing || (f?.potatoVulnerableTicks || 0) > 0; // + INOSUKE + JIJI + DAVID + AKIRA
 }
 
 // DOMAIN_MOVEMENT_FIX
@@ -7079,7 +7314,7 @@ function isSpecialLocked(f) {
 function isMovementLocked(f) {
   const owner = getFighterOwner(f);
   const clashing = Boolean(owner && domainClash?.attempts?.[owner]);
-  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || (f?.sanjiMuttonTicks || 0) > 0 || (f?.sanjiCookTicks || 0) > 0 || (f?.zealotFlurryTicks || 0) > 0 || (f?.zealotWhirlTicks || 0) > 0 || (f?.spiderRushTicks || 0) > 0 || (f?.cocoonTicks || 0) > 0 || (f?.beastCrazyTicks || 0) > 0 || (f?.beastWhirlTicks || 0) > 0 || (f?.beastDevourTicks || 0) > 0 || (f?.jijiTransformAnimTicks || 0) > 0 || (f?.jijiForcedActionTicks || 0) > 0 || (f?.davidGorillaTicks || 0) > 0 || (f?.davidForcedTicks || 0) > 0 || (f?.davidCollapseStun || 0) > 0 || clashing; // + INOSUKE roots + JIJI + DAVID
+  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || (f?.sanjiMuttonTicks || 0) > 0 || (f?.sanjiCookTicks || 0) > 0 || (f?.zealotFlurryTicks || 0) > 0 || (f?.zealotWhirlTicks || 0) > 0 || (f?.spiderRushTicks || 0) > 0 || (f?.cocoonTicks || 0) > 0 || (f?.beastCrazyTicks || 0) > 0 || (f?.beastWhirlTicks || 0) > 0 || (f?.beastDevourTicks || 0) > 0 || (f?.jijiTransformAnimTicks || 0) > 0 || (f?.jijiForcedActionTicks || 0) > 0 || (f?.davidGorillaTicks || 0) > 0 || (f?.davidForcedTicks || 0) > 0 || (f?.davidCollapseStun || 0) > 0 || (f?.akiraOvertimeTicks || 0) > 0 || (f?.akiraJoyrideTicks || 0) > 0 || (f?.akiraVoltTicks || 0) > 0 || clashing; // + INOSUKE roots + JIJI + DAVID + AKIRA
 }
 
 function getMoveInputForFighter(f) {
@@ -10455,6 +10690,368 @@ function updateDavidSystems(f, opponent) {
   f.speed = BASE_MOVE_SPEED * 1.08 * cpuMult * mult;
 }
 
+// ==========================================================================
+// AKIRA_PATCH: Akira Tendo (Zom 100). Average brawler who snowballs by
+// ticking off Bucket List goals (permanent round buffs). Work is his
+// resource - built with Overtime, spent on Beer or a Work-scaling Ultimate.
+// Kit: Overtime, Cold Beer, Joy Ride, Volt Punch, Shark Suit + the Bucket
+// List! ultimate.
+// ==========================================================================
+
+const AKIRA_GOAL_TEMPLATES = [
+  { key: "combo", label: "Land a 3-hit combo", target: 1, kind: "event" },
+  { key: "joyride", label: "Hit with Joy Ride", target: 1, kind: "event" },
+  { key: "volt", label: "Land Volt Punch x2", target: 2, kind: "event" },
+  { key: "ult", label: "Use your Ultimate", target: 1, kind: "event" },
+  { key: "beer", label: "Drink a Cold Beer", target: 1, kind: "event" },
+  { key: "jump", label: "Jump 12 times", target: 12, kind: "jump" },
+  { key: "travel", label: "Travel a long way", target: 1500, kind: "travel" },
+  { key: "lowhp", label: "Survive low HP 8s", target: 8 * 60, kind: "lowhp" }
+];
+const AKIRA_REWARDS = ["dmg", "spd", "hp", "cd", "heal", "ult"];
+const AKIRA_REWARD_LABEL = { dmg: "+5% Damage", spd: "+5% Speed", hp: "+75 Max HP", cd: "Faster Cooldowns", heal: "Better Healing", ult: "Longer Ultimate" };
+
+function makeAkiraGoal(existingKeys) {
+  const pool = AKIRA_GOAL_TEMPLATES.filter(g => !existingKeys.includes(g.key));
+  const tpl = (pool.length ? pool : AKIRA_GOAL_TEMPLATES)[Math.floor(Math.random() * (pool.length ? pool.length : AKIRA_GOAL_TEMPLATES.length))];
+  return { key: tpl.key, label: tpl.label, target: tpl.target, kind: tpl.kind, progress: 0, base: 0, done: false };
+}
+
+function makeAkiraGoals() {
+  const goals = [];
+  for (let i = 0; i < 3; i++) goals.push(makeAkiraGoal(goals.map(g => g.key)));
+  return goals;
+}
+
+function isAkira(f) {
+  return Boolean(f && f.technique === "akira");
+}
+
+function akiraUltActive(f) {
+  return isAkira(f) && (f.akiraUltTicks || 0) > 0;
+}
+
+function akiraSharkActive(f) {
+  return isAkira(f) && (f.akiraSharkTicks || 0) > 0;
+}
+
+function akiraBeerActive(f) {
+  return isAkira(f) && (f.akiraBeerTicks || 0) > 0;
+}
+
+// Ult tier speed/damage bonus (0.10 .. 0.50).
+function akiraUltBonus(f) {
+  if (!akiraUltActive(f)) return 0;
+  return 0.10 * (f.akiraUltTier || 1);
+}
+
+function getAkiraDamageMultiplier(f) {
+  if (!isAkira(f)) return 1;
+  let m = 1 + (f.akiraDmgBuff || 0) * AKIRA_GOAL_DMG;
+  if (akiraBeerActive(f)) m *= 1.15;
+  if (akiraUltActive(f)) m *= 1 + akiraUltBonus(f);
+  return m;
+}
+
+function akiraOutgoing(f) {
+  return getOutgoingDamageMultiplier(f);
+}
+
+// Super armour: tier 3+ armours abilities; tier 5 armours everything.
+function isAkiraSuperArmor(f) {
+  return akiraUltActive(f) && (f.akiraUltTier || 0) >= 3;
+}
+
+function isAkiraCommitted(f) {
+  return Boolean(f && ((f.akiraJoyrideTicks || 0) > 0 || (f.akiraVoltTicks || 0) > 0 || (f.akiraOvertimeTicks || 0) > 0));
+}
+
+function canStartAkiraSpecial(f) {
+  return Boolean(
+    f && !gameOver && !paused && !isSpecialLocked(f) && !f.ko &&
+    f.stun <= 0 && f.dodging <= 0 && !f.knockdown && !f.attacking
+  );
+}
+
+function akiraCooldownRate(f) {
+  let r = 1 + (f.akiraCdBuff || 0) * 0.08;
+  if (akiraUltActive(f) && (f.akiraUltTier || 0) >= 5) r *= 1.4; // -40% cooldowns
+  return r;
+}
+
+function gainWork(f, amount) {
+  if (!isAkira(f) || amount <= 0) return;
+  f.akiraWork = Math.max(0, Math.min(AKIRA_WORK_MAX, (f.akiraWork || 0) + amount));
+}
+
+// ---- Bucket List ----------------------------------------------------------
+
+function noteAkiraEvent(f, key) {
+  if (!isAkira(f) || !Array.isArray(f.akiraGoals)) return;
+  for (const g of f.akiraGoals) {
+    if (g.kind === "event" && g.key === key && !g.done) g.progress += 1;
+  }
+}
+
+function applyAkiraReward(f) {
+  const reward = AKIRA_REWARDS[Math.floor(Math.random() * AKIRA_REWARDS.length)];
+  if (reward === "dmg") f.akiraDmgBuff = (f.akiraDmgBuff || 0) + 1;
+  else if (reward === "spd") f.akiraSpdBuff = (f.akiraSpdBuff || 0) + 1;
+  else if (reward === "hp") {
+    f.akiraHpBonusApplied = (f.akiraHpBonusApplied || 0) + AKIRA_GOAL_HP;
+    f.maxHealth += AKIRA_GOAL_HP;
+    f.health = Math.min(f.maxHealth, f.health + AKIRA_GOAL_HP);
+  } else if (reward === "cd") f.akiraCdBuff = (f.akiraCdBuff || 0) + 1;
+  else if (reward === "heal") f.akiraHealBuff = (f.akiraHealBuff || 0) + 1;
+  else if (reward === "ult") f.akiraUltBuff = (f.akiraUltBuff || 0) + 1;
+  showActionWarning(AKIRA_REWARD_LABEL[reward] + "!");
+  return reward;
+}
+
+function updateAkiraGoals(f) {
+  if (!Array.isArray(f.akiraGoals)) f.akiraGoals = makeAkiraGoals();
+  for (let i = 0; i < f.akiraGoals.length; i++) {
+    const g = f.akiraGoals[i];
+    if (g.done) continue;
+    // live-counter goals
+    if (g.kind === "jump") g.progress = Math.max(0, (f.akiraJumpCount || 0) - g.base);
+    else if (g.kind === "travel") g.progress = Math.max(0, (f.akiraTravel || 0) - g.base);
+    else if (g.kind === "lowhp") g.progress = Math.max(0, (f.akiraLowHpTimer || 0) - g.base);
+    if (g.progress >= g.target) {
+      g.done = true;
+      f.akiraGoalsCompleted = (f.akiraGoalsCompleted || 0) + 1;
+      f.akiraGoalFlash = 48;
+      applyAkiraReward(f);
+      // replace with a fresh goal not already active
+      const others = f.akiraGoals.filter((_, j) => j !== i).map(x => x.key);
+      const ng = makeAkiraGoal(others);
+      ng.base = ng.kind === "jump" ? (f.akiraJumpCount || 0) : ng.kind === "travel" ? (f.akiraTravel || 0) : ng.kind === "lowhp" ? (f.akiraLowHpTimer || 0) : 0;
+      f.akiraGoals[i] = ng;
+    }
+  }
+}
+
+// ---- Overtime (Work) ------------------------------------------------------
+
+function startOvertime(f) {
+  if (!isAkira(f) || !canStartAkiraSpecial(f) || (f.akiraOvertimeCooldown || 0) > 0) return false;
+  f.akiraOvertimeCooldown = AKIRA_OVERTIME_COOLDOWN;
+  f.akiraOvertimeTicks = AKIRA_OVERTIME_TICKS;
+  f.blocking = false; f.vx = 0;
+  showActionWarning("OVERTIME");
+  return true;
+}
+
+function updateOvertime(f) {
+  if ((f.akiraOvertimeTicks || 0) <= 0) return;
+  // interrupted if hit
+  if (f.ko || f.stun > 0 || f.knockdown || f.hurt > 0) { f.akiraOvertimeTicks = 0; return; }
+  f.akiraOvertimeTicks -= 1;
+  f.vx *= 0.5;
+  gainWork(f, AKIRA_OVERTIME_RATE);
+  if (frame % 8 === 0) spawnHitSpark(f.x + f.w / 2, f.y + 20, f.dir, "block");
+}
+
+// ---- Cold Beer ------------------------------------------------------------
+
+function drinkBeer(f) {
+  if (!isAkira(f) || gameOver || paused || f.ko || f.stun > 0 || f.knockdown) return false;
+  if ((f.akiraBeerCooldown || 0) > 0) return false;
+  f.akiraBeerCooldown = AKIRA_BEER_COOLDOWN;
+  f.akiraBeerTicks = AKIRA_BEER_BUFF_TICKS;
+  f.akiraWork = Math.max(0, (f.akiraWork || 0) - AKIRA_BEER_WORK_COST);
+  const heal = Math.round(AKIRA_BEER_HEAL * (1 + (f.akiraHealBuff || 0) * 0.1));
+  f.health = Math.min(f.maxHealth, f.health + heal);
+  noteAkiraEvent(f, "beer");
+  showActionWarning("COLD BEER");
+  spawnHitSpark(f.x + f.w / 2, f.y + 20, f.dir, "block");
+  updateHud();
+  return true;
+}
+
+// ---- Joy Ride -------------------------------------------------------------
+
+function startJoyRide(f) {
+  if (!isAkira(f) || !canStartAkiraSpecial(f) || (f.akiraJoyrideCooldown || 0) > 0) return false;
+  const opponent = getOpponent(f);
+  if (opponent) f.dir = getFighterCenter(opponent).x >= getFighterCenter(f).x ? 1 : -1;
+  f.akiraJoyrideCooldown = AKIRA_JOYRIDE_COOLDOWN;
+  f.akiraJoyrideTicks = AKIRA_JOYRIDE_TICKS;
+  f.akiraJoyrideHit = false;
+  f.blocking = false;
+  f.vx = f.dir * AKIRA_JOYRIDE_SPEED;
+  showActionWarning("JOY RIDE");
+  return true;
+}
+
+function updateJoyRide(f, opponent) {
+  if ((f.akiraJoyrideTicks || 0) <= 0) return;
+  if (f.ko || (f.stun > 0 && !isAkiraSuperArmor(f)) || f.knockdown) { f.akiraJoyrideTicks = 0; return; }
+  f.akiraJoyrideTicks -= 1;
+  const finishing = f.akiraJoyrideTicks <= 10;
+  f.vx = f.dir * AKIRA_JOYRIDE_SPEED * (finishing ? 0.5 : 1);
+  if (finishing && f.grounded) f.vy = Math.min(f.vy, -6); // flying kick lift
+  if (frame % 3 === 0) spawnHitSpark(getFighterCenter(f).x - f.dir * 12, f.y + f.h - 6, -f.dir, "block");
+  if (opponent && !opponent.ko && opponent.dodging <= 0 && !isUntargetable(opponent) && rectsOverlap(expandRect(f, 8), opponent)) {
+    const blocked = isBlockingAttack(opponent, f.dir);
+    if (!f.akiraJoyrideHit) {
+      f.akiraJoyrideHit = true;
+      const dmg = blocked ? 0 : getTakenDamage(opponent, Math.ceil(AKIRA_JOYRIDE_DAMAGE * akiraOutgoing(f)));
+      if (blocked) { damageShield(opponent, AKIRA_JOYRIDE_DAMAGE); opponent.vx = f.dir * getTakenKnockback(opponent, 12); }
+      else {
+        applyFighterDamage(opponent, dmg);
+        opponent.vx = f.dir * getTakenKnockback(opponent, 30);
+        opponent.vy = -9; opponent.grounded = false;
+        opponent.knockdown = true; opponent.knockdownTimer = 22;
+        opponent.stun = Math.max(opponent.stun, 20);
+        gainUltimate(f, dmg * ULT_DAMAGE_GAIN_SCALE);
+        noteAkiraEvent(f, "joyride");
+        akiraLifesteal(f, dmg);
+      }
+      const c = getFighterCenter(opponent);
+      spawnHitSpark(c.x, c.y, f.dir, "heavy");
+      shake = Math.max(shake, 10);
+      hitStopTicks = Math.max(hitStopTicks, HITSTOP_HEAVY);
+      updateHud();
+    }
+  }
+}
+
+// ---- Volt Punch -----------------------------------------------------------
+
+function startVoltPunch(f) {
+  if (!isAkira(f) || !canStartAkiraSpecial(f) || (f.akiraVoltCooldown || 0) > 0) return false;
+  const opponent = getOpponent(f);
+  if (opponent) f.dir = getFighterCenter(opponent).x >= getFighterCenter(f).x ? 1 : -1;
+  f.akiraVoltCooldown = AKIRA_VOLT_COOLDOWN;
+  f.akiraVoltTicks = AKIRA_VOLT_TICKS;
+  f.akiraVoltHit = false;
+  f.blocking = false;
+  f.vx = f.dir * AKIRA_VOLT_SPEED;
+  showActionWarning("VOLT PUNCH");
+  return true;
+}
+
+function updateVoltPunch(f, opponent) {
+  if ((f.akiraVoltTicks || 0) <= 0) return;
+  if (f.ko || (f.stun > 0 && !isAkiraSuperArmor(f)) || f.knockdown) { f.akiraVoltTicks = 0; return; }
+  f.akiraVoltTicks -= 1;
+  f.vx = f.dir * AKIRA_VOLT_SPEED * (f.akiraVoltTicks < 8 ? 0.4 : 1);
+  if (frame % 2 === 0) spawnHitSpark(getFighterCenter(f).x + f.dir * 14, getFighterCenter(f).y, f.dir, "block");
+  if (!f.akiraVoltHit && opponent && !opponent.ko && opponent.dodging <= 0 && !isUntargetable(opponent) && rectsOverlap(expandRect(f, 8), opponent)) {
+    f.akiraVoltHit = true;
+    const blocked = isBlockingAttack(opponent, f.dir);
+    const dmg = blocked ? 0 : getTakenDamage(opponent, Math.ceil(AKIRA_VOLT_DAMAGE * akiraOutgoing(f)));
+    if (blocked) { damageShield(opponent, AKIRA_VOLT_DAMAGE); opponent.vx = f.dir * getTakenKnockback(opponent, 12); }
+    else {
+      applyFighterDamage(opponent, dmg);
+      opponent.vx = f.dir * getTakenKnockback(opponent, 16);
+      opponent.stun = Math.max(opponent.stun, 18);
+      opponent.hurt = Math.max(opponent.hurt, 8);
+      // shock slow
+      opponent.deathNoteSlowTicks = Math.max(opponent.deathNoteSlowTicks || 0, AKIRA_VOLT_SLOW_TICKS);
+      gainUltimate(f, dmg * ULT_DAMAGE_GAIN_SCALE);
+      noteAkiraEvent(f, "volt");
+      akiraLifesteal(f, dmg);
+    }
+    const c = getFighterCenter(opponent);
+    spawnHitSpark(c.x, c.y, f.dir, "heavy");
+    // electric arcs
+    for (let i = 0; i < 3; i++) spawnHitSpark(c.x + (Math.random() - 0.5) * 24, c.y + (Math.random() - 0.5) * 30, f.dir, "block");
+    shake = Math.max(shake, 8);
+    hitStopTicks = Math.max(hitStopTicks, HITSTOP_LIGHT + 1);
+    f.akiraVoltTicks = Math.min(f.akiraVoltTicks, 4);
+    updateHud();
+  }
+}
+
+// ---- Shark Suit -----------------------------------------------------------
+
+function startSharkSuit(f) {
+  if (!isAkira(f) || gameOver || paused || f.ko || f.stun > 0 || f.knockdown) return false;
+  if ((f.akiraSharkCooldown || 0) > 0 || (f.akiraSharkTicks || 0) > 0) return false;
+  f.akiraSharkCooldown = AKIRA_SHARK_COOLDOWN;
+  f.akiraSharkTicks = AKIRA_SHARK_TICKS;
+  showActionWarning("SHARK SUIT");
+  return true;
+}
+
+// ---- Ultimate: Bucket List! ----------------------------------------------
+
+function startAkiraUltimate(f) {
+  if (!isAkira(f) || akiraUltActive(f)) return false;
+  if (!canStartUltimate(f)) {
+    const warning = getUltimateFailureMessage(f);
+    if (warning) showActionWarning(warning);
+    return false;
+  }
+  const work = f.akiraWork || 0;
+  const tier = work >= 100 ? 5 : work >= 75 ? 4 : work >= 50 ? 3 : work >= 25 ? 2 : 1;
+  const baseTicks = [0, 8, 10, 12, 15, 18][tier] * 60;
+  f.akiraUltTier = tier;
+  f.akiraUltTicks = baseTicks + (f.akiraUltBuff || 0) * 60; // Bucket List reward extends it
+  f.akiraWork = 0;
+  f.ultimateMeter = 0;
+  noteAkiraEvent(f, "ult");
+  showActionWarning(tier >= 5 ? "100 THINGS TO DO!" : "BUCKET LIST!");
+  shake = Math.max(shake, 12);
+  spawnHitSpark(f.x + f.w / 2, f.y + f.h * 0.4, f.dir, "heavy");
+  updateHud();
+  return true;
+}
+
+// tier-5 ult: successful hits heal a little.
+function akiraLifesteal(f, dmg) {
+  if (akiraUltActive(f) && (f.akiraUltTier || 0) >= 5 && dmg > 0) {
+    f.health = Math.min(f.maxHealth, f.health + Math.max(1, Math.round(dmg * 0.15)));
+  }
+}
+
+// ---- Per-frame driver -----------------------------------------------------
+
+function updateAkiraSystems(f, opponent) {
+  if (!isAkira(f)) return;
+  if (!Array.isArray(f.akiraGoals)) f.akiraGoals = makeAkiraGoals();
+
+  // jump detection (grounded -> airborne)
+  if (f._akiraWasGrounded === undefined) f._akiraWasGrounded = f.grounded;
+  if (f._akiraWasGrounded && !f.grounded && f.vy < 0) f.akiraJumpCount = (f.akiraJumpCount || 0) + 1;
+  f._akiraWasGrounded = f.grounded;
+  // travel + low-hp clocks
+  f.akiraTravel = (f.akiraTravel || 0) + Math.abs(f.vx || 0);
+  if (!f.ko && f.health < f.maxHealth * 0.25) f.akiraLowHpTimer = (f.akiraLowHpTimer || 0) + 1;
+
+  updateAkiraGoals(f);
+  if ((f.akiraGoalFlash || 0) > 0) f.akiraGoalFlash -= 1;
+
+  // cooldown timers (Bucket List "faster cooldowns" applies)
+  const cdRate = akiraCooldownRate(f);
+  const dec = (v) => Math.max(0, v - cdRate);
+  if ((f.akiraOvertimeCooldown || 0) > 0 && (f.akiraOvertimeTicks || 0) <= 0) f.akiraOvertimeCooldown = dec(f.akiraOvertimeCooldown);
+  if ((f.akiraBeerCooldown || 0) > 0) f.akiraBeerCooldown = dec(f.akiraBeerCooldown);
+  if ((f.akiraJoyrideCooldown || 0) > 0 && (f.akiraJoyrideTicks || 0) <= 0) f.akiraJoyrideCooldown = dec(f.akiraJoyrideCooldown);
+  if ((f.akiraVoltCooldown || 0) > 0 && (f.akiraVoltTicks || 0) <= 0) f.akiraVoltCooldown = dec(f.akiraVoltCooldown);
+  if ((f.akiraSharkCooldown || 0) > 0 && (f.akiraSharkTicks || 0) <= 0) f.akiraSharkCooldown = dec(f.akiraSharkCooldown);
+  if ((f.akiraBeerTicks || 0) > 0) f.akiraBeerTicks -= 1;
+  if ((f.akiraSharkTicks || 0) > 0) f.akiraSharkTicks -= 1;
+  if ((f.akiraUltTicks || 0) > 0) {
+    f.akiraUltTicks -= 1;
+    if (f.akiraUltTier >= 4 && frame % 3 === 0) spawnHitSpark(f.x + f.w / 2 + (Math.random() - 0.5) * 40, f.y + Math.random() * f.h, f.dir, Math.random() > 0.5 ? "heavy" : "block");
+    if (f.akiraUltTicks <= 0) { f.akiraUltTier = 0; }
+  }
+
+  updateOvertime(f);
+  updateJoyRide(f, opponent);
+  updateVoltPunch(f, opponent);
+
+  // speed: base + Bucket List spd + Beer + Ultimate tier.
+  const cpuMult = gameMode === "cpu" && f === enemy ? (cpuSettings[cpuDifficulty] || cpuSettings.medium).speedMultiplier : 1;
+  let mult = 1 + (f.akiraSpdBuff || 0) * AKIRA_GOAL_SPD;
+  if (akiraBeerActive(f)) mult *= 1.10;
+  if (akiraUltActive(f)) mult *= 1 + akiraUltBonus(f);
+  f.speed = BASE_MOVE_SPEED * cpuMult * mult;
+}
+
 function startKnockout(attacker, defender) {
   if (roundEnding || roundResolved) return;
   gameOver = true;
@@ -10779,6 +11376,13 @@ function startTechnique(f, slot, chargeRatio = 0, aimPoint = null, releasingChar
     return;
   }
 
+  // AKIRA_PATCH: LC is Joy Ride, RC is Volt Punch (both melee dashes).
+  if (f.technique === "akira") {
+    if (move === "joyRide") startJoyRide(f);
+    else if (move === "voltPunch") startVoltPunch(f);
+    return;
+  }
+
   if (f.technique === "deathnote") {
     if (move === "ryukStrike") {
       if ((f.lightRyukCooldown || 0) > 0) return;
@@ -11050,7 +11654,7 @@ function getRctHealPerTick(f) {
 }
 
 function canStartRct(f) {
-  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider" || f?.technique === "beast" || f?.technique === "jiji" || f?.technique === "david") return false; // NO_JJK all custom chars
+  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider" || f?.technique === "beast" || f?.technique === "jiji" || f?.technique === "david" || f?.technique === "akira") return false; // NO_JJK all custom chars
   if (!f || gameOver || paused || isSpecialLocked(f) || f.ko || f.knockdown || f.dodging > 0) return false;
   if (f.health >= getCurrentHealthBarCeiling(f) || f.rctCooldown > 0) return false;
   return f.ce >= f.maxCe * RCT_MIN_CE_RATIO;
@@ -11072,7 +11676,7 @@ function cancelRct(f, startCooldown = true) {
 }
 
 function setRctHealing(f, wantsRct) {
-  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider" || f?.technique === "beast" || f?.technique === "jiji" || f?.technique === "david") { // NO_JJK all custom chars
+  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider" || f?.technique === "beast" || f?.technique === "jiji" || f?.technique === "david" || f?.technique === "akira") { // NO_JJK all custom chars
     cancelRct(f, false);
     return;
   }
@@ -11326,6 +11930,7 @@ function startUltimate(f, aimPoint = null) {
   if (f.technique === "beast") return startBeastUltimate(f); // INOSUKE_PATCH
   if (f.technique === "jiji") return startJijiUltimate(f); // JIJI_PATCH
   if (f.technique === "david") return startDavidUltimate(f); // DAVID_PATCH
+  if (f.technique === "akira") return startAkiraUltimate(f); // AKIRA_PATCH
   return beginUltimateAim(f, aimPoint);
 }
 
@@ -11340,6 +11945,7 @@ function beginUltimateAim(f, aimPoint = null) {
   if (f.technique === "beast") return startBeastUltimate(f); // INOSUKE_PATCH
   if (f.technique === "jiji") return startJijiUltimate(f); // JIJI_PATCH
   if (f.technique === "david") return startDavidUltimate(f); // DAVID_PATCH
+  if (f.technique === "akira") return startAkiraUltimate(f); // AKIRA_PATCH
   if (!canStartUltimate(f)) {
     const warning = getUltimateFailureMessage(f);
     if (warning) showActionWarning(warning);
@@ -11755,7 +12361,7 @@ function canStartSimpleDomain(f) {
 }
 
 function startSimpleDomain(f) {
-  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider" || f?.technique === "beast" || f?.technique === "jiji" || f?.technique === "david") return false; // NO_JJK all custom chars
+  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider" || f?.technique === "beast" || f?.technique === "jiji" || f?.technique === "david" || f?.technique === "akira") return false; // NO_JJK all custom chars
   if (!canStartSimpleDomain(f)) {
     showActionWarning(f && f.ce < Math.ceil(f.maxCe * SIMPLE_DOMAIN_CE_COST_RATIO) ? "Not Enough Cursed Energy" : "Can't Use Simple Domain");
     return false;
@@ -11850,7 +12456,7 @@ function getDomainAttemptForFighter(f) {
 }
 
 function canStartDomain(f) {
-  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider" || f?.technique === "beast" || f?.technique === "jiji" || f?.technique === "david") return false; // NO_JJK all custom chars
+  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider" || f?.technique === "beast" || f?.technique === "jiji" || f?.technique === "david" || f?.technique === "akira") return false; // NO_JJK all custom chars
   if (!f || gameState !== "playing" || gameOver || paused || f.ko || f.knockdown || f.stun > 0) return false;
   if (isSpecialLocked(f) || f.attacking || f.dodging > 0 || f.rctHealing || hasCtLock(f)) return false;
   if (activeDomain || domainClash) return false;
@@ -12773,7 +13379,7 @@ function applyHit(attacker, defender) {
 
   // INOSUKE_PATCH: Explosive Rush super armor - a normal melee hit deals
   // half damage and can't stun or knock him out of the charge.
-  if ((isBeastSuperArmor(defender) || isJijiSuperArmor(defender) || isDavidSuperArmor(defender)) && !isBlockingAttack(defender, attacker.dir)) {
+  if ((isBeastSuperArmor(defender) || isJijiSuperArmor(defender) || isDavidSuperArmor(defender) || isAkiraSuperArmor(defender)) && !isBlockingAttack(defender, attacker.dir)) {
     attacker.hasHit = true;
     const raw = Math.ceil(attack.damage * getOutgoingDamageMultiplier(attacker));
     const dmg = getTakenDamage(defender, Math.ceil(raw * 0.5));
@@ -12842,6 +13448,9 @@ function applyHit(attacker, defender) {
   gainUltimate(attacker, meleeDamageDealt * (blocked ? ULT_BLOCKED_DAMAGE_GAIN_SCALE : ULT_DAMAGE_GAIN_SCALE));
   if (!blocked) applyJijiRageFromCombat(attacker, defender); // JIJI_PATCH
   if (!blocked) applyDavidLoadFromCombat(attacker, defender); // DAVID_PATCH
+  // AKIRA_PATCH: a 3-hit combo ticks off a Bucket List goal.
+  if (!blocked && isAkira(attacker) && (attacker.comboCount || 0) + 1 >= 3) noteAkiraEvent(attacker, "combo");
+  if (!blocked && isAkira(attacker)) akiraLifesteal(attacker, meleeDamageDealt);
   cancelRct(defender, false);
   defender.hurt = blocked ? 6 : 14;
   defender.stun = getComboHitstun(attacker, attackType, blocked);
@@ -13050,7 +13659,7 @@ function applyProjectileHit(projectile, defender) {
   // interruption from a normal projectile (ultimate projectiles still hit
   // in full).
   const ultProjectile = projectile.move === "purple" || projectile.move === "worldSlash" || projectile.ultimateProjectile;
-  if ((isBeastSuperArmor(defender) || isJijiSuperArmor(defender) || isDavidSuperArmor(defender)) && !ultProjectile && !isBlockingAttack(defender, projectile.dir)) {
+  if ((isBeastSuperArmor(defender) || isJijiSuperArmor(defender) || isDavidSuperArmor(defender) || isAkiraSuperArmor(defender)) && !ultProjectile && !isBlockingAttack(defender, projectile.dir)) {
     projectile.hit = true;
     const dmg = getTakenDamage(defender, Math.ceil((projectile.damage || 0) * 0.5));
     const dealt = applyFighterDamage(defender, dmg);
@@ -14504,6 +15113,23 @@ function updateEnemyAi() {
     }
   }
 
+  // AKIRA_PATCH: CPU Akira presses Joy Ride / Volt Punch, drinks Beer when
+  // hurt, Overtimes at range, and pops the Shark Suit defensively.
+  if (enemy.technique === "akira" && !pacifistBot && enemy.stun <= 0 && !enemy.knockdown && !gameOver && !isAkiraCommitted(enemy)) {
+    const aGap = Math.abs((player.x + player.w / 2) - (enemy.x + enemy.w / 2));
+    if ((enemy.akiraBeerCooldown || 0) <= 0 && enemy.health < enemy.maxHealth * 0.45 && aGap > 180 && Math.random() < getCpuDecisionChance(0.01, 0.025, 0.05)) {
+      drinkBeer(enemy);
+    } else if ((enemy.akiraVoltCooldown || 0) <= 0 && aGap > 90 && aGap < 260 && Math.random() < getCpuDecisionChance(0.012, 0.03, 0.06)) {
+      startVoltPunch(enemy);
+    } else if ((enemy.akiraJoyrideCooldown || 0) <= 0 && aGap > 140 && Math.random() < getCpuDecisionChance(0.01, 0.026, 0.05)) {
+      startJoyRide(enemy);
+    } else if ((enemy.akiraSharkCooldown || 0) <= 0 && enemy.health < enemy.maxHealth * 0.6 && aGap < 160 && Math.random() < getCpuDecisionChance(0.006, 0.014, 0.03)) {
+      startSharkSuit(enemy);
+    } else if ((enemy.akiraOvertimeCooldown || 0) <= 0 && aGap > 340 && Math.random() < getCpuDecisionChance(0.01, 0.02, 0.03)) {
+      startOvertime(enemy);
+    }
+  }
+
   if (gameOver || isSpecialLocked(enemy) || enemy.stun > 0 || enemy.knockdown) return;
 
   enemy.aiCooldown = Number.isFinite(enemy.aiCooldown) ? enemy.aiCooldown - 1 : 0;
@@ -14542,7 +15168,7 @@ function updateEnemyAi() {
 
   if (enemy.ultimateMeter >= MAX_ULTIMATE && enemy.aiCooldown <= 0) {
     const ultimateChance = cpuDifficulty === "hard" ? 0.18 : cpuDifficulty === "medium" ? 0.08 : 0.025;
-    const goodRange = enemy.technique === "blackleg" || enemy.technique === "hivemind" || enemy.technique === "zealot" || enemy.technique === "spider" || enemy.technique === "jiji" || enemy.technique === "david" ? true : enemy.technique === "shrine" ? distance > 120 : distance > 260; // custom self-buff ults work anywhere
+    const goodRange = enemy.technique === "blackleg" || enemy.technique === "hivemind" || enemy.technique === "zealot" || enemy.technique === "spider" || enemy.technique === "jiji" || enemy.technique === "david" || enemy.technique === "akira" ? true : enemy.technique === "shrine" ? distance > 120 : distance > 260; // custom self-buff ults work anywhere
     if (goodRange && Math.random() < ultimateChance && startUltimate(enemy)) {
       enemy.aiGoal = "ultimate";
       enemy.aiCooldown = cpu.attackCooldown + 48;
@@ -14703,6 +15329,8 @@ function updateFighter(f, opponent) {
   updateJijiSystems(f, opponent);
   // DAVID_PATCH
   updateDavidSystems(f, opponent);
+  // AKIRA_PATCH
+  updateAkiraSystems(f, opponent);
 
   if (f.ko) {
     f.attacking = null;
@@ -15628,6 +16256,21 @@ function getTechniqueSkin(f, flash) {
       hair: "#cc3a48",
       eye: "#5a3020",
       mark: "#e8722a"
+    };
+  }
+
+  // AKIRA_PATCH: black messy hair, tan skin, a bright teal hooded jacket over
+  // a white tee, and dark-blue jeans.
+  if (f.technique === "akira") {
+    return {
+      body: "#1fa38c",
+      skin: "#e6b48c",
+      accent: "#f4f6f5",
+      pants: "#3a4256",
+      shoe: "#20242c",
+      hair: "#17161a",
+      eye: "#2a2320",
+      mark: "#e04b3a"
     };
   }
 
@@ -17897,6 +18540,52 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       ctx.stroke();
       ctx.restore();
     }
+  } else if (f.technique === "akira") {
+    // AKIRA_PATCH: an open teal hooded jacket over a white tee. A shark fin
+    // pokes up over the shoulder while the Shark Suit is active.
+    const shark = (f.akiraSharkTicks || 0) > 0;
+    // white tee
+    ctx.fillStyle = "#eef1ee";
+    ctx.beginPath();
+    ctx.moveTo(20, 42); ctx.lineTo(34, 42); ctx.lineTo(33, 92); ctx.lineTo(21, 92); ctx.closePath();
+    ctx.fill();
+    // teal jacket panels
+    ctx.fillStyle = "#1b9280";
+    ctx.beginPath();
+    ctx.moveTo(9, 40); ctx.lineTo(22, 43); ctx.lineTo(20, 93); ctx.lineTo(8, 90); ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(45, 40); ctx.lineTo(32, 43); ctx.lineTo(34, 93); ctx.lineTo(46, 90); ctx.closePath();
+    ctx.fill();
+    // hood behind the neck
+    ctx.fillStyle = "#177a6b";
+    ctx.beginPath();
+    ctx.moveTo(18, 40); ctx.quadraticCurveTo(27, 30, 36, 40); ctx.quadraticCurveTo(27, 44, 18, 40); ctx.closePath();
+    ctx.fill();
+    // drawstrings
+    ctx.strokeStyle = "#eef1ee";
+    ctx.lineWidth = 1.4;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(24, 44); ctx.lineTo(24, 56);
+    ctx.moveTo(30, 44); ctx.lineTo(30, 54);
+    ctx.stroke();
+    // pocket line
+    ctx.strokeStyle = "#0f5f53";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(13, 74); ctx.lineTo(20, 74);
+    ctx.moveTo(34, 74); ctx.lineTo(41, 74);
+    ctx.stroke();
+    if (shark) {
+      // grey shark fin over the shoulder
+      ctx.fillStyle = "#8a9099";
+      ctx.strokeStyle = "#20242c";
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(30, 36); ctx.quadraticCurveTo(44, 20, 46, 4); ctx.quadraticCurveTo(34, 12, 28, 34); ctx.closePath();
+      ctx.fill(); ctx.stroke();
+    }
   } else if (f.technique === "david") {
     // DAVID_PATCH: his iconic open bright-yellow tech jacket with cyan/white
     // reflective stripes, over a black shirt with a gold cross necklace.
@@ -18653,6 +19342,30 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
         }
       });
     }
+  } else if (f.technique === "akira") {
+    // AKIRA_PATCH: short, slightly messy black hair with a soft fringe.
+    const sway = idle * 0.4;
+    ctx.fillStyle = skin.hair;
+    ctx.beginPath();
+    ctx.moveTo(12, 24);
+    ctx.quadraticCurveTo(10, 8, 26, 5);
+    ctx.quadraticCurveTo(42, 8, 40, 24);
+    ctx.quadraticCurveTo(38, 15, 33, 15);
+    ctx.lineTo(31 + sway, 10);
+    ctx.lineTo(28, 15);
+    ctx.lineTo(25 + sway, 9);
+    ctx.lineTo(23, 15);
+    ctx.lineTo(20 + sway, 11);
+    ctx.quadraticCurveTo(15, 14, 12, 24);
+    ctx.closePath();
+    ctx.fill();
+    // a couple of stray strands
+    ctx.strokeStyle = "#2c2a30";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(20, 13); ctx.quadraticCurveTo(24, 9, 28, 12);
+    ctx.moveTo(30, 12); ctx.quadraticCurveTo(34, 12, 37, 17);
+    ctx.stroke();
   } else if (f.technique === "david") {
     // DAVID_PATCH: dark-brown hair, spiked up and swept back off the forehead
     // with tapered sides (his Edgerunners cut). Clean face - no brows.
@@ -19423,8 +20136,8 @@ function drawTechniquePreview(canvasEl, technique) {
     w: technique === "shrine" ? 52 : technique === "brawler" ? 54 : 50,
     h: 128,
     dir: 1,
-    color: technique === "shrine" ? "#dc2626" : technique === "deathnote" ? "#111827" : technique === "brawler" ? "#eceef2" : technique === "blackleg" ? "#16181f" : technique === "hivemind" ? "#54322c" : technique === "zealot" ? "#c8a13a" : technique === "spider" ? "#c0242c" : technique === "beast" ? "#caa079" : technique === "jiji" ? "#d23a2a" : technique === "david" ? "#26282e" : "#2563eb",
-    accent: technique === "shrine" ? "#991b1b" : technique === "deathnote" ? "#b91c1c" : technique === "brawler" ? "#dc2626" : technique === "blackleg" ? "#facc15" : technique === "hivemind" ? "#7f1d1d" : technique === "zealot" ? "#38e0f0" : technique === "spider" ? "#1e3a8a" : technique === "beast" ? "#4a5568" : technique === "jiji" ? "#a855f7" : technique === "david" ? "#31d7e0" : "#1d4ed8"
+    color: technique === "shrine" ? "#dc2626" : technique === "deathnote" ? "#111827" : technique === "brawler" ? "#eceef2" : technique === "blackleg" ? "#16181f" : technique === "hivemind" ? "#54322c" : technique === "zealot" ? "#c8a13a" : technique === "spider" ? "#c0242c" : technique === "beast" ? "#caa079" : technique === "jiji" ? "#d23a2a" : technique === "david" ? "#26282e" : technique === "akira" ? "#1fa38c" : "#2563eb",
+    accent: technique === "shrine" ? "#991b1b" : technique === "deathnote" ? "#b91c1c" : technique === "brawler" ? "#dc2626" : technique === "blackleg" ? "#facc15" : technique === "hivemind" ? "#7f1d1d" : technique === "zealot" ? "#38e0f0" : technique === "spider" ? "#1e3a8a" : technique === "beast" ? "#4a5568" : technique === "jiji" ? "#a855f7" : technique === "david" ? "#31d7e0" : technique === "akira" ? "#e04b3a" : "#1d4ed8"
   });
   previewFighter.technique = technique;
   previewFighter.y = GROUND - previewFighter.h;
@@ -19433,7 +20146,7 @@ function drawTechniquePreview(canvasEl, technique) {
   ctx = previewCtx;
   ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
   const backdrop = ctx.createLinearGradient(0, 0, 0, canvasEl.height);
-  backdrop.addColorStop(0, technique === "shrine" ? "#2b1420" : technique === "deathnote" ? "#180b12" : technique === "brawler" ? "#141822" : technique === "blackleg" ? "#221208" : technique === "hivemind" ? "#1c0a10" : technique === "zealot" ? "#0a1a1f" : technique === "spider" ? "#1a0810" : technique === "beast" ? "#1a1712" : technique === "jiji" ? "#160a26" : technique === "david" ? "#0a1418" : "#142033");
+  backdrop.addColorStop(0, technique === "shrine" ? "#2b1420" : technique === "deathnote" ? "#180b12" : technique === "brawler" ? "#141822" : technique === "blackleg" ? "#221208" : technique === "hivemind" ? "#1c0a10" : technique === "zealot" ? "#0a1a1f" : technique === "spider" ? "#1a0810" : technique === "beast" ? "#1a1712" : technique === "jiji" ? "#160a26" : technique === "david" ? "#0a1418" : technique === "akira" ? "#08201c" : "#142033");
   backdrop.addColorStop(1, "#050814");
   ctx.fillStyle = backdrop;
   ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
@@ -19464,6 +20177,7 @@ function renderTechniquePreviews() {
   drawTechniquePreview(techniquePreviewCanvases.beast, "beast"); // INOSUKE_PATCH
   drawTechniquePreview(techniquePreviewCanvases.jiji, "jiji"); // JIJI_PATCH
   drawTechniquePreview(techniquePreviewCanvases.david, "david"); // DAVID_PATCH
+  drawTechniquePreview(techniquePreviewCanvases.akira, "akira"); // AKIRA_PATCH
 }
 
 // THRAGG_BRAWLER_PATCH: install his character-select card the same way
@@ -19728,6 +20442,37 @@ function installDavidTechniqueOption() {
   renderTechniquePreviews();
 }
 window.addEventListener("DOMContentLoaded", installDavidTechniqueOption);
+
+// AKIRA_PATCH: add the Akira Tendo character select card.
+function installAkiraTechniqueOption() {
+  if (!techniqueScreen) return;
+  const existing = techniqueScreen.querySelector('[data-technique="akira"]');
+  if (!existing) {
+    const sample = techniqueScreen.querySelector(".technique-button");
+    const button = sample ? sample.cloneNode(true) : document.createElement("button");
+    button.type = "button";
+    button.className = sample ? sample.className : "technique-button";
+    button.dataset.technique = "akira";
+    button.innerHTML = `
+      <canvas id="akiraPreview" width="320" height="180" aria-hidden="true"></canvas>
+      <strong>Akira</strong>
+      <span>Zom 100 - snowballing bucket-list brawler</span>
+      <small>Complete goals for permanent buffs - Joy Ride, Volt Punch, Beer, Shark Suit, Work-scaling ult</small>
+    `;
+    const holder = sample?.parentNode || techniqueScreen;
+    holder.appendChild(button);
+  }
+  const canvas = document.getElementById("akiraPreview");
+  if (canvas) techniquePreviewCanvases.akira = canvas;
+  techniqueButtons = Array.from(document.querySelectorAll(".technique-button"));
+  techniqueButtons.forEach((button) => {
+    if (button.dataset.akiraBound === "1") return;
+    button.dataset.akiraBound = "1";
+    button.addEventListener("click", () => finishTechniqueSelect(button.dataset.technique));
+  });
+  renderTechniquePreviews();
+}
+window.addEventListener("DOMContentLoaded", installAkiraTechniqueOption);
 
 
 function drawSukunaModelCleanup(f) {
@@ -21689,8 +22434,72 @@ function draw() {
   ctx.restore();
   drawUltimateScreenEffects();
   drawDavidGlitchOverlay(); // DAVID_PATCH
+  drawAkiraNotebook(); // AKIRA_PATCH
   drawBindingVowQuote();
   drawActionWarning();
+}
+
+// AKIRA_PATCH: the Bucket List notebook overlay (toggle with T). Lists the
+// three active goals with progress bars; completed goals cross off.
+function drawAkiraNotebook() {
+  const me = (gameMode === "online" && onlineRole === "p2") ? enemy : player;
+  if (!akiraNotebookOpen || !isAkira(me) || !Array.isArray(me.akiraGoals)) return;
+  const pw = 300, ph = 176;
+  const px = (W - pw) / 2, py = 84;
+  ctx.save();
+  // paper
+  ctx.fillStyle = "rgba(250, 246, 232, 0.97)";
+  ctx.strokeStyle = "#1f2937";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.roundRect(px, py, pw, ph, 10);
+  ctx.fill();
+  ctx.stroke();
+  // red margin + spiral holes
+  ctx.strokeStyle = "rgba(220, 80, 80, 0.6)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(px + 30, py + 8); ctx.lineTo(px + 30, py + ph - 8);
+  ctx.stroke();
+  ctx.fillStyle = "#9aa3b0";
+  for (let i = 0; i < 6; i++) { ctx.beginPath(); ctx.arc(px + 15, py + 24 + i * 26, 3, 0, Math.PI * 2); ctx.fill(); }
+  // title
+  ctx.fillStyle = "#b91c1c";
+  ctx.font = "800 16px Arial";
+  ctx.textAlign = "left";
+  ctx.fillText("BUCKET LIST", px + 40, py + 26);
+  ctx.fillStyle = "#374151";
+  ctx.font = "600 11px Arial";
+  ctx.fillText(`Goals done: ${me.akiraGoalsCompleted || 0}`, px + 180, py + 26);
+  // goals
+  me.akiraGoals.forEach((g, i) => {
+    const gy = py + 52 + i * 38;
+    const ratio = Math.max(0, Math.min(1, g.progress / g.target));
+    ctx.fillStyle = "#111827";
+    ctx.font = "700 13px Arial";
+    ctx.fillText(`${i + 1}. ${g.label}`, px + 42, gy);
+    // progress bar
+    ctx.fillStyle = "#d8dbe0";
+    ctx.fillRect(px + 42, gy + 6, 220, 8);
+    ctx.fillStyle = "#22a06b";
+    ctx.fillRect(px + 42, gy + 6, 220 * ratio, 8);
+    ctx.strokeStyle = "#1f2937";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(px + 42, gy + 6, 220, 8);
+    // strike-through if flashing done (brief)
+    if (g.done) {
+      ctx.strokeStyle = "#b91c1c";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(px + 40, gy - 4); ctx.lineTo(px + 262, gy - 4);
+      ctx.stroke();
+    }
+  });
+  ctx.fillStyle = "#6b7280";
+  ctx.font = "600 10px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText("press T to close", px + pw / 2, py + ph - 8);
+  ctx.restore();
 }
 
 // DAVID_PATCH: a cyber glitch overlay while any David is in Cyberpsychosis -
@@ -22214,6 +23023,21 @@ window.addEventListener("keydown", (event) => {
       if (startBeastWhirl(player) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("beast-whirl");
       return;
     }
+    // AKIRA_PATCH: F is the Shark Suit.
+    else if (player.technique === "akira") {
+      if (startSharkSuit(player) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("akira-shark");
+      return;
+    }
+  }
+  if ((key === "r" || code === "keyr") && !event.repeat && player.technique === "akira") {
+    // AKIRA_PATCH: R drinks a Cold Beer.
+    if (drinkBeer(player) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("akira-beer");
+    return;
+  }
+  if ((key === "t" || code === "keyt") && !event.repeat && player.technique === "akira") {
+    // AKIRA_PATCH: T opens/closes the Bucket List notebook.
+    akiraNotebookOpen = !akiraNotebookOpen;
+    return;
   }
   if ((key === "r" || code === "keyr") && !event.repeat && player.technique === "blackleg") {
     // SANJI_UTENSIL_PATCH: R cycles the loaded utensil.
@@ -22270,6 +23094,9 @@ window.addEventListener("keydown", (event) => {
     } else if (fighter?.technique === "david") {
       // DAVID_PATCH: S is the Sandevistan.
       if (startSandevistan(fighter) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("david-sande");
+    } else if (fighter?.technique === "akira") {
+      // AKIRA_PATCH: S is Overtime.
+      if (startOvertime(fighter) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("akira-overtime");
     }
   }
   if (isEventForAction("ultimate", key, code) && !event.repeat) beginUltimateAim(player, mouseAimWorld);
