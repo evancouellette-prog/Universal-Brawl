@@ -5036,7 +5036,7 @@ function installLightTechniqueOption() {
     button.className = sample ? sample.className : "technique-button";
     button.dataset.technique = "deathnote";
     button.innerHTML = `
-      <canvas id="deathnotePreview" width="320" height="180" aria-hidden="true"></canvas>
+      <canvas id="deathnotePreview" class="skin-preview-canvas" width="180" height="160" aria-hidden="true"></canvas>
       <strong>Light Yagami</strong>
       <span>Tactical summon/control fighter</span>
       <small>Ryuk pressure · investigation · Death Note</small>
@@ -5293,7 +5293,10 @@ function finishTechniqueSelect(technique) {
   pacifistBot = pendingStartPractice;
   gameMode = onlineRole || onlineConnected ? "online" : pacifistBot ? "cpu" : selectedMode;
   if (gameMode === "cpu") {
-    ensureCpuOpponentTechnique("technique selected");
+    // CPU_RANDOM_OPPONENT_PATCH: every real fight rolls a fresh random
+    // opponent from the whole roster; practice keeps its stable dummy.
+    if (pacifistBot) ensureCpuOpponentTechnique("practice");
+    else rollCpuOpponentTechnique("fight - random opponent");
   } else {
     cpuOpponentTechniqueLocked = false;
   }
@@ -20179,7 +20182,7 @@ function installThraggTechniqueOption() {
     button.className = sample ? sample.className : "technique-button";
     button.dataset.technique = "brawler";
     button.innerHTML = `
-      <canvas id="brawlerPreview" width="320" height="180" aria-hidden="true"></canvas>
+      <canvas id="brawlerPreview" class="skin-preview-canvas" width="180" height="160" aria-hidden="true"></canvas>
       <strong>Thragg</strong>
       <span>Viltrumite conqueror - grabs, flight, raw power</span>
       <small>Teched grapple grab · sustained flight · war stomp</small>
@@ -20215,7 +20218,7 @@ function installSanjiTechniqueOption() {
     button.className = sample ? sample.className : "technique-button";
     button.dataset.technique = "blackleg";
     button.innerHTML = `
-      <canvas id="blacklegPreview" width="320" height="180" aria-hidden="true"></canvas>
+      <canvas id="blacklegPreview" class="skin-preview-canvas" width="180" height="160" aria-hidden="true"></canvas>
       <strong>Sanji</strong>
       <span>Black Leg style - kicks, fire, aerial pressure</span>
       <small>Diable Jambe · Sky Walk · Mutton Shot · Ifrit Jambe</small>
@@ -20250,7 +20253,7 @@ function installVecnaTechniqueOption() {
     button.className = sample ? sample.className : "technique-button";
     button.dataset.technique = "hivemind";
     button.innerHTML = `
-      <canvas id="hivemindPreview" width="320" height="180" aria-hidden="true"></canvas>
+      <canvas id="hivemindPreview" class="skin-preview-canvas" width="180" height="160" aria-hidden="true"></canvas>
       <strong>Vecna</strong>
       <span>Hive Mind summoner - swarms, control, the Upside Down</span>
       <small>Demobats · Demodog · Upside Down Slip · Bone Snap</small>
@@ -20285,7 +20288,7 @@ function installZealotTechniqueOption() {
     button.className = sample ? sample.className : "technique-button";
     button.dataset.technique = "zealot";
     button.innerHTML = `
-      <canvas id="zealotPreview" width="320" height="180" aria-hidden="true"></canvas>
+      <canvas id="zealotPreview" class="skin-preview-canvas" width="180" height="160" aria-hidden="true"></canvas>
       <strong>Zealot</strong>
       <span>Protoss rushdown - psi blades, shields, no ranged</span>
       <small>Charge · Psi Blade Flurry · Whirlwind · Warp Reinforcements</small>
@@ -20316,7 +20319,7 @@ function installSpiderTechniqueOption() {
     button.className = sample ? sample.className : "technique-button";
     button.dataset.technique = "spider";
     button.innerHTML = `
-      <canvas id="spiderPreview" width="320" height="180" aria-hidden="true"></canvas>
+      <canvas id="spiderPreview" class="skin-preview-canvas" width="180" height="160" aria-hidden="true"></canvas>
       <strong>Spider-Man</strong>
       <span>High-mobility combos - webs, swings, spider sense</span>
       <small>Web Shot · Web Swing · Web Barrage · Spider Rush</small>
@@ -20347,7 +20350,7 @@ function installBeastTechniqueOption() {
     button.className = sample ? sample.className : "technique-button";
     button.dataset.technique = "beast";
     button.innerHTML = `
-      <canvas id="beastPreview" width="320" height="180" aria-hidden="true"></canvas>
+      <canvas id="beastPreview" class="skin-preview-canvas" width="180" height="160" aria-hidden="true"></canvas>
       <strong>Inosuke</strong>
       <span>Beast Breathing - relentless dual-blade rushdown</span>
       <small>Fangs & Forms - Pierce, Devour, Crazy Cutting, Rampaging Beast</small>
@@ -20378,7 +20381,7 @@ function installJijiTechniqueOption() {
     button.className = sample ? sample.className : "technique-button";
     button.dataset.technique = "jiji";
     button.innerHTML = `
-      <canvas id="jijiPreview" width="320" height="180" aria-hidden="true"></canvas>
+      <canvas id="jijiPreview" class="skin-preview-canvas" width="180" height="160" aria-hidden="true"></canvas>
       <strong>Jiji</strong>
       <span>Dandadan - one body, two forms sharing HP</span>
       <small>Transform Jiji &harr; Evil Eye - Rage builds only as the Eye, and at 100 it takes over</small>
@@ -20409,7 +20412,7 @@ function installDavidTechniqueOption() {
     button.className = sample ? sample.className : "technique-button";
     button.dataset.technique = "david";
     button.innerHTML = `
-      <canvas id="davidPreview" width="320" height="180" aria-hidden="true"></canvas>
+      <canvas id="davidPreview" class="skin-preview-canvas" width="180" height="160" aria-hidden="true"></canvas>
       <strong>David</strong>
       <span>Cyberpunk: Edgerunners - fast, tanky, simple bruiser</span>
       <small>Sandevistan, Gorilla Arms, Launcher - Cyberware Load builds to Cyberpsychosis</small>
@@ -20440,7 +20443,7 @@ function installAkiraTechniqueOption() {
     button.className = sample ? sample.className : "technique-button";
     button.dataset.technique = "akira";
     button.innerHTML = `
-      <canvas id="akiraPreview" width="320" height="180" aria-hidden="true"></canvas>
+      <canvas id="akiraPreview" class="skin-preview-canvas" width="180" height="160" aria-hidden="true"></canvas>
       <strong>Akira</strong>
       <span>Zom 100 - snowballing bucket-list brawler</span>
       <small>Complete goals for permanent buffs - Joy Ride, Volt Punch, Beer, Shark Suit, Work-scaling ult</small>

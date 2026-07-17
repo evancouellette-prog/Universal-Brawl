@@ -3241,3 +3241,64 @@ button#pauseSettingsButton.settings-button:active {
   color: #ffffff !important;
   border-color: rgba(255, 255, 255, 0.75) !important;
 }
+
+/* MOBILE_LAYOUT_PATCH: on touch/mobile mode fit the whole game in one
+   viewport (no scrolling) and drop the keyboard controls reference panel -
+   the on-screen touch pad replaces it. Desktop is untouched. */
+body.mobile-controls-on {
+  overflow: hidden;
+}
+body.mobile-controls-on .shell {
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  padding: 4px 6px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+body.mobile-controls-on .topbar {
+  width: 100%;
+  flex: 0 0 auto;
+  margin: 0 0 4px;
+  gap: 8px;
+}
+/* the keyboard controls reference is PC-only */
+body.mobile-controls-on #controlsPanel {
+  display: none !important;
+}
+/* the fight canvas fills the remaining height, keeping 16:9 and centered */
+body.mobile-controls-on #game {
+  flex: 1 1 auto;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  min-height: 0;
+  aspect-ratio: 16 / 9;
+  margin: 0 auto;
+}
+/* compact the HUD a touch so more height goes to the fight */
+body.mobile-controls-on .fighter-name { font-size: 11px; gap: 5px; }
+body.mobile-controls-on .fighter-panel { gap: 4px; }
+body.mobile-controls-on .ct-cooldowns { gap: 4px; }
+
+/* MOBILE_LAYOUT_PATCH: compact the HUD so the fight canvas gets the space.
+   Bars and cooldown chips shrink; the secondary meters and the center
+   Pause/Home/Restart column collapse (Pause is still reachable from the
+   corner toggle / menu). */
+body.mobile-controls-on .health-frame { height: 16px !important; }
+body.mobile-controls-on .segmented-health { padding: 2px !important; gap: 3px !important; }
+body.mobile-controls-on .ce-frame,
+body.mobile-controls-on .ultimate-frame { height: 8px !important; }
+body.mobile-controls-on .ct-cooldowns { gap: 3px !important; }
+body.mobile-controls-on .ct-slot { min-height: 20px !important; padding: 2px 4px !important; }
+body.mobile-controls-on .ct-label { font-size: 9px !important; }
+body.mobile-controls-on .ct-status { font-size: 9px !important; }
+body.mobile-controls-on .extra-cooldowns { display: none !important; }
+body.mobile-controls-on .resource-bar-label { font-size: 8px !important; }
+body.mobile-controls-on .stars { font-size: 11px !important; }
+/* the center round-info / pause column stays but compresses */
+body.mobile-controls-on .topbar { grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); }
