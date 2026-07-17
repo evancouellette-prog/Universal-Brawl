@@ -1926,6 +1926,31 @@ const BEAST_WHIRL_RADIUS = 92;
 const BEAST_ULT_TICKS = 18 * 60;
 const BEAST_PALISADE_DAMAGE = 46;
 
+// JIJI_PATCH: Jiji / Evil Eye (Dandadan). One shared body, two forms.
+// Rage is the resource, only meaningful while Evil Eye is active.
+const JIJI_MOVE_MULTIPLIER = 1.0;      // Jiji: balanced mid-range
+const EVILEYE_MOVE_MULTIPLIER = 1.18;  // Evil Eye: fast rushdown
+const JIJI_TRANSFORM_ANIM_TICKS = 60;  // 1s transform animation
+const JIJI_TRANSFORM_COOLDOWN_TICKS = 8 * 60;
+const JIJI_FORCED_REVERT_LOCK_TICKS = 9 * 60; // can't transform ~9s after forced revert
+const JIJI_KIND_HEART_DELAY = 3 * 60;  // out-of-combat before regen
+const JIJI_KIND_HEART_RATE = 0.35;     // hp/tick regen
+const JIJI_SPIRIT_BLAST_COOLDOWN = 5 * 60;
+const JIJI_SOCCER_COOLDOWN = 8 * 60;
+const RAGE_MAX = 100;
+const RAGE_FILL_RATE = 100 / (16 * 60); // ~16s to fill from idle
+const RAGE_ON_DEAL = 4;
+const RAGE_ON_TAKE = 6;
+const EVILEYE_BLAST_COOLDOWN = 6 * 60;
+const EVILEYE_RUSH_COOLDOWN = 10 * 60;
+const EVILEYE_RUSH_TICKS = 30;
+const EVILEYE_RUSH_SPEED = 15;
+const EVILEYE_RUSH_HIT_DAMAGE = 4;
+const EVILEYE_RUSH_FINISH_DAMAGE = 14;
+const EVILEYE_RUSH_RANGE = 150;
+const JIJI_ULT_TICKS = 12 * 60;   // Spiritual Acceptance
+const EVILEYE_ULT_TICKS = 10 * 60; // Full Possession
+
 const TECHNIQUE_STATS = {
   limitless: {
     maxHealth: 540,
@@ -2012,6 +2037,17 @@ const TECHNIQUE_STATS = {
     maxCe: 100,
     damageTakenMultiplier: 1.02,
     knockbackTakenMultiplier: 0.9,
+    ceRegenRate: CE_REGEN_RATE,
+    ceLowRegenBonus: CE_LOW_REGEN_BONUS
+  },
+  // JIJI_PATCH: shared body / two forms. High HP (Dandadan "Health: 1000"),
+  // balanced by the Rage / loss-of-control drawback in Evil Eye form.
+  jiji: {
+    maxHealth: 800,
+    healthBars: 8,
+    maxCe: 100,
+    damageTakenMultiplier: 1,
+    knockbackTakenMultiplier: 0.95,
     ceRegenRate: CE_REGEN_RATE,
     ceLowRegenBonus: CE_LOW_REGEN_BONUS
   }
@@ -2681,6 +2717,7 @@ function getTechniqueCharacterName(technique) {
   if (technique === "zealot") return "Zealot"; // ZEALOT_PATCH
   if (technique === "spider") return "Spider-Man"; // SPIDER_PATCH
   if (technique === "beast") return "Inosuke"; // INOSUKE_PATCH
+  if (technique === "jiji") return "Jiji"; // JIJI_PATCH
   return "Gojo";
 }
 
@@ -2943,7 +2980,12 @@ const techniqueMoves = {
   webBarrage: { cost: 0, damage: 0, speed: 0, radius: 1, knockback: 0, life: 1 },
   // INOSUKE_PATCH: melee specials handled in startTechnique.
   beastPierce: { cost: 0, damage: BEAST_PIERCE_DAMAGE, speed: 0, radius: 1, knockback: 0, life: 1 },
-  beastDevour: { cost: 0, damage: 0, speed: 0, radius: 1, knockback: 0, life: 1 }
+  beastDevour: { cost: 0, damage: 0, speed: 0, radius: 1, knockback: 0, life: 1 },
+  // JIJI_PATCH: form-dependent specials, handled in startTechnique. No CE.
+  spiritBlast: { cost: 0, damage: 11, speed: 12, radius: 13, knockback: 14, life: 90 },
+  soccerStrike: { cost: 0, damage: 14, speed: 11, radius: 12, knockback: 24, life: 150 },
+  evilBlast: { cost: 0, damage: 10, speed: 17, radius: 11, knockback: 12, life: 70 },
+  berserkerRush: { cost: 0, damage: EVILEYE_RUSH_FINISH_DAMAGE, speed: 0, radius: 1, knockback: 0, life: 1 }
 };
 
 function getTechniqueMoveKey(f, slot) {
@@ -2956,6 +2998,10 @@ function getTechniqueMoveKey(f, slot) {
   if (f.technique === "zealot") return slot === 2 ? "psiFlurry" : "charge"; // ZEALOT_PATCH
   if (f.technique === "spider") return slot === 2 ? "webBarrage" : "webShot"; // SPIDER_PATCH
   if (f.technique === "beast") return slot === 2 ? "beastDevour" : "beastPierce"; // INOSUKE_PATCH
+  if (f.technique === "jiji") { // JIJI_PATCH: mouse moves depend on the form.
+    if (f.jijiForm === "evileye") return slot === 2 ? "berserkerRush" : "evilBlast";
+    return slot === 2 ? "soccerStrike" : "spiritBlast";
+  }
   if (f.technique === "hivemind") return slot === 2 ? "demodogHunt" : "demobatSwarm"; // VECNA_PATCH
   return "blue";
 }
@@ -2982,6 +3028,11 @@ function getTechniqueDisplayName(move) {
   if (move === "beastPierce") return "PIERCE"; // INOSUKE_PATCH
   if (move === "beastDevour") return "DEVOUR"; // INOSUKE_PATCH
   if (move === "beastCrazy") return "CRAZY CUT"; // INOSUKE_PATCH
+  if (move === "spiritBlast") return "SPIRIT BLAST"; // JIJI_PATCH
+  if (move === "soccerStrike") return "SOCCER STRIKE"; // JIJI_PATCH
+  if (move === "evilBlast") return "EVIL BLAST"; // JIJI_PATCH
+  if (move === "berserkerRush") return "BERSERKER"; // JIJI_PATCH
+  if (move === "jijiTransform") return "TRANSFORM"; // JIJI_PATCH
   return move.toUpperCase();
 }
 
@@ -3014,6 +3065,12 @@ function getTechniqueCooldownTicks(move, f = null) {
   if (move === "beastPierce") return BEAST_PIERCE_COOLDOWN_TICKS;
   if (move === "beastDevour") return BEAST_DEVOUR_COOLDOWN_TICKS;
   if (move === "beastCrazy") return BEAST_CRAZY_COOLDOWN_TICKS;
+  // JIJI_PATCH:
+  if (move === "spiritBlast") return JIJI_SPIRIT_BLAST_COOLDOWN;
+  if (move === "soccerStrike") return JIJI_SOCCER_COOLDOWN;
+  if (move === "evilBlast") return EVILEYE_BLAST_COOLDOWN;
+  if (move === "berserkerRush") return EVILEYE_RUSH_COOLDOWN;
+  if (move === "jijiTransform") return JIJI_TRANSFORM_COOLDOWN_TICKS;
   let base = move === "red" || move === "cleave" ? TECHNIQUE_HEAVY_COOLDOWN : TECHNIQUE_FAST_COOLDOWN;
   if (move === "cleave" && hasBindingVow(f, "cleave")) base = Math.max(10, Math.ceil(base * 0.55));
   return base;
@@ -3061,13 +3118,14 @@ function pickRandomTechnique() {
   if (roll < 0.54) return "brawler";
   if (roll < 0.65) return "blackleg"; // SANJI_PATCH
   if (roll < 0.76) return "hivemind"; // VECNA_PATCH
-  if (roll < 0.85) return "zealot"; // ZEALOT_PATCH
-  if (roll < 0.93) return "spider"; // SPIDER_PATCH
-  return "beast"; // INOSUKE_PATCH
+  if (roll < 0.84) return "zealot"; // ZEALOT_PATCH
+  if (roll < 0.91) return "spider"; // SPIDER_PATCH
+  if (roll < 0.96) return "beast"; // INOSUKE_PATCH
+  return "jiji"; // JIJI_PATCH
 }
 
 function isValidTechnique(technique) {
-  return technique === "limitless" || technique === "shrine" || technique === "deathnote" || technique === "brawler" || technique === "blackleg" || technique === "hivemind" || technique === "zealot" || technique === "spider" || technique === "beast"; // + INOSUKE
+  return technique === "limitless" || technique === "shrine" || technique === "deathnote" || technique === "brawler" || technique === "blackleg" || technique === "hivemind" || technique === "zealot" || technique === "spider" || technique === "beast" || technique === "jiji"; // + INOSUKE + JIJI
 }
 
 function rollCpuOpponentTechnique(reason = "") {
@@ -3376,6 +3434,25 @@ function makeFighter(config) {
     beastComboSpeedTicks: 0,
     bleedTicks: 0,
     bleedTickCounter: 0,
+    // JIJI_PATCH: shared-body / two-form state.
+    jijiForm: "jiji",            // "jiji" or "evileye"
+    jijiRage: 0,                 // 0..RAGE_MAX, only meaningful while Evil Eye
+    jijiTransformCooldown: 0,    // ticks before CT3 can switch again
+    jijiTransformAnimTicks: 0,   // transformation animation timer
+    jijiTransformTo: null,       // form the in-progress transform resolves to
+    jijiRevertLockTicks: 0,      // forced-revert lockout (no transform)
+    jijiOutOfCombatTicks: 0,     // ticks since Jiji last dealt/took damage
+    jijiForcedActionTicks: 0,    // loss-of-control action in progress
+    jijiForcedActionKind: null,  // which involuntary action is running
+    jijiLossTimer: 0,            // countdown to next loss-of-control roll
+    jijiLaughTicks: 0,           // Evil Eye laugh flash
+    jijiBlastCooldown: 0,        // Spirit Blast / Evil Spirit Blast
+    jijiSoccerCooldown: 0,       // Soccer Strike
+    jijiRushCooldown: 0,         // Berserker Rush
+    jijiRushTicks: 0,
+    jijiRushHit: false,
+    jijiUltTicks: 0,             // active ultimate timer
+    jijiUltForm: null,           // which ult is running ("jiji"/"evileye")
     blocking: false,
     shieldTicks: SHIELD_MAX_TICKS,
     shieldCooldown: 0,
@@ -3428,7 +3505,7 @@ function applyTechniqueStats(f, preserveMeters = false) {
   const stats = TECHNIQUE_STATS[f.technique] || TECHNIQUE_STATS.limitless;
   const healthRatio = f.maxHealth > 0 ? f.health / f.maxHealth : 1;
   const ceRatio = f.maxCe > 0 ? f.ce / f.maxCe : 1;
-  f.speed = BASE_MOVE_SPEED * (f.technique === "limitless" ? LIMITLESS_MOVE_MULTIPLIER : f.technique === "deathnote" ? 0.94 : f.technique === "brawler" ? THRAGG_MOVE_MULTIPLIER : f.technique === "blackleg" ? SANJI_MOVE_MULTIPLIER : f.technique === "hivemind" ? VECNA_MOVE_MULTIPLIER : f.technique === "zealot" ? ZEALOT_MOVE_MULTIPLIER : f.technique === "spider" ? SPIDER_MOVE_MULTIPLIER : f.technique === "beast" ? BEAST_MOVE_MULTIPLIER : 1); // + INOSUKE
+  f.speed = BASE_MOVE_SPEED * (f.technique === "limitless" ? LIMITLESS_MOVE_MULTIPLIER : f.technique === "deathnote" ? 0.94 : f.technique === "brawler" ? THRAGG_MOVE_MULTIPLIER : f.technique === "blackleg" ? SANJI_MOVE_MULTIPLIER : f.technique === "hivemind" ? VECNA_MOVE_MULTIPLIER : f.technique === "zealot" ? ZEALOT_MOVE_MULTIPLIER : f.technique === "spider" ? SPIDER_MOVE_MULTIPLIER : f.technique === "beast" ? BEAST_MOVE_MULTIPLIER : f.technique === "jiji" ? (f.jijiForm === "evileye" ? EVILEYE_MOVE_MULTIPLIER : JIJI_MOVE_MULTIPLIER) : 1); // + INOSUKE + JIJI
   f.maxHealth = stats.maxHealth;
   f.healthBars = stats.healthBars || 3;
   f.maxCe = stats.maxCe;
@@ -3524,6 +3601,29 @@ function applyTechniqueStats(f, preserveMeters = false) {
     f.sanjiCookTicks = 0;
     f.sanjiCookCooldown = 0;
   }
+  // JIJI_PATCH: reset the shared-body kit when switching off Jiji.
+  if (f.technique !== "jiji") {
+    f.jijiForm = "jiji";
+    f.jijiRage = 0;
+    f.jijiTransformCooldown = 0;
+    f.jijiTransformAnimTicks = 0;
+    f.jijiRevertLockTicks = 0;
+    f.jijiForcedActionTicks = 0;
+    f.jijiLossTimer = 0;
+    f.jijiUltTicks = 0;
+    f.jijiRushTicks = 0;
+  } else if (!preserveMeters) {
+    f.jijiForm = "jiji";
+    f.jijiRage = 0;
+    f.jijiTransformCooldown = 0;
+    f.jijiTransformAnimTicks = 0;
+    f.jijiRevertLockTicks = 0;
+    f.jijiForcedActionTicks = 0;
+    f.jijiLossTimer = 0;
+    f.jijiUltTicks = 0;
+    f.jijiRushTicks = 0;
+    f.jijiOutOfCombatTicks = 0;
+  }
 }
 
 function applyCpuDifficultyStats() {
@@ -3560,6 +3660,10 @@ function getTechniqueHudMoves(f) {
   if (f.technique === "zealot") return ["charge", "psiFlurry", "whirlwind"]; // ZEALOT_PATCH
   if (f.technique === "spider") return ["webShot", "webBarrage", "webSwing"]; // SPIDER_PATCH
   if (f.technique === "beast") return ["beastPierce", "beastDevour", "beastCrazy"]; // INOSUKE_PATCH
+  if (f.technique === "jiji") { // JIJI_PATCH: HUD reflects the active form.
+    if (f.jijiForm === "evileye") return ["evilBlast", "berserkerRush", "jijiTransform"];
+    return ["spiritBlast", "soccerStrike", "jijiTransform"];
+  }
   return ["blue", "red", "teleport"];
 }
 
@@ -3642,6 +3746,22 @@ function getTechniqueHudState(f, move) {
       blocked
     };
   }
+  // JIJI_PATCH: all specials are Rage/cooldown-gated, no CE.
+  if (move === "spiritBlast" || move === "evilBlast" || move === "soccerStrike" || move === "berserkerRush" || move === "jijiTransform") {
+    const cooldown = move === "soccerStrike" ? (f.jijiSoccerCooldown || 0)
+      : move === "berserkerRush" ? (f.jijiRushCooldown || 0)
+      : move === "jijiTransform" ? Math.max(f.jijiTransformCooldown || 0, f.jijiRevertLockTicks || 0)
+      : (f.jijiBlastCooldown || 0);
+    const maxCooldown = move === "jijiTransform" ? JIJI_TRANSFORM_COOLDOWN_TICKS : getTechniqueCooldownTicks(move, f);
+    return {
+      cost: 0,
+      cooling: cooldown > 0,
+      cooldown,
+      maxCooldown,
+      lowCe: false,
+      blocked
+    };
+  }
   const cost = getTechniqueCost(f, move);
   return {
     cost,
@@ -3694,6 +3814,7 @@ function updateTechniqueCooldownHud(f, slots) {
     hud.slot.classList.toggle("zealot-cooldown", f.technique === "zealot"); // ZEALOT_PATCH
     hud.slot.classList.toggle("spider-cooldown", f.technique === "spider"); // SPIDER_PATCH
     hud.slot.classList.toggle("beast-cooldown", f.technique === "beast"); // INOSUKE_PATCH
+    hud.slot.classList.toggle("jiji-cooldown", f.technique === "jiji"); // JIJI_PATCH
   });
 }
 
@@ -3814,6 +3935,24 @@ function pinStationaryPracticeDummy(f = enemy) {
   f.beastSpatialTicks = 0;
   f.beastUltTicks = 0;
   f.bleedTicks = 0;
+  // JIJI_PATCH: reset shared-body state each round (back to Jiji, no Rage).
+  f.jijiForm = "jiji";
+  f.jijiRage = 0;
+  f.jijiTransformCooldown = 0;
+  f.jijiTransformAnimTicks = 0;
+  f.jijiTransformTo = null;
+  f.jijiRevertLockTicks = 0;
+  f.jijiOutOfCombatTicks = 0;
+  f.jijiForcedActionTicks = 0;
+  f.jijiForcedActionKind = null;
+  f.jijiLossTimer = 0;
+  f.jijiLaughTicks = 0;
+  f.jijiBlastCooldown = 0;
+  f.jijiSoccerCooldown = 0;
+  f.jijiRushCooldown = 0;
+  f.jijiRushTicks = 0;
+  f.jijiUltTicks = 0;
+  f.jijiUltForm = null;
   // SANJI_PATCH: clear mid-move Black Leg state.
   f.sanjiDiableTicks = 0;
   f.sanjiDiveKickTicks = 0;
@@ -4409,6 +4548,75 @@ function installBeastHudStyle() {
 window.addEventListener("DOMContentLoaded", installBeastHudStyle);
 window.setTimeout(installBeastHudStyle, 0);
 
+// JIJI_PATCH: HUD in deep maroon with a violet edge, plus the Rage bar
+// colouring (maroon fill that pulses red as the Evil Eye nears takeover).
+function installJijiHudStyle() {
+  if (document.getElementById("jijiEffectsStyle")) return;
+  const style = document.createElement("style");
+  style.id = "jijiEffectsStyle";
+  style.textContent = `
+    .ct-slot.jiji-cooldown,
+    .extra-cooldown.jiji-cooldown,
+    .ct-slot.jiji-cooldown.ready,
+    .ct-slot.jiji-cooldown.cooling,
+    .extra-cooldown.jiji-cooldown.ready,
+    .extra-cooldown.jiji-cooldown.cooling {
+      background: linear-gradient(180deg, rgba(40, 12, 20, 0.92), rgba(20, 6, 12, 0.95)) !important;
+      border: 3px solid #a01f36 !important;
+      box-shadow: 0 3px 0 #3a0c16, 0 0 14px rgba(160, 31, 54, 0.4) !important;
+    }
+    .ct-slot.jiji-cooldown .ct-label,
+    .ct-slot.jiji-cooldown .ct-status,
+    .extra-cooldown.jiji-cooldown .ct-label,
+    .extra-cooldown.jiji-cooldown .ct-status,
+    .extra-cooldown.jiji-cooldown .extra-cooldown-label,
+    .extra-cooldown.jiji-cooldown .extra-cooldown-status {
+      color: #f9c9d2 !important;
+      text-shadow: 0 0 6px rgba(200, 40, 70, 0.75) !important;
+    }
+    .ct-slot.jiji-cooldown .ct-meter,
+    .extra-cooldown.jiji-cooldown .ct-meter {
+      background: rgba(26, 8, 14, 0.75) !important;
+      border-color: rgba(160, 31, 54, 0.4) !important;
+    }
+    .ct-slot.jiji-cooldown .ct-fill,
+    .ct-slot.jiji-cooldown.ready .ct-fill,
+    .ct-slot.jiji-cooldown.low-ce .ct-fill,
+    .ct-slot.jiji-cooldown.blocked .ct-fill,
+    .extra-cooldown.jiji-cooldown .ct-fill,
+    .extra-cooldown.jiji-cooldown.ready .ct-fill,
+    .extra-cooldown.jiji-cooldown .extra-cooldown-fill {
+      background: linear-gradient(90deg, #7a1226, #c01e30, #f0708a) !important;
+      box-shadow: 0 0 12px rgba(200, 40, 70, 0.5), inset 0 1px 0 rgba(255, 220, 230, 0.25) !important;
+    }
+    .ct-slot.jiji-cooldown.cooling .ct-fill,
+    .ct-slot.jiji-cooldown.charging .ct-fill,
+    .extra-cooldown.jiji-cooldown.cooling .ct-fill,
+    .extra-cooldown.jiji-cooldown.cooling .extra-cooldown-fill {
+      background: linear-gradient(90deg, #2a1016, #47202a, #5a2530) !important;
+      opacity: 0.92 !important;
+    }
+    /* Rage bar (repurposed CE bar) */
+    .jiji-rage-fill {
+      background: linear-gradient(90deg, #6d1220, #b01e34, #d94060) !important;
+    }
+    .jiji-rage-fill.jiji-rage-warn {
+      background: linear-gradient(90deg, #8a1424, #d12a44, #ff5a72) !important;
+    }
+    .jiji-rage-fill.jiji-rage-critical {
+      background: linear-gradient(90deg, #b01020, #ff2438, #ff6a7c) !important;
+      animation: jijiRagePulse 0.5s ease-in-out infinite;
+    }
+    @keyframes jijiRagePulse {
+      0%, 100% { filter: brightness(1); box-shadow: 0 0 6px rgba(255, 40, 60, 0.6); }
+      50% { filter: brightness(1.6); box-shadow: 0 0 16px rgba(255, 40, 60, 0.95); }
+    }
+  `;
+  document.head.appendChild(style);
+}
+window.addEventListener("DOMContentLoaded", installJijiHudStyle);
+window.setTimeout(installJijiHudStyle, 0);
+
 
 function installLightTechniqueOption() {
   installUniversalBrawlRename();
@@ -4510,6 +4718,10 @@ function getTechniqueControlHtml(technique) {
     // INOSUKE_PATCH: Beast Breathing kit, no JJK controls.
     return '<span><kbd>Left Click</kbd> First Fang: Pierce</span><span><kbd>Right Click</kbd> Third Fang: Devour</span><span><kbd>S</kbd> Fifth Fang: Crazy Cutting</span><span><kbd>Tab</kbd> Eighth Form: Explosive Rush</span><span><kbd>R</kbd> Seventh Form: Spatial Awareness</span><span><kbd>F</kbd> Tenth Fang: Whirling Fangs</span><span><kbd>C</kbd> Rampaging Beast / Palisade Bite</span>';
   }
+  if (technique === "jiji") {
+    // JIJI_PATCH: shared body, two forms. S transforms between them.
+    return '<span><kbd>S</kbd> Transform (Jiji &harr; Evil Eye)</span><span><kbd>Jiji · Left Click</kbd> Spirit Blast</span><span><kbd>Jiji · Right Click</kbd> Soccer Strike</span><span><kbd>Evil Eye · Left Click</kbd> Evil Spirit Blast</span><span><kbd>Evil Eye · Right Click</kbd> Berserker Rush</span><span><kbd>C</kbd> Spiritual Acceptance / Full Possession</span>';
+  }
   return '<span><kbd>Left Click</kbd> Blue</span><span><kbd>Right Click</kbd> Red</span><span><kbd>Hold S</kbd> Teleport</span><span><kbd>Hold T</kbd> Blue Punch</span><span><kbd>F</kbd> Infinity</span><span><kbd>Hold C</kbd> Aim Ultimate</span><span><kbd>R</kbd> hold RCT</span>';
 }
 
@@ -4526,6 +4738,7 @@ function getExtraBattleControlHtml(technique) {
   if (technique === "zealot") return '<span><kbd>Shields</kbd> soak 25% HP, regen after 5s undamaged · no HP regen</span>'; // ZEALOT_PATCH
   if (technique === "spider") return '<span><kbd>Spider Sense</kbd> perfect dodge = speed boost + cooldown refund</span><span><kbd>Marked</kbd> +10% combo damage, full combos extend the mark</span>'; // SPIDER_PATCH
   if (technique === "beast") return '<span><kbd>Beast Instinct</kbd> -10% hitstun, speed burst after combos, resists DoT</span>'; // INOSUKE_PATCH
+  if (technique === "jiji") return '<span><kbd>Shared Body</kbd> both forms share HP &amp; Ultimate · 8s transform cooldown</span><span><kbd>Rage</kbd> builds only as Evil Eye · at 100 the Eye takes over &amp; forces revert</span><span><kbd>Loss of Control</kbd> high Rage = involuntary attacks · <kbd>Kind Heart</kbd> Jiji regens out of combat</span>'; // JIJI_PATCH
   return '<span><kbd>X</kbd> Domain Expansion</span><span><kbd>Z</kbd> Simple Domain</span>';
 }
 
@@ -4900,7 +5113,9 @@ function applyJoinerFighterStateOnHost(remoteFighter) {
     // SPIDER_PATCH
     "spiderWebShotCooldown", "spiderMarkTicks", "spiderMarkedBy", "spiderSwingCooldown", "spiderSwingTicks", "spiderBarrageCooldown", "spiderRushCooldown", "spiderRushTicks", "spiderUltTicks", "webbedTicks", "cocoonTicks",
     // INOSUKE_PATCH
-    "beastPierceCooldown", "beastPierceTicks", "beastDevourCooldown", "beastDevourTicks", "beastCrazyCooldown", "beastCrazyTicks", "beastSpatialCooldown", "beastSpatialTicks", "beastExplosiveCooldown", "beastExplosiveTicks", "beastWhirlCooldown", "beastWhirlTicks", "beastUltTicks", "beastComboSpeedTicks", "bleedTicks"
+    "beastPierceCooldown", "beastPierceTicks", "beastDevourCooldown", "beastDevourTicks", "beastCrazyCooldown", "beastCrazyTicks", "beastSpatialCooldown", "beastSpatialTicks", "beastExplosiveCooldown", "beastExplosiveTicks", "beastWhirlCooldown", "beastWhirlTicks", "beastUltTicks", "beastComboSpeedTicks", "bleedTicks",
+    // JIJI_PATCH
+    "jijiForm", "jijiRage", "jijiTransformCooldown", "jijiTransformAnimTicks", "jijiTransformTo", "jijiRevertLockTicks", "jijiOutOfCombatTicks", "jijiForcedActionTicks", "jijiForcedActionKind", "jijiLossTimer", "jijiLaughTicks", "jijiBlastCooldown", "jijiSoccerCooldown", "jijiRushCooldown", "jijiRushTicks", "jijiUltTicks", "jijiUltForm"
   ];
 
   fields.forEach((field) => {
@@ -5005,6 +5220,7 @@ if (data.type === "role") {
       if (data.action === "beast-spatial") startBeastSpatial(enemy); // INOSUKE_PATCH
       if (data.action === "beast-whirl") startBeastWhirl(enemy); // INOSUKE_PATCH
       if (data.action === "beast-explosive") startBeastExplosive(enemy); // INOSUKE_PATCH
+      if (data.action === "jiji-transform") startJijiTransform(enemy); // JIJI_PATCH
       if (data.action === "dodge") startDodge(enemy, getVectorFromInput(remoteInput));
       if (data.action === "jump") jumpFighterWithMove(enemy, (remoteInput.right ? 1 : 0) - (remoteInput.left ? 1 : 0));
       if (data.action === "infinity" && !hasCtLock(enemy)) toggleInfinity(enemy);
@@ -5648,7 +5864,19 @@ function getSukunaPassiveDamageMultiplier(f) {
 
 function getOutgoingDamageMultiplier(f) {
   const simpleDomainBonus = hasSimpleDomain(f) ? SIMPLE_DOMAIN_CT_DAMAGE_MULTIPLIER : 1;
-  return (f?.outgoingDamageMultiplier || 1) * getSukunaPassiveDamageMultiplier(f) * simpleDomainBonus;
+  return (f?.outgoingDamageMultiplier || 1) * getSukunaPassiveDamageMultiplier(f) * simpleDomainBonus * getJijiDamageMultiplier(f);
+}
+
+// JIJI_PATCH: Spiritual Acceptance grants Evil Eye +15% damage; Full
+// Possession grants +20% while active.
+function getJijiDamageMultiplier(f) {
+  if (!f || f.technique !== "jiji") return 1;
+  let m = 1;
+  if (f.jijiForm === "evileye") {
+    if ((f.jijiUltTicks || 0) > 0 && f.jijiUltForm === "evileye") m *= 1.2; // Full Possession
+    if ((f.jijiUltTicks || 0) > 0 && f.jijiUltForm === "jiji") m *= 1.15; // Spiritual Acceptance boon
+  }
+  return m;
 }
 
 // HP_BAR_STYLE_REVERTED_TO_OLD_SMALL
@@ -5897,6 +6125,19 @@ function getExtraCooldownItems(f) {
     return items;
   }
 
+  // JIJI_PATCH: form readout, transform gate, active ultimate timer.
+  if (f.technique === "jiji") {
+    if ((f.jijiRevertLockTicks || 0) > 0) {
+      items.push({ name: "LOCKED OUT", current: f.jijiRevertLockTicks, max: JIJI_FORCED_REVERT_LOCK_TICKS });
+    } else {
+      items.push({ name: f.jijiForm === "evileye" ? "EVIL EYE" : "JIJI", current: f.jijiTransformCooldown || 0, max: JIJI_TRANSFORM_COOLDOWN_TICKS, mode: (f.jijiTransformCooldown || 0) > 0 ? undefined : "active" });
+    }
+    if (jijiUltActive(f)) {
+      items.push({ name: f.jijiUltForm === "evileye" ? "POSSESSION" : "ACCEPTANCE", current: f.jijiUltTicks, max: f.jijiUltForm === "evileye" ? EVILEYE_ULT_TICKS : JIJI_ULT_TICKS, mode: "active" });
+    }
+    return items;
+  }
+
   // SPIDER_PATCH: Spider Rush + ultimate timer, nothing JJK.
   if (f.technique === "spider") {
     const opp = getOpponent(f);
@@ -6001,7 +6242,7 @@ function updateExtraCooldownHud(container, f) {
       : ready ? 100 : Math.max(4, ratio * 100);
 
     const row = document.createElement("div");
-    row.className = `extra-cooldown ct-slot ${ready ? "ready" : "cooling"} ${f.technique === "shrine" ? "sukuna-cooldown" : f.technique === "deathnote" ? "light-cooldown" : f.technique === "brawler" ? "thragg-cooldown" : f.technique === "blackleg" ? "sanji-cooldown" : f.technique === "hivemind" ? "vecna-cooldown" : f.technique === "zealot" ? "zealot-cooldown" : f.technique === "spider" ? "spider-cooldown" : f.technique === "beast" ? "beast-cooldown" : "gojo-cooldown"} ${item.style || ""}`;
+    row.className = `extra-cooldown ct-slot ${ready ? "ready" : "cooling"} ${f.technique === "shrine" ? "sukuna-cooldown" : f.technique === "deathnote" ? "light-cooldown" : f.technique === "brawler" ? "thragg-cooldown" : f.technique === "blackleg" ? "sanji-cooldown" : f.technique === "hivemind" ? "vecna-cooldown" : f.technique === "zealot" ? "zealot-cooldown" : f.technique === "spider" ? "spider-cooldown" : f.technique === "beast" ? "beast-cooldown" : f.technique === "jiji" ? "jiji-cooldown" : "gojo-cooldown"} ${item.style || ""}`;
 
     const label = document.createElement("span");
     label.className = "extra-cooldown-label ct-label";
@@ -6064,7 +6305,7 @@ function updateResourceBarLabels() {
   const playerUltFrame = playerUltimateEl ? playerUltimateEl.closest(".ultimate-frame") : null;
   const enemyUltFrame = enemyUltimateEl ? enemyUltimateEl.closest(".ultimate-frame") : null;
 
-  ensureResourceBarLabel(playerCeFrame, isLight(player) ? "Information" : player?.technique === "brawler" || player?.technique === "blackleg" || player?.technique === "hivemind" || player?.technique === "zealot" || player?.technique === "spider" || player?.technique === "beast" ? "" : "Cursed Energy", "ce"); // + INOSUKE
+  ensureResourceBarLabel(playerCeFrame, isLight(player) ? "Information" : player?.technique === "jiji" ? "Rage" : player?.technique === "brawler" || player?.technique === "blackleg" || player?.technique === "hivemind" || player?.technique === "zealot" || player?.technique === "spider" || player?.technique === "beast" ? "" : "Cursed Energy", "ce"); // + INOSUKE + JIJI
   ensureResourceBarLabel(playerUltFrame, isLight(player) ? "Name" : "Ultimate", "ultimate");
 
   // DUMMY_HUD_NO_WORDS_PATCH:
@@ -6075,8 +6316,18 @@ function updateResourceBarLabels() {
     return;
   }
 
-  ensureResourceBarLabel(enemyCeFrame, isLight(enemy) ? "Information" : enemy?.technique === "brawler" || enemy?.technique === "blackleg" || enemy?.technique === "hivemind" || enemy?.technique === "zealot" || enemy?.technique === "spider" || enemy?.technique === "beast" ? "" : "Cursed Energy", "ce"); // + INOSUKE
+  ensureResourceBarLabel(enemyCeFrame, isLight(enemy) ? "Information" : enemy?.technique === "jiji" ? "Rage" : enemy?.technique === "brawler" || enemy?.technique === "blackleg" || enemy?.technique === "hivemind" || enemy?.technique === "zealot" || enemy?.technique === "spider" || enemy?.technique === "beast" ? "" : "Cursed Energy", "ce"); // + INOSUKE + JIJI
   ensureResourceBarLabel(enemyUltFrame, isLight(enemy) ? "Name" : "Ultimate", "ultimate");
+}
+
+// JIJI_PATCH: colour the Rage bar (maroon), pulsing red once it's critical.
+function applyJijiRageBarState(ceEl, f) {
+  if (!ceEl) return;
+  const isJijiF = f && f.technique === "jiji";
+  ceEl.classList.toggle("jiji-rage-fill", Boolean(isJijiF));
+  const rage = isJijiF ? (f.jijiRage || 0) : 0;
+  ceEl.classList.toggle("jiji-rage-warn", Boolean(isJijiF && f.jijiForm === "evileye" && rage >= 70 && rage < 90));
+  ceEl.classList.toggle("jiji-rage-critical", Boolean(isJijiF && f.jijiForm === "evileye" && rage >= 90));
 }
 
 function updatePracticeDummyHudVisibility() {
@@ -6152,13 +6403,16 @@ function updateHud() {
   enemyNameEl.classList.toggle("cpu-name", gameMode === "cpu");
   renderSegmentedHealth(playerHealthEl, player);
   renderSegmentedHealth(enemyHealthEl, enemy);
-  const playerInfoRatio = isLight(player) ? Math.max(0, Math.min(1, (player.informationMeter || 0) / LIGHT_INFO_MAX)) : Math.max(0, player.ce / player.maxCe);
-  const enemyInfoRatio = isLight(enemy) ? Math.max(0, Math.min(1, (enemy.informationMeter || 0) / LIGHT_INFO_MAX)) : Math.max(0, enemy.ce / enemy.maxCe);
+  const playerInfoRatio = isLight(player) ? Math.max(0, Math.min(1, (player.informationMeter || 0) / LIGHT_INFO_MAX)) : player.technique === "jiji" ? Math.max(0, Math.min(1, (player.jijiRage || 0) / RAGE_MAX)) : Math.max(0, player.ce / player.maxCe);
+  const enemyInfoRatio = isLight(enemy) ? Math.max(0, Math.min(1, (enemy.informationMeter || 0) / LIGHT_INFO_MAX)) : enemy.technique === "jiji" ? Math.max(0, Math.min(1, (enemy.jijiRage || 0) / RAGE_MAX)) : Math.max(0, enemy.ce / enemy.maxCe);
   const playerNameRatio = isLight(player) ? Math.max(0, Math.min(1, (player.identityProgress || 0) / LIGHT_IDENTITY_MAX)) : Math.max(0, Math.min(1, (player.ultimateMeter || 0) / 100));
   const enemyNameRatio = isLight(enemy) ? Math.max(0, Math.min(1, (enemy.identityProgress || 0) / LIGHT_IDENTITY_MAX)) : Math.max(0, Math.min(1, (enemy.ultimateMeter || 0) / 100));
 
   playerCeEl.style.width = `${playerInfoRatio * 100}%`;
   enemyCeEl.style.width = `${enemyInfoRatio * 100}%`;
+  // JIJI_PATCH: the Rage bar flashes red as it nears takeover.
+  applyJijiRageBarState(playerCeEl, player);
+  applyJijiRageBarState(enemyCeEl, enemy);
   if (playerUltimateEl) playerUltimateEl.style.width = `${playerNameRatio * 100}%`;
   if (enemyUltimateEl) enemyUltimateEl.style.width = `${enemyNameRatio * 100}%`;
   updateTechniqueCooldownHud(player, ctHud.player);
@@ -6568,7 +6822,7 @@ function isSpiderCommitted(f) {
 function isSpecialLocked(f) {
   const owner = getFighterOwner(f);
   const clashing = Boolean(owner && domainClash?.attempts?.[owner]);
-  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || isSanjiCommitted(f) || isZealotCommitted(f) || isSpiderCommitted(f) || isBeastCommitted(f) || (f?.vecnaSlipTicks || 0) > 0 || (f?.domainStartup || 0) > 0 || clashing || (f?.potatoVulnerableTicks || 0) > 0; // + INOSUKE
+  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || isSanjiCommitted(f) || isZealotCommitted(f) || isSpiderCommitted(f) || isBeastCommitted(f) || isJijiCommitted(f) || (f?.vecnaSlipTicks || 0) > 0 || (f?.domainStartup || 0) > 0 || clashing || (f?.potatoVulnerableTicks || 0) > 0; // + INOSUKE + JIJI
 }
 
 // DOMAIN_MOVEMENT_FIX
@@ -6577,7 +6831,7 @@ function isSpecialLocked(f) {
 function isMovementLocked(f) {
   const owner = getFighterOwner(f);
   const clashing = Boolean(owner && domainClash?.attempts?.[owner]);
-  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || (f?.sanjiMuttonTicks || 0) > 0 || (f?.sanjiCookTicks || 0) > 0 || (f?.zealotFlurryTicks || 0) > 0 || (f?.zealotWhirlTicks || 0) > 0 || (f?.spiderRushTicks || 0) > 0 || (f?.cocoonTicks || 0) > 0 || (f?.beastCrazyTicks || 0) > 0 || (f?.beastWhirlTicks || 0) > 0 || (f?.beastDevourTicks || 0) > 0 || clashing; // + INOSUKE roots
+  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || (f?.sanjiMuttonTicks || 0) > 0 || (f?.sanjiCookTicks || 0) > 0 || (f?.zealotFlurryTicks || 0) > 0 || (f?.zealotWhirlTicks || 0) > 0 || (f?.spiderRushTicks || 0) > 0 || (f?.cocoonTicks || 0) > 0 || (f?.beastCrazyTicks || 0) > 0 || (f?.beastWhirlTicks || 0) > 0 || (f?.beastDevourTicks || 0) > 0 || (f?.jijiTransformAnimTicks || 0) > 0 || (f?.jijiForcedActionTicks || 0) > 0 || clashing; // + INOSUKE roots + JIJI
 }
 
 function getMoveInputForFighter(f) {
@@ -9084,6 +9338,406 @@ function updateBeastSystems(f, opponent) {
   updateBeastWhirl(f, opponent);
 }
 
+// ==========================================================================
+// JIJI_PATCH: Jiji / Evil Eye (Dandadan). One shared body. CT3/S transforms
+// between the balanced Jiji form and the aggressive Evil Eye form. Rage is
+// the resource - it only builds and matters while Evil Eye is active. At full
+// Rage the Evil Eye takes over: a forced revert to Jiji, a transform lockout,
+// and a rage reset. As Rage climbs, the Evil Eye acts on its own (Loss of
+// Control).
+// ==========================================================================
+
+function isJiji(f) {
+  return Boolean(f && f.technique === "jiji");
+}
+
+function jijiEvilEye(f) {
+  return isJiji(f) && f.jijiForm === "evileye";
+}
+
+function jijiUltActive(f) {
+  return isJiji(f) && (f.jijiUltTicks || 0) > 0;
+}
+
+function isJijiCommitted(f) {
+  return Boolean(f && ((f.jijiTransformAnimTicks || 0) > 0 || (f.jijiRushTicks || 0) > 0 || (f.jijiForcedActionTicks || 0) > 0));
+}
+
+function canStartJijiSpecial(f) {
+  return Boolean(
+    f && !gameOver && !paused && !isSpecialLocked(f) && !f.ko &&
+    f.stun <= 0 && f.dodging <= 0 && !f.knockdown && !f.attacking &&
+    (f.jijiForcedActionTicks || 0) <= 0
+  );
+}
+
+function jijiOutgoing(f) {
+  return getOutgoingDamageMultiplier(f);
+}
+
+// Evil Eye rages from dealing and taking damage (only while Evil Eye is out).
+function applyJijiRageFromCombat(attacker, defender) {
+  if (jijiEvilEye(attacker)) gainRage(attacker, RAGE_ON_DEAL);
+  if (jijiEvilEye(defender)) gainRage(defender, RAGE_ON_TAKE);
+}
+
+function gainRage(f, amount) {
+  if (!jijiEvilEye(f) || amount <= 0) return;
+  // Spiritual Acceptance makes rage build 40% slower; Full Possession 2x.
+  let scale = 1;
+  if (jijiUltActive(f) && f.jijiUltForm === "jiji") scale *= 0.6;
+  if (jijiUltActive(f) && f.jijiUltForm === "evileye") scale *= 2;
+  f.jijiRage = Math.min(RAGE_MAX, (f.jijiRage || 0) + amount * scale);
+}
+
+// CT3 / S: transform between forms (also "Return Control" from Evil Eye).
+function startJijiTransform(f) {
+  if (!isJiji(f) || gameOver || paused || f.ko || f.stun > 0 || f.knockdown || f.dodging > 0) return false;
+  if ((f.jijiTransformAnimTicks || 0) > 0) return false;
+  // Spiritual Acceptance removes the transform cooldown entirely.
+  const freeSwitch = jijiUltActive(f) && f.jijiUltForm === "jiji";
+  if (!freeSwitch) {
+    if ((f.jijiTransformCooldown || 0) > 0) return false;
+    if ((f.jijiRevertLockTicks || 0) > 0) return false;
+  }
+  f.jijiTransformTo = f.jijiForm === "jiji" ? "evileye" : "jiji";
+  f.jijiTransformAnimTicks = freeSwitch ? 1 : JIJI_TRANSFORM_ANIM_TICKS;
+  f.attacking = null;
+  f.blocking = false;
+  f.vx = 0;
+  showActionWarning(f.jijiTransformTo === "evileye" ? "EVIL EYE" : "RETURN CONTROL");
+  return true;
+}
+
+function completeJijiTransform(f) {
+  const to = f.jijiTransformTo || (f.jijiForm === "jiji" ? "evileye" : "jiji");
+  f.jijiForm = to;
+  f.jijiTransformTo = null;
+  f.jijiTransformAnimTicks = 0;
+  const freeSwitch = jijiUltActive(f) && f.jijiUltForm === "jiji";
+  if (!freeSwitch) f.jijiTransformCooldown = JIJI_TRANSFORM_COOLDOWN_TICKS;
+  if (to === "jiji") {
+    // returning to Jiji clears rage-driven state
+    f.jijiForcedActionTicks = 0;
+    f.jijiForcedActionKind = null;
+  } else {
+    f.jijiLossTimer = 3 * 60;
+    f.jijiOutOfCombatTicks = 0;
+  }
+  spawnHitSpark(f.x + f.w / 2, f.y + f.h * 0.5, f.dir, to === "evileye" ? "heavy" : "block");
+  shake = Math.max(shake, 8);
+  updateHud();
+}
+
+// Forced revert when Rage tops out.
+function jijiForcedRevert(f) {
+  f.jijiForm = "jiji";
+  f.jijiRage = 0;
+  f.jijiTransformTo = null;
+  f.jijiTransformAnimTicks = 0;
+  f.jijiForcedActionTicks = 0;
+  f.jijiForcedActionKind = null;
+  f.jijiRevertLockTicks = JIJI_FORCED_REVERT_LOCK_TICKS;
+  f.jijiTransformCooldown = JIJI_FORCED_REVERT_LOCK_TICKS;
+  f.jijiLaughTicks = 0;
+  // ending Full Possession this way is expected
+  if (jijiUltActive(f) && f.jijiUltForm === "evileye") { f.jijiUltTicks = 0; f.jijiUltForm = null; }
+  f.attacking = null;
+  f.blocking = false;
+  showActionWarning("LOST CONTROL");
+  shake = Math.max(shake, 16);
+  spawnHitSpark(f.x + f.w / 2, f.y + f.h * 0.4, f.dir, "heavy");
+  updateHud();
+}
+
+// ---- Jiji form: Spirit Blast (LC), Soccer Strike (RC) ------------------
+
+function pushJijiProjectile(f, opts) {
+  const center = getFighterCenter(f);
+  projectiles.push({
+    owner: f === player ? "player" : "enemy",
+    move: opts.move,
+    x: center.x + f.dir * (f.w * 0.5 + 6),
+    y: center.y - (opts.yOffset || 4),
+    vx: f.dir * opts.speed,
+    vy: opts.vy || 0,
+    baseVx: f.dir * opts.speed,
+    baseVy: opts.vy || 0,
+    radius: opts.radius,
+    damage: Math.ceil(opts.damage * jijiOutgoing(f)),
+    knockback: opts.knockback,
+    dir: f.dir, aimX: f.dir, aimY: 0, angle: f.dir > 0 ? 0 : Math.PI,
+    maxTravel: Infinity, traveled: 0,
+    life: opts.life, maxLife: opts.life,
+    bounces: 0, hit: false
+  });
+}
+
+function startSpiritBlast(f) {
+  if (!isJiji(f) || f.jijiForm !== "jiji" || !canStartJijiSpecial(f)) return false;
+  if ((f.jijiBlastCooldown || 0) > 0) return false;
+  const opponent = getOpponent(f);
+  if (opponent) f.dir = getFighterCenter(opponent).x >= getFighterCenter(f).x ? 1 : -1;
+  f.jijiBlastCooldown = JIJI_SPIRIT_BLAST_COOLDOWN;
+  playTechniqueShootSfx(f, "blue");
+  pushJijiProjectile(f, { move: "jijiSpirit", speed: 12, damage: 11, knockback: 14, radius: 13, life: 90 });
+  updateHud();
+  return true;
+}
+
+function startSoccerStrike(f) {
+  if (!isJiji(f) || f.jijiForm !== "jiji" || !canStartJijiSpecial(f)) return false;
+  if ((f.jijiSoccerCooldown || 0) > 0) return false;
+  const opponent = getOpponent(f);
+  if (opponent) f.dir = getFighterCenter(opponent).x >= getFighterCenter(f).x ? 1 : -1;
+  f.jijiSoccerCooldown = JIJI_SOCCER_COOLDOWN;
+  playTechniqueShootSfx(f, "red");
+  // a spirit ball that bounces along the ground
+  pushJijiProjectile(f, { move: "jijiSoccer", speed: 11, vy: -6, damage: 14, knockback: 24, radius: 12, life: 150, yOffset: 2 });
+  showActionWarning("SOCCER STRIKE");
+  updateHud();
+  return true;
+}
+
+// ---- Evil Eye form: Evil Spirit Blast (LC), Berserker Rush (RC) --------
+
+function startEvilBlast(f) {
+  if (!isJiji(f) || f.jijiForm !== "evileye" || !canStartJijiSpecial(f)) return false;
+  if ((f.jijiBlastCooldown || 0) > 0) return false;
+  const opponent = getOpponent(f);
+  if (opponent) f.dir = getFighterCenter(opponent).x >= getFighterCenter(f).x ? 1 : -1;
+  f.jijiBlastCooldown = EVILEYE_BLAST_COOLDOWN;
+  playTechniqueShootSfx(f, "purple");
+  pushJijiProjectile(f, { move: "jijiEvil", speed: 17, damage: 10, knockback: 12, radius: 11, life: 70 });
+  return true;
+}
+
+function startBerserkerRush(f) {
+  if (!isJiji(f) || f.jijiForm !== "evileye" || !canStartJijiSpecial(f)) return false;
+  if ((f.jijiRushCooldown || 0) > 0) return false;
+  const opponent = getOpponent(f);
+  if (opponent) f.dir = getFighterCenter(opponent).x >= getFighterCenter(f).x ? 1 : -1;
+  f.jijiRushCooldown = EVILEYE_RUSH_COOLDOWN;
+  f.jijiRushTicks = EVILEYE_RUSH_TICKS;
+  f.jijiRushHit = false;
+  f.blocking = false;
+  f.vx = f.dir * EVILEYE_RUSH_SPEED;
+  showActionWarning("BERSERKER RUSH");
+  return true;
+}
+
+function updateBerserkerRush(f, opponent) {
+  if ((f.jijiRushTicks || 0) <= 0) return;
+  if (f.ko || f.stun > 0 || f.knockdown) { f.jijiRushTicks = 0; return; }
+  f.jijiRushTicks -= 1;
+  f.vx = f.dir * EVILEYE_RUSH_SPEED * (jijiUltActive(f) && f.jijiUltForm === "evileye" ? 1.15 : 1);
+  if (frame % 2 === 0) spawnHitSpark(getFighterCenter(f).x - f.dir * 14, getFighterCenter(f).y, -f.dir, "heavy");
+  if (opponent && !opponent.ko && opponent.dodging <= 0 && !isUntargetable(opponent) && rectsOverlap(expandRect(f, 10), opponent)) {
+    const blocked = isBlockingAttack(opponent, f.dir);
+    if (!f.jijiRushHit) {
+      // multi-hit body: light chip on contact, big finisher when the dash ends
+      if (frame % 4 === 0) {
+        const dmg = blocked ? 0 : getTakenDamage(opponent, Math.ceil(EVILEYE_RUSH_HIT_DAMAGE * jijiOutgoing(f)));
+        if (blocked) damageShield(opponent, EVILEYE_RUSH_HIT_DAMAGE);
+        else {
+          applyFighterDamage(opponent, dmg);
+          opponent.hurt = 6; opponent.stun = Math.max(opponent.stun, 8);
+          gainUltimate(f, dmg * ULT_DAMAGE_GAIN_SCALE * 0.6);
+          gainRage(f, 1.5);
+        }
+        const c = getFighterCenter(opponent);
+        spawnHitSpark(c.x, c.y, f.dir, "light");
+        updateHud();
+      }
+    }
+    // finisher: last few ticks launch
+    if (f.jijiRushTicks <= 3 && !f.jijiRushHit) {
+      f.jijiRushHit = true;
+      const dmg = blocked ? 0 : getTakenDamage(opponent, Math.ceil(EVILEYE_RUSH_FINISH_DAMAGE * jijiOutgoing(f)));
+      if (blocked) damageShield(opponent, EVILEYE_RUSH_FINISH_DAMAGE);
+      else {
+        applyFighterDamage(opponent, dmg);
+        opponent.vx = f.dir * getTakenKnockback(opponent, 34);
+        opponent.vy = -9; opponent.grounded = false;
+        opponent.knockdown = true; opponent.knockdownTimer = 22;
+        opponent.stun = Math.max(opponent.stun, 20);
+        gainUltimate(f, dmg * ULT_DAMAGE_GAIN_SCALE);
+        gainRage(f, RAGE_ON_DEAL);
+      }
+      const c = getFighterCenter(opponent);
+      spawnHitSpark(c.x, c.y, f.dir, "heavy");
+      shake = Math.max(shake, 9);
+      hitStopTicks = Math.max(hitStopTicks, HITSTOP_HEAVY);
+      f.jijiRushTicks = 0; f.vx *= 0.3;
+      updateHud();
+    }
+  }
+}
+
+// ---- Ultimates ---------------------------------------------------------
+
+function startJijiUltimate(f) {
+  if (!isJiji(f) || (f.jijiUltTicks || 0) > 0) return false;
+  if (!canStartUltimate(f)) {
+    const warning = getUltimateFailureMessage(f);
+    if (warning) showActionWarning(warning);
+    return false;
+  }
+  f.ultimateMeter = 0;
+  f.ultimateReady = false;
+  if (f.jijiForm === "jiji") {
+    // Spiritual Acceptance: free-switching + rage builds slower + Evil Eye buff
+    f.jijiUltForm = "jiji";
+    f.jijiUltTicks = JIJI_ULT_TICKS;
+    f.jijiTransformCooldown = 0;
+    f.jijiRevertLockTicks = 0;
+    showActionWarning("SPIRITUAL ACCEPTANCE");
+  } else {
+    // Full Possession: unleash the Evil Eye for a burst, then forced revert
+    f.jijiUltForm = "evileye";
+    f.jijiUltTicks = EVILEYE_ULT_TICKS;
+    f.jijiLossTimer = Math.min(f.jijiLossTimer || 999, 60);
+    showActionWarning("FULL POSSESSION");
+  }
+  shake = Math.max(shake, 12);
+  spawnHitSpark(f.x + f.w / 2, f.y + f.h * 0.4, f.dir, "heavy");
+  updateHud();
+  return true;
+}
+
+// ---- Loss of Control ---------------------------------------------------
+
+// Frequency window (ticks) between involuntary actions, by Rage tier.
+function jijiLossInterval(f) {
+  const rage = f.jijiRage || 0;
+  let base;
+  if (rage >= 90) base = 70;
+  else if (rage >= 70) base = 130;
+  else if (rage >= 40) base = 210;
+  else return Infinity; // below 40 Rage: full control
+  if (jijiUltActive(f) && f.jijiUltForm === "evileye") base = Math.round(base * 0.55); // Full Possession = wilder
+  return base;
+}
+
+function performJijiForcedAction(f, opponent) {
+  if (!opponent || opponent.ko) return;
+  const toward = getFighterCenter(opponent).x >= getFighterCenter(f).x ? 1 : -1;
+  const r = Math.random();
+  if (r < 0.4 && (f.jijiRushCooldown || 0) <= 0) {
+    f.dir = toward;
+    startBerserkerRush(f);
+  } else if (r < 0.72 && (f.jijiBlastCooldown || 0) <= 0) {
+    f.dir = toward;
+    startEvilBlast(f);
+  } else {
+    // wild lunge - drives movement for a short window, ignoring the player
+    f.dir = Math.random() < 0.8 ? toward : -toward;
+    f.jijiForcedActionKind = "lunge";
+    f.jijiForcedActionTicks = 22;
+    f.vx = f.dir * (f.speed || BASE_MOVE_SPEED) * 2.2;
+  }
+  f.jijiLaughTicks = 30;
+}
+
+function updateJijiForcedAction(f) {
+  if ((f.jijiForcedActionTicks || 0) <= 0) return;
+  f.jijiForcedActionTicks -= 1;
+  if (f.jijiForcedActionKind === "lunge") {
+    f.vx = f.dir * (f.speed || BASE_MOVE_SPEED) * 1.9;
+  }
+  if (f.jijiForcedActionTicks <= 0) f.jijiForcedActionKind = null;
+}
+
+// ---- Per-frame driver --------------------------------------------------
+
+function updateJijiSystems(f, opponent) {
+  if (!isJiji(f)) return;
+
+  // transform animation resolves at 0
+  if ((f.jijiTransformAnimTicks || 0) > 0) {
+    f.jijiTransformAnimTicks -= 1;
+    f.vx *= 0.6;
+    if (frame % 3 === 0) spawnHitSpark(f.x + f.w / 2 + (Math.random() - 0.5) * 20, f.y + f.h * 0.5, f.dir, f.jijiTransformTo === "evileye" ? "heavy" : "block");
+    if (f.jijiTransformAnimTicks <= 0) completeJijiTransform(f);
+  }
+
+  // cooldown timers
+  const cdRate = jijiUltActive(f) && f.jijiUltForm === "jiji" ? 1.4 : 1;
+  const dec = (v) => Math.max(0, v - cdRate);
+  if ((f.jijiTransformCooldown || 0) > 0) f.jijiTransformCooldown = Math.max(0, f.jijiTransformCooldown - 1);
+  if ((f.jijiRevertLockTicks || 0) > 0) f.jijiRevertLockTicks = Math.max(0, f.jijiRevertLockTicks - 1);
+  if ((f.jijiBlastCooldown || 0) > 0) f.jijiBlastCooldown = dec(f.jijiBlastCooldown);
+  if ((f.jijiSoccerCooldown || 0) > 0) f.jijiSoccerCooldown = dec(f.jijiSoccerCooldown);
+  if ((f.jijiRushCooldown || 0) > 0 && (f.jijiRushTicks || 0) <= 0) f.jijiRushCooldown = dec(f.jijiRushCooldown);
+  if ((f.jijiLaughTicks || 0) > 0) f.jijiLaughTicks -= 1;
+
+  // combat-recency clock (drives Kind Heart)
+  if ((f.hurt || 0) > 0 || (f.attacking && f.hasHit)) f.jijiOutOfCombatTicks = 0;
+  else f.jijiOutOfCombatTicks = (f.jijiOutOfCombatTicks || 0) + 1;
+
+  if (f.jijiForm === "jiji") {
+    // Kind Heart: out-of-combat regen up to max
+    if ((f.jijiOutOfCombatTicks || 0) >= JIJI_KIND_HEART_DELAY && f.health < f.maxHealth && !f.ko) {
+      f.health = Math.min(f.maxHealth, f.health + JIJI_KIND_HEART_RATE);
+      if (frame % 6 === 0) updateHud();
+    }
+    // ult timer (Spiritual Acceptance can persist while in Jiji form)
+    if (jijiUltActive(f)) {
+      f.jijiUltTicks -= 1;
+      if (f.jijiUltTicks <= 0) { f.jijiUltTicks = 0; f.jijiUltForm = null; updateHud(); }
+    }
+  } else {
+    // Evil Eye: Rage builds continuously
+    gainRage(f, RAGE_FILL_RATE);
+
+    // warnings + laugh as rage climbs
+    const rage = f.jijiRage || 0;
+    if (rage >= 70 && frame % 90 === 0) f.jijiLaughTicks = Math.max(f.jijiLaughTicks || 0, 24);
+    if (rage >= 80) shake = Math.max(shake, rage >= 92 ? 5 : 3);
+
+    // ult timer (Full Possession)
+    if (jijiUltActive(f)) {
+      f.jijiUltTicks -= 1;
+      if (frame % 3 === 0) spawnHitSpark(f.x + f.w / 2 + (Math.random() - 0.5) * 26, f.y + f.h - 6, f.dir, "heavy");
+      if (f.jijiUltTicks <= 0) {
+        // Full Possession ends by forcing rage to max -> revert
+        f.jijiUltTicks = 0; f.jijiUltForm = null;
+        f.jijiRage = RAGE_MAX;
+      }
+    }
+
+    // forced revert at 100 rage
+    if ((f.jijiRage || 0) >= RAGE_MAX) {
+      jijiForcedRevert(f);
+    } else {
+      // Loss of Control roll
+      if ((f.jijiForcedActionTicks || 0) <= 0 && (f.jijiRushTicks || 0) <= 0 && (f.jijiTransformAnimTicks || 0) <= 0 && !f.ko && f.stun <= 0 && !f.knockdown) {
+        f.jijiLossTimer = (f.jijiLossTimer || 0) - 1;
+        const interval = jijiLossInterval(f);
+        if (Number.isFinite(interval) && f.jijiLossTimer <= 0) {
+          performJijiForcedAction(f, opponent);
+          f.jijiLossTimer = interval + Math.floor(Math.random() * 40);
+        }
+      }
+    }
+  }
+
+  updateJijiForcedAction(f);
+  updateBerserkerRush(f, opponent);
+
+  // speed: form base, plus +25% while Full Possession is active.
+  const formMult = f.jijiForm === "evileye" ? EVILEYE_MOVE_MULTIPLIER : JIJI_MOVE_MULTIPLIER;
+  const cpuMult = gameMode === "cpu" && f === enemy ? (cpuSettings[cpuDifficulty] || cpuSettings.medium).speedMultiplier : 1;
+  let speedMult = 1;
+  if (jijiUltActive(f) && f.jijiUltForm === "evileye") speedMult *= 1.25; // Full Possession
+  f.speed = BASE_MOVE_SPEED * formMult * cpuMult * speedMult;
+}
+
+// Super armor while Full Possession is active.
+function isJijiSuperArmor(f) {
+  return jijiEvilEye(f) && jijiUltActive(f) && f.jijiUltForm === "evileye";
+}
+
 function startKnockout(attacker, defender) {
   if (roundEnding || roundResolved) return;
   gameOver = true;
@@ -9392,6 +10046,15 @@ function startTechnique(f, slot, chargeRatio = 0, aimPoint = null, releasingChar
     return;
   }
 
+  // JIJI_PATCH: form-dependent projectiles / rush.
+  if (f.technique === "jiji") {
+    if (move === "spiritBlast") startSpiritBlast(f);
+    else if (move === "soccerStrike") startSoccerStrike(f);
+    else if (move === "evilBlast") startEvilBlast(f);
+    else if (move === "berserkerRush") startBerserkerRush(f);
+    return;
+  }
+
   if (f.technique === "deathnote") {
     if (move === "ryukStrike") {
       if ((f.lightRyukCooldown || 0) > 0) return;
@@ -9663,7 +10326,7 @@ function getRctHealPerTick(f) {
 }
 
 function canStartRct(f) {
-  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider" || f?.technique === "beast") return false; // NO_JJK all custom chars
+  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider" || f?.technique === "beast" || f?.technique === "jiji") return false; // NO_JJK all custom chars
   if (!f || gameOver || paused || isSpecialLocked(f) || f.ko || f.knockdown || f.dodging > 0) return false;
   if (f.health >= getCurrentHealthBarCeiling(f) || f.rctCooldown > 0) return false;
   return f.ce >= f.maxCe * RCT_MIN_CE_RATIO;
@@ -9685,7 +10348,7 @@ function cancelRct(f, startCooldown = true) {
 }
 
 function setRctHealing(f, wantsRct) {
-  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider" || f?.technique === "beast") { // NO_JJK all custom chars
+  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider" || f?.technique === "beast" || f?.technique === "jiji") { // NO_JJK all custom chars
     cancelRct(f, false);
     return;
   }
@@ -9937,6 +10600,7 @@ function startUltimate(f, aimPoint = null) {
   if (f.technique === "zealot") return startZealotUltimate(f); // ZEALOT_PATCH
   if (f.technique === "spider") return startSpiderUltimate(f); // SPIDER_PATCH
   if (f.technique === "beast") return startBeastUltimate(f); // INOSUKE_PATCH
+  if (f.technique === "jiji") return startJijiUltimate(f); // JIJI_PATCH
   return beginUltimateAim(f, aimPoint);
 }
 
@@ -9949,6 +10613,7 @@ function beginUltimateAim(f, aimPoint = null) {
   if (f.technique === "zealot") return startZealotUltimate(f); // ZEALOT_PATCH
   if (f.technique === "spider") return startSpiderUltimate(f); // SPIDER_PATCH
   if (f.technique === "beast") return startBeastUltimate(f); // INOSUKE_PATCH
+  if (f.technique === "jiji") return startJijiUltimate(f); // JIJI_PATCH
   if (!canStartUltimate(f)) {
     const warning = getUltimateFailureMessage(f);
     if (warning) showActionWarning(warning);
@@ -10364,7 +11029,7 @@ function canStartSimpleDomain(f) {
 }
 
 function startSimpleDomain(f) {
-  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider" || f?.technique === "beast") return false; // NO_JJK all custom chars
+  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider" || f?.technique === "beast" || f?.technique === "jiji") return false; // NO_JJK all custom chars
   if (!canStartSimpleDomain(f)) {
     showActionWarning(f && f.ce < Math.ceil(f.maxCe * SIMPLE_DOMAIN_CE_COST_RATIO) ? "Not Enough Cursed Energy" : "Can't Use Simple Domain");
     return false;
@@ -10459,7 +11124,7 @@ function getDomainAttemptForFighter(f) {
 }
 
 function canStartDomain(f) {
-  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider" || f?.technique === "beast") return false; // NO_JJK all custom chars
+  if (isLight(f) || f?.technique === "brawler" || f?.technique === "blackleg" || f?.technique === "hivemind" || f?.technique === "zealot" || f?.technique === "spider" || f?.technique === "beast" || f?.technique === "jiji") return false; // NO_JJK all custom chars
   if (!f || gameState !== "playing" || gameOver || paused || f.ko || f.knockdown || f.stun > 0) return false;
   if (isSpecialLocked(f) || f.attacking || f.dodging > 0 || f.rctHealing || hasCtLock(f)) return false;
   if (activeDomain || domainClash) return false;
@@ -11382,7 +12047,7 @@ function applyHit(attacker, defender) {
 
   // INOSUKE_PATCH: Explosive Rush super armor - a normal melee hit deals
   // half damage and can't stun or knock him out of the charge.
-  if (isBeastSuperArmor(defender) && !isBlockingAttack(defender, attacker.dir)) {
+  if ((isBeastSuperArmor(defender) || isJijiSuperArmor(defender)) && !isBlockingAttack(defender, attacker.dir)) {
     attacker.hasHit = true;
     const raw = Math.ceil(attack.damage * getOutgoingDamageMultiplier(attacker));
     const dmg = getTakenDamage(defender, Math.ceil(raw * 0.5));
@@ -11449,6 +12114,7 @@ function applyHit(attacker, defender) {
     }
   }
   gainUltimate(attacker, meleeDamageDealt * (blocked ? ULT_BLOCKED_DAMAGE_GAIN_SCALE : ULT_DAMAGE_GAIN_SCALE));
+  if (!blocked) applyJijiRageFromCombat(attacker, defender); // JIJI_PATCH
   cancelRct(defender, false);
   defender.hurt = blocked ? 6 : 14;
   defender.stun = getComboHitstun(attacker, attackType, blocked);
@@ -11657,11 +12323,12 @@ function applyProjectileHit(projectile, defender) {
   // interruption from a normal projectile (ultimate projectiles still hit
   // in full).
   const ultProjectile = projectile.move === "purple" || projectile.move === "worldSlash" || projectile.ultimateProjectile;
-  if (isBeastSuperArmor(defender) && !ultProjectile && !isBlockingAttack(defender, projectile.dir)) {
+  if ((isBeastSuperArmor(defender) || isJijiSuperArmor(defender)) && !ultProjectile && !isBlockingAttack(defender, projectile.dir)) {
     projectile.hit = true;
     const dmg = getTakenDamage(defender, Math.ceil((projectile.damage || 0) * 0.5));
     const dealt = applyFighterDamage(defender, dmg);
     gainUltimate(projectile.owner === "player" ? player : enemy, dealt * ULT_DAMAGE_GAIN_SCALE);
+    if (jijiEvilEye(defender)) gainRage(defender, RAGE_ON_TAKE * 0.5);
     defender.hurt = 4;
     spawnHitSpark(defender.x + defender.w / 2, defender.y + 48, projectile.dir, "block");
     if (!pacifistBot && defender.health <= 0) startKnockout(projectile.owner === "player" ? player : enemy, defender);
@@ -11690,6 +12357,7 @@ function applyProjectileHit(projectile, defender) {
   ) {
     gainUltimate(ownerFighter, projectileDamageDealt * (blocked ? ULT_BLOCKED_DAMAGE_GAIN_SCALE : ULT_DAMAGE_GAIN_SCALE));
   }
+  if (!blocked) applyJijiRageFromCombat(ownerFighter, defender); // JIJI_PATCH
   cancelRct(defender, false);
   defender.hurt = blocked ? 6 : 14;
   defender.stun = projectile.move === "purple" ? 30 : projectile.move === "worldSlash" ? 30 : projectile.move === "blue" ? 10 : projectile.move === "cleave" ? 20 : projectile.move === "fuga" ? 24 : 14;
@@ -11967,6 +12635,10 @@ function projectileHitsTerrain(projectile) {
   if (projectile.move === "ryukStrike") return false;
   if (projectile.move === "cleave") return false;
   const radius = projectile.radius || 0;
+  // JIJI_PATCH: Soccer Strike bounces off the floor - only walls kill it.
+  if (projectile.move === "jijiSoccer") {
+    return projectile.x - radius <= 0 || projectile.x + radius >= STAGE_W;
+  }
   if (projectile.x - radius <= 0 || projectile.x + radius >= STAGE_W) return true;
   if (projectile.y - radius <= 0 || projectile.y + radius >= GROUND) return true;
   return false;
@@ -12021,12 +12693,25 @@ function updateProjectiles() {
       p.vx *= 0.84;
       p.vy = (p.vy || 0) * 0.84;
     }
+    // JIJI_PATCH: Soccer Strike arcs under gravity and bounces off the floor.
+    if (p.move === "jijiSoccer") {
+      p.vy = (p.vy || 0) + 0.55;
+      const rad = p.radius || 0;
+      if (p.y + rad >= GROUND && p.vy > 0) {
+        p.y = GROUND - rad;
+        p.vy = -Math.abs(p.vy) * 0.74;
+        p.bounces = (p.bounces || 0) + 1;
+        spawnHitSpark(p.x, GROUND - 2, p.dir || 1, "block");
+      }
+    }
     if (p.infinitySlowTicks > 0) p.infinitySlowTicks -= 1;
     applyInfinitySlowToProjectile(p);
     const stepX = p.vx || 0;
     const stepY = p.vy || 0;
     p.x += stepX;
     p.y += stepY;
+    // JIJI_PATCH: soccer ball expires after several bounces.
+    if (p.move === "jijiSoccer" && (p.bounces || 0) >= 5) { spawnProjectileDisperse(p); continue; }
     if (p.startup > 0) p.startup -= 1;
     if (p.ultimateProjectile && (p.move === "purple" || p.move === "worldSlash")) {
       if (breakPlatformsNear(p.x, p.y, (p.radius || 36) + 28)) {
@@ -13045,6 +13730,30 @@ function updateEnemyAi() {
     }
   }
 
+  // JIJI_PATCH: CPU Jiji switches to Evil Eye to press, retreats to Jiji to
+  // heal, and uses each form's kit. Loss of Control is handled automatically
+  // in updateJijiSystems, so the CPU just picks deliberate actions here.
+  if (enemy.technique === "jiji" && !pacifistBot && enemy.stun <= 0 && !enemy.knockdown && !gameOver) {
+    const jGap = Math.abs((player.x + player.w / 2) - (enemy.x + enemy.w / 2));
+    if (enemy.jijiForm === "jiji") {
+      if ((enemy.jijiTransformCooldown || 0) <= 0 && (enemy.jijiRevertLockTicks || 0) <= 0 && enemy.health > enemy.maxHealth * 0.35 && Math.random() < getCpuDecisionChance(0.004, 0.01, 0.02)) {
+        startJijiTransform(enemy); // go aggressive
+      } else if ((enemy.jijiBlastCooldown || 0) <= 0 && jGap > 150 && Math.random() < getCpuDecisionChance(0.02, 0.045, 0.08)) {
+        startSpiritBlast(enemy);
+      } else if ((enemy.jijiSoccerCooldown || 0) <= 0 && jGap > 120 && Math.random() < getCpuDecisionChance(0.008, 0.02, 0.04)) {
+        startSoccerStrike(enemy);
+      }
+    } else {
+      if ((enemy.jijiTransformCooldown || 0) <= 0 && (enemy.jijiRage || 0) > 75 && Math.random() < getCpuDecisionChance(0.01, 0.03, 0.06)) {
+        startJijiTransform(enemy); // return control before takeover
+      } else if ((enemy.jijiRushCooldown || 0) <= 0 && jGap < EVILEYE_RUSH_RANGE && Math.random() < getCpuDecisionChance(0.01, 0.026, 0.05)) {
+        startBerserkerRush(enemy);
+      } else if ((enemy.jijiBlastCooldown || 0) <= 0 && jGap > 140 && Math.random() < getCpuDecisionChance(0.02, 0.05, 0.09)) {
+        startEvilBlast(enemy);
+      }
+    }
+  }
+
   if (gameOver || isSpecialLocked(enemy) || enemy.stun > 0 || enemy.knockdown) return;
 
   enemy.aiCooldown = Number.isFinite(enemy.aiCooldown) ? enemy.aiCooldown - 1 : 0;
@@ -13083,7 +13792,7 @@ function updateEnemyAi() {
 
   if (enemy.ultimateMeter >= MAX_ULTIMATE && enemy.aiCooldown <= 0) {
     const ultimateChance = cpuDifficulty === "hard" ? 0.18 : cpuDifficulty === "medium" ? 0.08 : 0.025;
-    const goodRange = enemy.technique === "blackleg" || enemy.technique === "hivemind" || enemy.technique === "zealot" || enemy.technique === "spider" ? true : enemy.technique === "shrine" ? distance > 120 : distance > 260; // custom self-buff ults work anywhere
+    const goodRange = enemy.technique === "blackleg" || enemy.technique === "hivemind" || enemy.technique === "zealot" || enemy.technique === "spider" || enemy.technique === "jiji" ? true : enemy.technique === "shrine" ? distance > 120 : distance > 260; // custom self-buff ults work anywhere
     if (goodRange && Math.random() < ultimateChance && startUltimate(enemy)) {
       enemy.aiGoal = "ultimate";
       enemy.aiCooldown = cpu.attackCooldown + 48;
@@ -13240,6 +13949,8 @@ function updateFighter(f, opponent) {
   updateSpiderSystems(f, opponent);
   // INOSUKE_PATCH
   updateBeastSystems(f, opponent);
+  // JIJI_PATCH
+  updateJijiSystems(f, opponent);
 
   if (f.ko) {
     f.attacking = null;
@@ -14135,6 +14846,34 @@ function getTechniqueSkin(f, flash) {
       hair: "#2a2622",
       eye: "#1b1410",
       mark: "#6b7280"
+    };
+  }
+
+  // JIJI_PATCH: shared body, two looks. Jiji is a wiry old man - tan skin,
+  // white hair, plain jacket. The Evil Eye possession turns him ashen with a
+  // dark-maroon aura and wild black-red hair (a "marking", not real eyes).
+  if (f.technique === "jiji") {
+    if (f.jijiForm === "evileye") {
+      return {
+        body: "#6d1622",
+        skin: "#b9a6a6",
+        accent: "#ef2d3f",
+        pants: "#2a1116",
+        shoe: "#140508",
+        hair: "#1a0d10",
+        eye: "#ef2d3f",
+        mark: "#ef2d3f"
+      };
+    }
+    return {
+      body: "#5f6b57",
+      skin: "#dcb890",
+      accent: "#c9a24a",
+      pants: "#39414c",
+      shoe: "#1f242c",
+      hair: "#eef0f2",
+      eye: "#2a2320",
+      mark: "#8a8f96"
     };
   }
 
@@ -16308,6 +17047,50 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.moveTo(35, 46); ctx.lineTo(32, 57);
     ctx.stroke();
     ctx.globalAlpha = 1;
+  } else if (f.technique === "jiji") {
+    // JIJI_PATCH: a plain zip-up jacket over a shirt. In Jiji form it's a
+    // calm olive jacket; the Evil Eye possession darkens it to blood-maroon
+    // with a jagged red aura seam down the chest.
+    const evil = f.jijiForm === "evileye";
+    // open jacket panels
+    ctx.fillStyle = evil ? "#571019" : "#4c5647";
+    ctx.beginPath();
+    ctx.moveTo(11, 40); ctx.lineTo(22, 42); ctx.lineTo(20, 92); ctx.lineTo(10, 90); ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(43, 40); ctx.lineTo(32, 42); ctx.lineTo(34, 92); ctx.lineTo(44, 90); ctx.closePath();
+    ctx.fill();
+    // inner shirt strip
+    ctx.fillStyle = evil ? "#2a1015" : "#d7d2c4";
+    ctx.beginPath();
+    ctx.moveTo(22, 42); ctx.lineTo(32, 42); ctx.lineTo(31, 90); ctx.lineTo(23, 90); ctx.closePath();
+    ctx.fill();
+    // jacket collar
+    ctx.strokeStyle = evil ? "#7a1622" : "#39413090";
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(20, 40); ctx.lineTo(27, 50); ctx.lineTo(34, 40);
+    ctx.stroke();
+    // zipper seam
+    ctx.strokeStyle = evil ? "#ef2d3f" : "#8a8f7a";
+    ctx.lineWidth = evil ? 2 : 1.4;
+    ctx.beginPath();
+    ctx.moveTo(27, 50); ctx.lineTo(27, 90);
+    ctx.stroke();
+    if (evil) {
+      // pulsing red aura seam
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = 0.5 + Math.sin(frame * 0.3) * 0.2;
+      ctx.strokeStyle = "#ff3348";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(18, 46); ctx.quadraticCurveTo(14, 66, 19, 88);
+      ctx.moveTo(36, 46); ctx.quadraticCurveTo(40, 66, 35, 88);
+      ctx.stroke();
+      ctx.restore();
+    }
   } else if (isPracticeDummy(f)) {
     ctx.strokeStyle = "#111827";
     ctx.lineWidth = 3;
@@ -16828,6 +17611,96 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.fill();
     // the forehead khaydarin gem
     headGem(26, 12, 2.3, 3);
+  } else if (f.technique === "jiji") {
+    // JIJI_PATCH: a wiry old man. Jiji form - short swept-back white hair
+    // and round glasses (a marking accessory, not eyes). Evil Eye form -
+    // wild upswept black-red hair and a single glowing red eye-marking on
+    // the forehead.
+    const evil = f.jijiForm === "evileye";
+    const sway = idle * 0.5;
+    if (!evil) {
+      // white hair - short, swept back over the crown and temples
+      ctx.fillStyle = skin.hair;
+      ctx.beginPath();
+      ctx.moveTo(13, 22);
+      ctx.quadraticCurveTo(11, 6, 26, 4);
+      ctx.quadraticCurveTo(41, 6, 39, 22);
+      ctx.quadraticCurveTo(37, 14, 30, 12);
+      ctx.quadraticCurveTo(26, 16, 22, 12);
+      ctx.quadraticCurveTo(16, 14, 13, 22);
+      ctx.closePath();
+      ctx.fill();
+      // a couple of hair strands
+      ctx.strokeStyle = "#c9ccd1";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(16, 14); ctx.quadraticCurveTo(22, 9, 28, 11);
+      ctx.moveTo(30, 11); ctx.quadraticCurveTo(35, 12, 37, 18);
+      ctx.stroke();
+      // round glasses (accessory marking)
+      ctx.strokeStyle = "#2a2320";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(20.5, 23, 4.2, 0, Math.PI * 2);
+      ctx.arc(31.5, 23, 4.2, 0, Math.PI * 2);
+      ctx.moveTo(24.7, 23); ctx.lineTo(27.3, 23);
+      ctx.stroke();
+      // grey brow ridges above the glasses
+      ctx.strokeStyle = "#cdd0d4";
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(16, 17); ctx.quadraticCurveTo(20, 15, 24, 17);
+      ctx.moveTo(28, 17); ctx.quadraticCurveTo(32, 15, 36, 17);
+      ctx.stroke();
+    } else {
+      // wild upswept black-red hair
+      ctx.fillStyle = skin.hair;
+      ctx.beginPath();
+      ctx.moveTo(12, 24);
+      ctx.lineTo(10 + sway, 2);
+      ctx.lineTo(18, 12);
+      ctx.lineTo(18 + sway, -6);
+      ctx.lineTo(25, 10);
+      ctx.lineTo(27, -8 + sway);
+      ctx.lineTo(31, 10);
+      ctx.lineTo(35 + sway, -5);
+      ctx.lineTo(36, 12);
+      ctx.lineTo(42 - sway, 3);
+      ctx.lineTo(40, 24);
+      ctx.closePath();
+      ctx.fill();
+      // red streaks in the hair
+      ctx.strokeStyle = "#c01e30";
+      ctx.lineWidth = 1.4;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(19, 12); ctx.lineTo(19 + sway, -3);
+      ctx.moveTo(27, 10); ctx.lineTo(27, -5 + sway);
+      ctx.moveTo(35, 11); ctx.lineTo(35 + sway, -2);
+      ctx.stroke();
+      // glowing red single eye-marking on the forehead
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      const pulse = 0.6 + Math.sin(frame * 0.3) * 0.25;
+      ctx.globalAlpha = pulse;
+      ctx.fillStyle = "#ff2d3f";
+      ctx.beginPath();
+      ctx.ellipse(26, 22, 5.5, 3.2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      ctx.fillStyle = "#1a0508";
+      ctx.beginPath();
+      ctx.ellipse(26, 22, 2, 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // angry black brow slashes
+      ctx.strokeStyle = "#160306";
+      ctx.lineWidth = 2.2;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(16, 16); ctx.lineTo(23, 19);
+      ctx.moveTo(36, 16); ctx.lineTo(29, 19);
+      ctx.stroke();
+    }
   }
   ctx.restore();
 
@@ -17540,8 +18413,8 @@ function drawTechniquePreview(canvasEl, technique) {
     w: technique === "shrine" ? 52 : technique === "brawler" ? 54 : 50,
     h: 128,
     dir: 1,
-    color: technique === "shrine" ? "#dc2626" : technique === "deathnote" ? "#111827" : technique === "brawler" ? "#eceef2" : technique === "blackleg" ? "#16181f" : technique === "hivemind" ? "#54322c" : technique === "zealot" ? "#c8a13a" : technique === "spider" ? "#c0242c" : technique === "beast" ? "#caa079" : "#2563eb",
-    accent: technique === "shrine" ? "#991b1b" : technique === "deathnote" ? "#b91c1c" : technique === "brawler" ? "#dc2626" : technique === "blackleg" ? "#facc15" : technique === "hivemind" ? "#7f1d1d" : technique === "zealot" ? "#38e0f0" : technique === "spider" ? "#1e3a8a" : technique === "beast" ? "#4a5568" : "#1d4ed8"
+    color: technique === "shrine" ? "#dc2626" : technique === "deathnote" ? "#111827" : technique === "brawler" ? "#eceef2" : technique === "blackleg" ? "#16181f" : technique === "hivemind" ? "#54322c" : technique === "zealot" ? "#c8a13a" : technique === "spider" ? "#c0242c" : technique === "beast" ? "#caa079" : technique === "jiji" ? "#6d1622" : "#2563eb",
+    accent: technique === "shrine" ? "#991b1b" : technique === "deathnote" ? "#b91c1c" : technique === "brawler" ? "#dc2626" : technique === "blackleg" ? "#facc15" : technique === "hivemind" ? "#7f1d1d" : technique === "zealot" ? "#38e0f0" : technique === "spider" ? "#1e3a8a" : technique === "beast" ? "#4a5568" : technique === "jiji" ? "#ef2d3f" : "#1d4ed8"
   });
   previewFighter.technique = technique;
   previewFighter.y = GROUND - previewFighter.h;
@@ -17550,7 +18423,7 @@ function drawTechniquePreview(canvasEl, technique) {
   ctx = previewCtx;
   ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
   const backdrop = ctx.createLinearGradient(0, 0, 0, canvasEl.height);
-  backdrop.addColorStop(0, technique === "shrine" ? "#2b1420" : technique === "deathnote" ? "#180b12" : technique === "brawler" ? "#141822" : technique === "blackleg" ? "#221208" : technique === "hivemind" ? "#1c0a10" : technique === "zealot" ? "#0a1a1f" : technique === "spider" ? "#1a0810" : technique === "beast" ? "#1a1712" : "#142033");
+  backdrop.addColorStop(0, technique === "shrine" ? "#2b1420" : technique === "deathnote" ? "#180b12" : technique === "brawler" ? "#141822" : technique === "blackleg" ? "#221208" : technique === "hivemind" ? "#1c0a10" : technique === "zealot" ? "#0a1a1f" : technique === "spider" ? "#1a0810" : technique === "beast" ? "#1a1712" : technique === "jiji" ? "#1e0810" : "#142033");
   backdrop.addColorStop(1, "#050814");
   ctx.fillStyle = backdrop;
   ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
@@ -17579,6 +18452,7 @@ function renderTechniquePreviews() {
   drawTechniquePreview(techniquePreviewCanvases.zealot, "zealot"); // ZEALOT_PATCH
   drawTechniquePreview(techniquePreviewCanvases.spider, "spider"); // SPIDER_PATCH
   drawTechniquePreview(techniquePreviewCanvases.beast, "beast"); // INOSUKE_PATCH
+  drawTechniquePreview(techniquePreviewCanvases.jiji, "jiji"); // JIJI_PATCH
 }
 
 // THRAGG_BRAWLER_PATCH: install his character-select card the same way
@@ -17781,6 +18655,37 @@ function installBeastTechniqueOption() {
   renderTechniquePreviews();
 }
 window.addEventListener("DOMContentLoaded", installBeastTechniqueOption);
+
+// JIJI_PATCH: add the Jiji / Evil Eye character select card.
+function installJijiTechniqueOption() {
+  if (!techniqueScreen) return;
+  const existing = techniqueScreen.querySelector('[data-technique="jiji"]');
+  if (!existing) {
+    const sample = techniqueScreen.querySelector(".technique-button");
+    const button = sample ? sample.cloneNode(true) : document.createElement("button");
+    button.type = "button";
+    button.className = sample ? sample.className : "technique-button";
+    button.dataset.technique = "jiji";
+    button.innerHTML = `
+      <canvas id="jijiPreview" width="320" height="180" aria-hidden="true"></canvas>
+      <strong>Jiji</strong>
+      <span>Dandadan - one body, two forms sharing HP</span>
+      <small>Transform Jiji &harr; Evil Eye - Rage builds only as the Eye, and at 100 it takes over</small>
+    `;
+    const holder = sample?.parentNode || techniqueScreen;
+    holder.appendChild(button);
+  }
+  const canvas = document.getElementById("jijiPreview");
+  if (canvas) techniquePreviewCanvases.jiji = canvas;
+  techniqueButtons = Array.from(document.querySelectorAll(".technique-button"));
+  techniqueButtons.forEach((button) => {
+    if (button.dataset.jijiBound === "1") return;
+    button.dataset.jijiBound = "1";
+    button.addEventListener("click", () => finishTechniqueSelect(button.dataset.technique));
+  });
+  renderTechniquePreviews();
+}
+window.addEventListener("DOMContentLoaded", installJijiTechniqueOption);
 
 
 function drawSukunaModelCleanup(f) {
@@ -19541,6 +20446,55 @@ function drawProjectiles() {
         ctx.closePath();
         ctx.fill();
       }
+    } else if (p.move === "jijiSpirit" || p.move === "jijiEvil" || p.move === "jijiSoccer") {
+      // JIJI_PATCH: spirit energy - lavender/white for Jiji, dark maroon for
+      // the Evil Eye, and a bouncing translucent orb for Soccer Strike.
+      const evil = p.move === "jijiEvil";
+      const soccer = p.move === "jijiSoccer";
+      const rad = p.radius || 12;
+      const pulse = 1 + Math.sin(frame * 0.3) * 0.08;
+      ctx.globalCompositeOperation = "lighter";
+      const glow = ctx.createRadialGradient(0, 0, rad * 0.15, 0, 0, rad * 2.1 * pulse);
+      if (evil) {
+        glow.addColorStop(0, "rgba(255, 220, 230, 0.95)");
+        glow.addColorStop(0.35, "rgba(190, 30, 60, 0.9)");
+        glow.addColorStop(0.7, "rgba(90, 12, 30, 0.55)");
+        glow.addColorStop(1, "rgba(20, 4, 10, 0)");
+      } else if (soccer) {
+        glow.addColorStop(0, "rgba(255, 255, 255, 0.95)");
+        glow.addColorStop(0.4, "rgba(129, 140, 248, 0.82)");
+        glow.addColorStop(0.75, "rgba(79, 70, 229, 0.4)");
+        glow.addColorStop(1, "rgba(15, 10, 40, 0)");
+      } else {
+        glow.addColorStop(0, "rgba(255, 255, 255, 0.95)");
+        glow.addColorStop(0.4, "rgba(196, 181, 253, 0.85)");
+        glow.addColorStop(0.75, "rgba(124, 92, 220, 0.42)");
+        glow.addColorStop(1, "rgba(20, 12, 40, 0)");
+      }
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(0, 0, rad * 2 * pulse, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalCompositeOperation = "source-over";
+      ctx.fillStyle = evil ? "rgba(255, 235, 240, 0.95)" : "rgba(255, 255, 255, 0.95)";
+      ctx.beginPath();
+      ctx.arc(0, 0, rad * 0.55, 0, Math.PI * 2);
+      ctx.fill();
+      // trailing wisps
+      ctx.strokeStyle = evil ? "rgba(220, 40, 70, 0.7)" : soccer ? "rgba(129, 140, 248, 0.7)" : "rgba(196, 181, 253, 0.7)";
+      ctx.lineWidth = 3;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(-(p.dir || 1) * rad * 2.4, 0);
+      ctx.lineTo(-(p.dir || 1) * rad * 0.8, 0);
+      ctx.stroke();
+      if (evil) {
+        // an angry slit "eye" in the core
+        ctx.fillStyle = "rgba(40, 4, 12, 0.95)";
+        ctx.beginPath();
+        ctx.ellipse(0, 0, rad * 0.34, rad * 0.14, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
     } else {
       if (hasProjectileAngle) ctx.rotate(projectileAngle);
       else ctx.scale(p.dir, 1);
@@ -20198,6 +21152,9 @@ window.addEventListener("keydown", (event) => {
     } else if (fighter?.technique === "beast") {
       // INOSUKE_PATCH: S is Fifth Fang Crazy Cutting.
       if (startBeastCrazy(fighter) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("beast-crazy");
+    } else if (fighter?.technique === "jiji") {
+      // JIJI_PATCH: S / CT3 transforms between Jiji and Evil Eye.
+      if (startJijiTransform(fighter) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("jiji-transform");
     }
   }
   if (isEventForAction("ultimate", key, code) && !event.repeat) beginUltimateAim(player, mouseAimWorld);
