@@ -14849,31 +14849,33 @@ function getTechniqueSkin(f, flash) {
     };
   }
 
-  // JIJI_PATCH: shared body, two looks. Jiji is a young boy - tan skin, bright
-  // spiky red hair, dark casual jacket. The Evil Eye possession turns his skin
-  // purple with a big glowing eye, wild dark hair and rainbow earrings.
+  // JIJI_PATCH: shared body, two looks. Jiji is a young boy with crimson hair
+  // and his iconic orange track jacket over a cream top. The Evil Eye
+  // possession keeps pale skin but slicks the hair white, opens a glowing
+  // purple third eye on the forehead, and adds a dark-purple collar with
+  // dangling rainbow earrings.
   if (f.technique === "jiji") {
     if (f.jijiForm === "evileye") {
       return {
-        body: "#5a2a9c",
-        skin: "#a874e0",
-        accent: "#c084fc",
-        pants: "#2f1652",
-        shoe: "#1a0b30",
-        hair: "#241040",
-        eye: "#f5d020",
-        mark: "#c084fc"
+        body: "#3a2060",
+        skin: "#ece7f2",
+        accent: "#c026d3",
+        pants: "#241540",
+        shoe: "#160a2c",
+        hair: "#e8e0f0",
+        eye: "#b026ff",
+        mark: "#d946ef"
       };
     }
     return {
-      body: "#2f3640",
-      skin: "#e8b48c",
-      accent: "#d23a2a",
+      body: "#e8722a",
+      skin: "#f0c49a",
+      accent: "#efe6d4",
       pants: "#3a3f47",
-      shoe: "#1f242c",
-      hair: "#d83a24",
-      eye: "#2a2320",
-      mark: "#d23a2a"
+      shoe: "#20242c",
+      hair: "#cc3a48",
+      eye: "#5a3020",
+      mark: "#e8722a"
     };
   }
 
@@ -17048,46 +17050,76 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.stroke();
     ctx.globalAlpha = 1;
   } else if (f.technique === "jiji") {
-    // JIJI_PATCH: a young boy's zip-up jacket over a shirt. In Jiji form it's
-    // a dark charcoal jacket; the Evil Eye possession recolours everything
-    // purple with a pulsing violet aura seam down the chest.
     const evil = f.jijiForm === "evileye";
-    // open jacket panels
-    ctx.fillStyle = evil ? "#4a2088" : "#2f3640";
-    ctx.beginPath();
-    ctx.moveTo(11, 40); ctx.lineTo(22, 42); ctx.lineTo(20, 92); ctx.lineTo(10, 90); ctx.closePath();
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(43, 40); ctx.lineTo(32, 42); ctx.lineTo(34, 92); ctx.lineTo(44, 90); ctx.closePath();
-    ctx.fill();
-    // inner shirt strip
-    ctx.fillStyle = evil ? "#2a1052" : "#c94b3a";
-    ctx.beginPath();
-    ctx.moveTo(22, 42); ctx.lineTo(32, 42); ctx.lineTo(31, 90); ctx.lineTo(23, 90); ctx.closePath();
-    ctx.fill();
-    // jacket collar
-    ctx.strokeStyle = evil ? "#7c3aed" : "#20252b";
-    ctx.lineWidth = 3;
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(20, 40); ctx.lineTo(27, 50); ctx.lineTo(34, 40);
-    ctx.stroke();
-    // zipper seam
-    ctx.strokeStyle = evil ? "#c084fc" : "#565c64";
-    ctx.lineWidth = evil ? 2 : 1.4;
-    ctx.beginPath();
-    ctx.moveTo(27, 50); ctx.lineTo(27, 90);
-    ctx.stroke();
-    if (evil) {
-      // pulsing violet aura seam
+    if (!evil) {
+      // JIJI_PATCH: his iconic orange track jacket over a cream top.
+      // orange jacket panels (torso base is already orange)
+      ctx.fillStyle = "#e0692a";
+      ctx.beginPath();
+      ctx.moveTo(10, 40); ctx.lineTo(23, 43); ctx.lineTo(21, 92); ctx.lineTo(9, 90); ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(44, 40); ctx.lineTo(31, 43); ctx.lineTo(33, 92); ctx.lineTo(45, 90); ctx.closePath();
+      ctx.fill();
+      // cream inner zip panel
+      ctx.fillStyle = "#efe6d4";
+      ctx.beginPath();
+      ctx.moveTo(23, 43); ctx.lineTo(31, 43); ctx.lineTo(30, 90); ctx.lineTo(24, 90); ctx.closePath();
+      ctx.fill();
+      // ribbed orange cuffs/hem accents
+      ctx.fillStyle = "#c85520";
+      ctx.fillRect(9, 86, 13, 6);
+      ctx.fillRect(32, 86, 13, 6);
+      // orange collar
+      ctx.strokeStyle = "#c85520";
+      ctx.lineWidth = 3.4;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(20, 40); ctx.lineTo(27, 49); ctx.lineTo(34, 40);
+      ctx.stroke();
+      // zipper
+      ctx.strokeStyle = "#b8a888";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(27, 49); ctx.lineTo(27, 90);
+      ctx.stroke();
+    } else {
+      // EVIL EYE: dark-purple high-collar bodysuit with a pulsing violet aura.
+      // shoulder/chest yoke of the purple collar garment
+      ctx.fillStyle = "#4a2585";
+      ctx.beginPath();
+      ctx.moveTo(9, 40);
+      ctx.quadraticCurveTo(27, 36, 45, 40);
+      ctx.lineTo(43, 60);
+      ctx.quadraticCurveTo(27, 66, 11, 60);
+      ctx.closePath();
+      ctx.fill();
+      // high collar rising to the neck
+      ctx.fillStyle = "#3a1e6e";
+      ctx.beginPath();
+      ctx.moveTo(19, 42); ctx.quadraticCurveTo(27, 30, 35, 42); ctx.quadraticCurveTo(27, 40, 19, 42); ctx.closePath();
+      ctx.fill();
+      // lower body darker purple
+      ctx.fillStyle = "#2f1a54";
+      ctx.beginPath();
+      ctx.moveTo(11, 60); ctx.quadraticCurveTo(27, 66, 43, 60); ctx.lineTo(41, 92); ctx.lineTo(13, 92); ctx.closePath();
+      ctx.fill();
+      // pale muscle sternum highlight
+      ctx.strokeStyle = "rgba(200, 170, 240, 0.5)";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(27, 62); ctx.lineTo(27, 88);
+      ctx.moveTo(20, 70); ctx.quadraticCurveTo(27, 73, 34, 70);
+      ctx.stroke();
+      // pulsing violet aura seams
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
       ctx.globalAlpha = 0.5 + Math.sin(frame * 0.3) * 0.2;
-      ctx.strokeStyle = "#a855f7";
+      ctx.strokeStyle = "#c026d3";
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.moveTo(18, 46); ctx.quadraticCurveTo(14, 66, 19, 88);
-      ctx.moveTo(36, 46); ctx.quadraticCurveTo(40, 66, 35, 88);
+      ctx.moveTo(16, 46); ctx.quadraticCurveTo(12, 68, 18, 90);
+      ctx.moveTo(38, 46); ctx.quadraticCurveTo(42, 68, 36, 90);
       ctx.stroke();
       ctx.restore();
     }
@@ -17654,74 +17686,115 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       ctx.moveTo(28, 20); ctx.quadraticCurveTo(31, 18.5, 34, 20);
       ctx.stroke();
     } else {
-      // wild upswept dark-purple hair
+      // EVIL EYE: pale skin, white/lavender hair swept back into a few points,
+      // a glowing purple third eye on the forehead, glowing purple eyes, a
+      // menacing grin, and rainbow earrings dangling down each side.
+      // white slicked-back hair
       ctx.fillStyle = skin.hair;
       ctx.beginPath();
       ctx.moveTo(12, 24);
-      ctx.lineTo(10 + sway, 2);
-      ctx.lineTo(18, 12);
-      ctx.lineTo(18 + sway, -6);
-      ctx.lineTo(25, 10);
-      ctx.lineTo(27, -8 + sway);
-      ctx.lineTo(31, 10);
-      ctx.lineTo(35 + sway, -5);
-      ctx.lineTo(36, 12);
-      ctx.lineTo(42 - sway, 3);
-      ctx.lineTo(40, 24);
+      ctx.quadraticCurveTo(9, 6, 20, 3);
+      ctx.lineTo(17, 12);
+      ctx.lineTo(24, 5);
+      ctx.lineTo(23, 13);
+      ctx.lineTo(30, 5);
+      ctx.lineTo(30, 13);
+      ctx.lineTo(37, 6);
+      ctx.quadraticCurveTo(43, 9, 40, 24);
+      ctx.quadraticCurveTo(38, 15, 30, 14);
+      ctx.quadraticCurveTo(26, 16, 22, 14);
+      ctx.quadraticCurveTo(15, 15, 12, 24);
       ctx.closePath();
       ctx.fill();
-      // purple streaks in the hair
-      ctx.strokeStyle = "#a855f7";
-      ctx.lineWidth = 1.4;
+      // faint lavender shading in the hair
+      ctx.strokeStyle = "rgba(180, 150, 220, 0.55)";
+      ctx.lineWidth = 1.1;
       ctx.lineCap = "round";
       ctx.beginPath();
-      ctx.moveTo(19, 12); ctx.lineTo(19 + sway, -3);
-      ctx.moveTo(27, 10); ctx.lineTo(27, -5 + sway);
-      ctx.moveTo(35, 11); ctx.lineTo(35 + sway, -2);
+      ctx.moveTo(17, 14); ctx.quadraticCurveTo(20, 8, 25, 9);
+      ctx.moveTo(28, 9); ctx.quadraticCurveTo(33, 9, 37, 15);
       ctx.stroke();
-      // dangling rainbow earrings on both sides of the head
+      // dark bands over the eyes (the Evil Eye's mask-like shading)
+      ctx.fillStyle = "rgba(60, 30, 96, 0.85)";
+      ctx.beginPath();
+      ctx.moveTo(15, 20); ctx.quadraticCurveTo(20, 17, 25, 20); ctx.quadraticCurveTo(20, 24, 15, 22); ctx.closePath();
+      ctx.moveTo(37, 20); ctx.quadraticCurveTo(32, 17, 27, 20); ctx.quadraticCurveTo(32, 24, 37, 22); ctx.closePath();
+      ctx.fill();
+      // glowing purple eyes
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      const eyePulse = 0.7 + Math.sin(frame * 0.28) * 0.2;
+      ctx.globalAlpha = eyePulse;
+      ctx.fillStyle = "#b026ff";
+      ctx.beginPath();
+      ctx.arc(20, 21, 2.4, 0, Math.PI * 2);
+      ctx.arc(32, 21, 2.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      ctx.fillStyle = "#e9d5ff";
+      ctx.beginPath();
+      ctx.arc(20, 21, 1, 0, Math.PI * 2);
+      ctx.arc(32, 21, 1, 0, Math.PI * 2);
+      ctx.fill();
+      // menacing grin
+      ctx.strokeStyle = "#3a1e50";
+      ctx.lineWidth = 1.8;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(19, 30); ctx.quadraticCurveTo(26, 36, 33, 30);
+      ctx.stroke();
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(21, 31); ctx.lineTo(22, 33);
+      ctx.moveTo(26, 32.5); ctx.lineTo(26, 34.5);
+      ctx.moveTo(31, 31); ctx.lineTo(30, 33);
+      ctx.stroke();
+      // glowing purple THIRD EYE on the forehead - concentric rings
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      const tePulse = 0.6 + Math.sin(frame * 0.25) * 0.3;
+      const teGlow = ctx.createRadialGradient(26, 12, 0.5, 26, 12, 8);
+      teGlow.addColorStop(0, `rgba(240, 200, 255, ${tePulse})`);
+      teGlow.addColorStop(0.4, `rgba(176, 38, 255, ${tePulse})`);
+      teGlow.addColorStop(1, "rgba(120, 20, 200, 0)");
+      ctx.fillStyle = teGlow;
+      ctx.beginPath();
+      ctx.arc(26, 12, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      // the vertical eye + concentric ripple rings
+      ctx.strokeStyle = "#d8a0ff";
+      ctx.lineWidth = 1;
+      for (let r = 2; r <= 5; r += 1.5) {
+        ctx.globalAlpha = 0.9 - r * 0.12;
+        ctx.beginPath();
+        ctx.ellipse(26, 12, r * 0.7, r, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "#fbe8ff";
+      ctx.beginPath();
+      ctx.ellipse(26, 12, 1, 2.2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // dangling rainbow earrings on both sides
       const rainbow = ["#ef4444", "#f59e0b", "#facc15", "#22c55e", "#3b82f6", "#a855f7"];
       const earHang = Math.sin(frame * 0.18) * 1.2;
-      [12, 40].forEach((ex) => {
-        for (let i = 0; i < 3; i++) {
-          ctx.fillStyle = rainbow[(i * 2 + (ex < 26 ? 0 : 1)) % rainbow.length];
-          ctx.strokeStyle = "#1a0530";
-          ctx.lineWidth = 0.8;
+      [13, 39].forEach((ex, side) => {
+        ctx.strokeStyle = "#c9b0e0";
+        ctx.lineWidth = 0.8;
+        ctx.beginPath();
+        ctx.moveTo(ex, 26); ctx.lineTo(ex + (side ? 1 : -1), 40 + earHang);
+        ctx.stroke();
+        for (let i = 0; i < 4; i++) {
+          ctx.fillStyle = rainbow[(i + side) % rainbow.length];
+          ctx.strokeStyle = "#2a1040";
+          ctx.lineWidth = 0.7;
           ctx.beginPath();
-          ctx.arc(ex + (ex < 26 ? -1 : 1), 27 + i * 4.5 + earHang, 2.1, 0, Math.PI * 2);
+          ctx.arc(ex + (side ? 1 : -1), 28 + i * 3.6 + earHang, 1.8, 0, Math.PI * 2);
           ctx.fill();
           ctx.stroke();
         }
       });
-      // big glowing single eye-marking across the face
-      ctx.save();
-      ctx.globalCompositeOperation = "lighter";
-      const pulse = 0.55 + Math.sin(frame * 0.3) * 0.25;
-      ctx.globalAlpha = pulse;
-      ctx.fillStyle = "#f5d020";
-      ctx.beginPath();
-      ctx.ellipse(26, 23, 7, 4.4, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-      // white sclera + dark slit pupil
-      ctx.fillStyle = "#fef9c3";
-      ctx.beginPath();
-      ctx.ellipse(26, 23, 6, 3.6, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = "#2a0a40";
-      ctx.lineWidth = 1.4;
-      ctx.stroke();
-      ctx.fillStyle = "#1a0530";
-      ctx.beginPath();
-      ctx.ellipse(26, 23, 1.8, 3.2, 0, 0, Math.PI * 2);
-      ctx.fill();
-      // heavy dark upper lid line
-      ctx.strokeStyle = "#2a0a40";
-      ctx.lineWidth = 2;
-      ctx.lineCap = "round";
-      ctx.beginPath();
-      ctx.moveTo(20, 20); ctx.quadraticCurveTo(26, 18.5, 32, 20);
-      ctx.stroke();
     }
   }
   ctx.restore();
