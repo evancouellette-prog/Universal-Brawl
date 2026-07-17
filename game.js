@@ -10015,16 +10015,30 @@ function isDavidCommitted(f) {
   return Boolean(f && ((f.davidGorillaTicks || 0) > 0 || (f.davidForcedTicks || 0) > 0 || (f.davidCollapseStun || 0) > 0));
 }
 
-// DAVID_PATCH: the Cyber Skeleton - a bulky grey mech exoskeleton with big
-// rounded pauldrons, armoured legs, red accent panels and a green energy
-// blade. Drawn in the fighter's local space (0..52 wide, feet at y=124),
-// behind the body so his torso reads in the centre of the frame.
+// DAVID_PATCH: Cyber Skeleton palette + rounded-plate helper, shared by the
+// behind and front layers.
+const DAVID_MECH = { grey: "#8a8f98", greyDark: "#5a5f68", greyLight: "#b6bbc4", red: "#d8342c", outline: "#1a1d22" };
+function davidMechPlate(x, y, w, h, fill) {
+  ctx.fillStyle = fill;
+  ctx.beginPath();
+  ctx.moveTo(x + 5, y);
+  ctx.lineTo(x + w - 5, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + 5);
+  ctx.lineTo(x + w, y + h - 5);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - 5, y + h);
+  ctx.lineTo(x + 5, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - 5);
+  ctx.lineTo(x, y + 5);
+  ctx.quadraticCurveTo(x, y, x + 5, y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+}
+
+// Behind layer: back plates, pauldrons and the red rim glow (drawn before the
+// body so his torso reads in the centre of the frame).
 function drawDavidCyberSkeleton(f) {
-  const grey = "#8a8f98";
-  const greyDark = "#5a5f68";
-  const greyLight = "#b6bbc4";
-  const red = "#d8342c";
-  const outline = "#1a1d22";
+  const { grey, greyDark, greyLight, red, outline } = DAVID_MECH;
   const t = frame * 0.08;
   const hum = Math.sin(t) * 1.5;
   ctx.save();
@@ -10032,106 +10046,122 @@ function drawDavidCyberSkeleton(f) {
   ctx.lineWidth = 2;
   ctx.strokeStyle = outline;
 
-  // rounded armour-plate helper
-  const plate = (x, y, w, h, fill) => {
-    ctx.fillStyle = fill;
-    ctx.beginPath();
-    ctx.moveTo(x + 5, y);
-    ctx.lineTo(x + w - 5, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + 5);
-    ctx.lineTo(x + w, y + h - 5);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - 5, y + h);
-    ctx.lineTo(x + 5, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - 5);
-    ctx.lineTo(x, y + 5);
-    ctx.quadraticCurveTo(x, y, x + 5, y);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-  };
+  // red rim glow behind the whole rig
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.globalAlpha = 0.22 + Math.sin(t) * 0.07;
+  ctx.fillStyle = "rgba(216,52,44,0.5)";
+  ctx.beginPath();
+  ctx.ellipse(26, 78, 52, 74, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 
-  // ---- back leg / armour masses (drawn widest, behind everything) ----
-  plate(-24, 74 + hum, 26, 46, greyDark);   // left outer leg armour
-  plate(50, 74 - hum, 26, 46, greyDark);    // right outer leg armour
-  plate(-20, 118, 24, 10, grey);            // left foot
-  plate(48, 118, 24, 10, grey);             // right foot
-
-  // ---- big rounded shoulder pauldrons (the signature "wings") ----
+  // big rounded shoulder pauldrons (the signature "wings"), high above the head
   const pauldron = (cx, cy) => {
     ctx.fillStyle = grey;
     ctx.beginPath();
-    ctx.moveTo(cx - 16, cy - 6);
-    ctx.quadraticCurveTo(cx - 20, cy - 20, cx - 6, cy - 22);
-    ctx.quadraticCurveTo(cx + 14, cy - 22, cx + 16, cy - 4);
-    ctx.quadraticCurveTo(cx + 16, cy + 16, cx, cy + 20);
-    ctx.quadraticCurveTo(cx - 16, cy + 16, cx - 16, cy - 6);
+    ctx.moveTo(cx - 18, cy - 6);
+    ctx.quadraticCurveTo(cx - 23, cy - 24, cx - 6, cy - 26);
+    ctx.quadraticCurveTo(cx + 17, cy - 26, cx + 19, cy - 4);
+    ctx.quadraticCurveTo(cx + 19, cy + 20, cx, cy + 24);
+    ctx.quadraticCurveTo(cx - 18, cy + 20, cx - 18, cy - 6);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
-    // bevel highlight
     ctx.strokeStyle = greyLight;
     ctx.lineWidth = 1.4;
     ctx.beginPath();
-    ctx.moveTo(cx - 12, cy - 12); ctx.quadraticCurveTo(cx - 2, cy - 18, cx + 8, cy - 12);
+    ctx.moveTo(cx - 13, cy - 14); ctx.quadraticCurveTo(cx - 2, cy - 21, cx + 9, cy - 14);
     ctx.stroke();
     ctx.strokeStyle = outline;
     ctx.lineWidth = 2;
-    // red accent bars
     ctx.fillStyle = red;
-    ctx.fillRect(cx - 12, cy - 2, 7, 3);
-    ctx.fillRect(cx + 3, cy - 2, 7, 3);
-    ctx.fillRect(cx - 5, cy + 6, 7, 3);
+    ctx.fillRect(cx - 13, cy - 2, 8, 3);
+    ctx.fillRect(cx + 4, cy - 2, 8, 3);
+    ctx.fillRect(cx - 5, cy + 8, 8, 3);
   };
-  pauldron(-8, 42 + hum);   // left pauldron (up and out)
-  pauldron(60, 42 - hum);   // right pauldron
+  pauldron(-12, 30 + hum);
+  pauldron(64, 30 - hum);
 
-  // ---- upper-arm actuator struts to the pauldrons ----
+  // struts from the shoulders up to the pauldrons
   ctx.strokeStyle = greyDark;
-  ctx.lineWidth = 5;
+  ctx.lineWidth = 6;
   ctx.lineCap = "round";
   ctx.beginPath();
-  ctx.moveTo(14, 50); ctx.lineTo(-6, 44 + hum);
-  ctx.moveTo(38, 50); ctx.lineTo(58, 44 - hum);
+  ctx.moveTo(16, 48); ctx.lineTo(-8, 34 + hum);
+  ctx.moveTo(36, 48); ctx.lineTo(60, 34 - hum);
   ctx.stroke();
+
+  // central chest frame behind the torso (spine + red core)
   ctx.strokeStyle = outline;
   ctx.lineWidth = 2;
-
-  // ---- central chest frame behind the torso (spine + red core) ----
-  plate(20, 44, 12, 30, greyDark);
+  davidMechPlate(19, 42, 14, 40, greyDark);
   ctx.fillStyle = red;
-  ctx.fillRect(23, 52, 6, 4);
+  ctx.fillRect(23, 50, 6, 4);
   ctx.fillRect(23, 60, 6, 4);
+  ctx.fillRect(23, 70, 6, 4);
 
-  // ---- green energy blade extending from the right hand ----
+  ctx.restore();
+}
+
+// Front layer: mech gauntlets and big armoured legs, drawn over the body so
+// David's own arms and legs disappear inside the exoskeleton, plus the green
+// energy blade.
+function drawDavidCyberSkeletonFront(f) {
+  const { grey, greyDark, greyLight, red, outline } = DAVID_MECH;
+  const t = frame * 0.08;
+  const hum = Math.sin(t) * 1.2;
+  ctx.save();
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = outline;
+
+  // ---- big armoured legs replacing his own (cover x~6..46, y~72..124) ----
+  // left leg
+  davidMechPlate(2, 72 + hum, 20, 30, grey);       // thigh
+  davidMechPlate(4, 100 + hum, 15, 22, greyDark);  // shin
+  davidMechPlate(-2, 120, 22, 8, grey);            // foot
+  ctx.fillStyle = red; ctx.fillRect(6, 80 + hum, 10, 3);
+  // right leg
+  davidMechPlate(30, 72 - hum, 20, 30, grey);
+  davidMechPlate(33, 100 - hum, 15, 22, greyDark);
+  davidMechPlate(32, 120, 22, 8, grey);
+  ctx.fillStyle = red; ctx.fillRect(36, 80 - hum, 10, 3);
+  // knee joints
+  ctx.fillStyle = greyLight;
+  ctx.beginPath(); ctx.arc(12, 100 + hum, 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(40, 100 - hum, 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  // pelvis armour bridging the legs
+  davidMechPlate(16, 70, 20, 12, greyDark);
+
+  // ---- mech gauntlets over his hands/forearms (cover the arms) ----
+  davidMechPlate(-6, 52 + hum, 16, 26, grey);   // left gauntlet
+  davidMechPlate(42, 52 - hum, 16, 26, grey);   // right gauntlet
+  ctx.fillStyle = red;
+  ctx.fillRect(-3, 58 + hum, 10, 3);
+  ctx.fillStyle = greyLight;
+  ctx.beginPath(); ctx.arc(2, 54 + hum, 3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+  // ---- green energy blade from the right gauntlet ----
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
-  const bladeX = 44, bladeY = 66;
-  const grd = ctx.createLinearGradient(bladeX, bladeY, bladeX + 30, bladeY - 26);
-  grd.addColorStop(0, "rgba(180,255,180,0.95)");
+  const bladeX = 52, bladeY = 60 - hum;
+  const grd = ctx.createLinearGradient(bladeX, bladeY, bladeX + 34, bladeY - 30);
+  grd.addColorStop(0, "rgba(190,255,190,0.95)");
   grd.addColorStop(1, "rgba(40,220,90,0)");
   ctx.strokeStyle = grd;
-  ctx.lineWidth = 4 + Math.sin(t * 2) * 0.6;
+  ctx.lineWidth = 5 + Math.sin(t * 2) * 0.8;
   ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(bladeX, bladeY);
+  ctx.lineTo(bladeX + 34, bladeY - 30);
+  ctx.stroke();
+  ctx.strokeStyle = "rgba(255,255,255,0.92)";
+  ctx.lineWidth = 1.6;
   ctx.beginPath();
   ctx.moveTo(bladeX, bladeY);
   ctx.lineTo(bladeX + 30, bladeY - 26);
   ctx.stroke();
-  ctx.strokeStyle = "rgba(255,255,255,0.9)";
-  ctx.lineWidth = 1.4;
-  ctx.beginPath();
-  ctx.moveTo(bladeX, bladeY);
-  ctx.lineTo(bladeX + 27, bladeY - 23);
-  ctx.stroke();
-  ctx.restore();
-
-  // subtle red rim glow behind the whole rig
-  ctx.save();
-  ctx.globalCompositeOperation = "lighter";
-  ctx.globalAlpha = 0.25 + Math.sin(t) * 0.08;
-  ctx.fillStyle = "rgba(216,52,44,0.5)";
-  ctx.beginPath();
-  ctx.ellipse(26, 70, 46, 60, 0, 0, Math.PI * 2);
-  ctx.fill();
   ctx.restore();
 
   ctx.restore();
@@ -17040,8 +17070,10 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   // THRAGG_THEME_PATCH: Thragg draws ~16% wider and ~10% taller, scaled
   // about his feet so he stays planted - reads as the towering Viltrumite
   // he is without touching hitboxes.
-  const bulkX = f.technique === "brawler" ? 1.16 : 1;
-  const bulkY = f.technique === "brawler" ? 1.1 : 1;
+  // DAVID_PATCH: the Cyber Skeleton makes him tower - scaled about his feet.
+  const davidMech = davidUltActive(f) && !f.ko && !f.lying;
+  const bulkX = f.technique === "brawler" ? 1.16 : davidMech ? 1.22 : 1;
+  const bulkY = f.technique === "brawler" ? 1.1 : davidMech ? 1.5 : 1;
   if (f.ko || f.lying) {
     ctx.translate(f.x + f.w / 2, f.y + f.h);
     ctx.rotate(f.koFallDir * f.koRotation);
@@ -18622,53 +18654,48 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       });
     }
   } else if (f.technique === "david") {
-    // DAVID_PATCH: messy dark spiky hair with an undercut, plus a chrome
-    // cyberware temple plate. Glowing red eyes during Cyberpsychosis.
+    // DAVID_PATCH: dark-brown hair, spiked up and swept back off the forehead
+    // with tapered sides (his Edgerunners cut). Clean face - no brows.
     const psycho = (f.davidPsychosisTicks || 0) > 0;
-    const sway = idle * 0.4;
-    // spiky black hair
+    const sway = idle * 0.5;
+    // main hair mass - tall spikes swept upward, taller toward the crown
     ctx.fillStyle = skin.hair;
     ctx.beginPath();
-    ctx.moveTo(13, 23);
-    ctx.lineTo(12 + sway * 0.5, 9);
-    ctx.lineTo(18, 14);
-    ctx.lineTo(17 + sway, 4);
-    ctx.lineTo(23, 13);
-    ctx.lineTo(24, 3 + sway * 0.4);
-    ctx.lineTo(29, 12);
-    ctx.lineTo(33 + sway, 5);
-    ctx.lineTo(34, 14);
-    ctx.lineTo(40 - sway * 0.5, 9);
-    ctx.lineTo(39, 23);
-    ctx.quadraticCurveTo(37, 15, 30, 14);
-    ctx.quadraticCurveTo(26, 17, 22, 14);
-    ctx.quadraticCurveTo(15, 15, 13, 23);
+    ctx.moveTo(13, 24);
+    ctx.quadraticCurveTo(11, 14, 15, 10);
+    ctx.lineTo(14 + sway, -2);
+    ctx.lineTo(20, 8);
+    ctx.lineTo(21 + sway, -6);
+    ctx.lineTo(26, 6);
+    ctx.lineTo(28 + sway, -8);
+    ctx.lineTo(32, 6);
+    ctx.lineTo(34 + sway, -4);
+    ctx.lineTo(37, 9);
+    ctx.quadraticCurveTo(40, 13, 39, 24);
+    ctx.quadraticCurveTo(38, 16, 33, 14);
+    ctx.quadraticCurveTo(30, 12, 27, 14);
+    ctx.quadraticCurveTo(23, 12, 20, 15);
+    ctx.quadraticCurveTo(15, 16, 13, 24);
     ctx.closePath();
     ctx.fill();
-    // undercut shave line
-    ctx.strokeStyle = "#3a373e";
-    ctx.lineWidth = 1;
+    // lighter brown strands for depth
+    ctx.strokeStyle = "#4a382a";
+    ctx.lineWidth = 1.1;
+    ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.moveTo(14, 21); ctx.quadraticCurveTo(19, 19, 22, 20);
+    ctx.moveTo(17, 12); ctx.lineTo(16, 0);
+    ctx.moveTo(23, 10); ctx.lineTo(23, -3);
+    ctx.moveTo(29, 9); ctx.lineTo(30, -4);
+    ctx.moveTo(35, 11); ctx.lineTo(35, 1);
     ctx.stroke();
-    // chrome cyberware temple plate (right side)
-    ctx.fillStyle = "#c9ccd2";
-    ctx.strokeStyle = "#5a5e66";
-    ctx.lineWidth = 0.8;
+    // tapered (shorter) sideburn hint at the temples
+    ctx.strokeStyle = "#2c2018";
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(33, 18); ctx.lineTo(39, 17); ctx.lineTo(39, 27); ctx.lineTo(34, 27); ctx.closePath();
-    ctx.fill(); ctx.stroke();
-    // port lights on the plate
-    ctx.save();
-    ctx.globalCompositeOperation = "lighter";
-    ctx.globalAlpha = 0.6 + Math.sin(frame * (psycho ? 0.5 : 0.2)) * 0.3;
-    ctx.fillStyle = psycho ? "#ff2d2d" : "#31d7e0";
-    ctx.beginPath();
-    ctx.arc(36, 20, 1, 0, Math.PI * 2);
-    ctx.arc(36, 24, 1, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-    // brows / eyes
+    ctx.moveTo(15, 20); ctx.lineTo(16, 27);
+    ctx.moveTo(37, 20); ctx.lineTo(36, 27);
+    ctx.stroke();
+    // glowing red eye markings only during Cyberpsychosis
     if (psycho) {
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
@@ -18679,14 +18706,6 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       ctx.arc(31, 22, 1.8, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
-    } else {
-      ctx.strokeStyle = "#2a2420";
-      ctx.lineWidth = 1.6;
-      ctx.lineCap = "round";
-      ctx.beginPath();
-      ctx.moveTo(18, 21); ctx.quadraticCurveTo(21, 19.5, 24, 21);
-      ctx.moveTo(28, 21); ctx.quadraticCurveTo(31, 19.5, 33, 21);
-      ctx.stroke();
     }
   }
   ctx.restore();
@@ -19369,6 +19388,10 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     }
   }
   ctx.restore();
+
+  // DAVID_PATCH: mech legs + gauntlets drawn over the body so his own arms
+  // and legs are hidden inside the Cyber Skeleton.
+  if (davidUltActive(f) && !f.ko && !f.lying) drawDavidCyberSkeletonFront(f);
 
   ctx.restore();
 
