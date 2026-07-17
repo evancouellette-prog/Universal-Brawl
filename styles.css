@@ -1229,7 +1229,9 @@ kbd {
 }
 
 .technique-panel {
-  width: min(640px, calc(100vw - 36px));
+  width: min(780px, calc(100vw - 20px));
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
 }
 
 .practice-settings-panel {
@@ -1305,31 +1307,42 @@ kbd {
 .technique-actions {
   width: 100%;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
 }
 
 .technique-button {
-  min-height: 212px;
-  display: grid;
-  align-content: center;
-  justify-items: center;
-  gap: 8px;
-  padding: 16px 12px 12px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  padding: 6px 6px 8px;
   overflow: hidden;
   background: #dbeafe;
-  box-shadow: 0 4px 0 #1e3a8a;
+  box-shadow: 0 3px 0 #1e3a8a;
+}
+
+/* CHAR_SELECT_COMPACT_PATCH: name only - hide the description lines. */
+.technique-button span,
+.technique-button small {
+  display: none !important;
 }
 
 .technique-button strong {
-  font-size: 22px;
+  order: 2;
+  font-size: 13px;
+  line-height: 1.05;
   text-transform: uppercase;
 }
 
-.skin-preview-canvas {
-  width: 180px;
-  height: 160px;
-  max-width: 100%;
+.skin-preview-canvas,
+.technique-button canvas {
+  order: 1;
+  width: 100%;
+  max-width: 100px;
+  height: 82px;
   border: 2px solid rgba(2, 6, 23, 0.72);
   border-radius: 6px;
   background: linear-gradient(180deg, #172033, #090d17);
@@ -1337,8 +1350,9 @@ kbd {
   transition: transform 140ms ease;
 }
 
-.technique-button:hover:not(:disabled) .skin-preview-canvas {
-  transform: translateY(-4px) scale(1.04);
+.technique-button:hover:not(:disabled) .skin-preview-canvas,
+.technique-button:hover:not(:disabled) canvas {
+  transform: translateY(-3px) scale(1.03);
 }
 
 .waiting-panel h2 {

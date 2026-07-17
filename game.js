@@ -13512,9 +13512,17 @@ function applyHit(attacker, defender) {
   }
   const didBlueChase = tryGojoBlueComboChase(attacker, defender, !blocked && comboFinisher && defender.health > 0);
   if (!blocked) gainCe(attacker, attackType === "heavy" ? HEAVY_HIT_CE_GAIN : LIGHT_HIT_CE_GAIN);
-  hitStopTicks = Math.max(hitStopTicks, blocked ? 3 : gojoRedHeavyFinisher ? HITSTOP_HEAVY + 2 : gojoPushPullFinisher ? HITSTOP_HEAVY : heavyFinisher ? HITSTOP_HEAVY : finalLightHit ? 5 : HITSTOP_LIGHT);
-  shake = Math.max(shake, blocked ? 4 : gojoRedHeavyFinisher ? 14 : gojoPushPullFinisher ? 12 : didBlueChase ? 12 : heavyFinisher ? 11 : finalLightHit ? 9 : isHeavyHit ? 8 : 7);
+  hitStopTicks = Math.max(hitStopTicks, blocked ? 3 : gojoRedHeavyFinisher ? HITSTOP_HEAVY + 2 : gojoPushPullFinisher ? HITSTOP_HEAVY : heavyFinisher ? HITSTOP_HEAVY + 2 : finalLightHit ? 5 : isHeavyHit ? HITSTOP_HEAVY : HITSTOP_LIGHT);
+  shake = Math.max(shake, blocked ? 4 : gojoRedHeavyFinisher ? 16 : gojoPushPullFinisher ? 12 : didBlueChase ? 12 : heavyFinisher ? 17 : finalLightHit ? 9 : isHeavyHit ? 13 : 7);
   spawnHitSpark(defender.x + defender.w / 2, defender.y + 44, knockbackDir, blocked ? "block" : isLight(attacker) ? "ryukStrike" : gojoRedHeavyFinisher ? "red" : gojoPushPullFinisher ? "blue" : bluePullHit || didBlueChase ? "blue" : attackType);
+  // HEAVY_FEEDBACK_PATCH: a punchy spark burst on every unblocked heavy hit.
+  if (isHeavyHit && !blocked) {
+    const hx = defender.x + defender.w / 2, hy = defender.y + 46;
+    const bursts = heavyFinisher ? 5 : 3;
+    for (let i = 0; i < bursts; i++) {
+      spawnHitSpark(hx + (Math.random() - 0.5) * 32, hy + (Math.random() - 0.5) * 36, knockbackDir, "heavy");
+    }
+  }
   if (gojoRedHeavyFinisher) {
     spawnHitSpark(defender.x + defender.w / 2 - knockbackDir * 16, defender.y + 58, -knockbackDir, "red");
     spawnHitSpark(defender.x + defender.w / 2 + knockbackDir * 10, defender.y + 34, knockbackDir, "red");
@@ -18853,30 +18861,8 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.quadraticCurveTo(26, 11.5, 15, 15.5);
     ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = "rgba(2,6,23,0.6)";
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.moveTo(18, 9.5);
-    ctx.quadraticCurveTo(20, 12, 19, 15);
-    ctx.moveTo(26, 8);
-    ctx.quadraticCurveTo(27, 11, 26.5, 13.5);
-    ctx.moveTo(34, 9.5);
-    ctx.quadraticCurveTo(33, 12, 33.5, 15);
-    ctx.stroke();
-    // brow ridge - slimmer so it reads as brows, not a visor
-    ctx.fillStyle = skin.hair;
-    ctx.beginPath();
-    ctx.moveTo(16.5, 19.8);
-    ctx.lineTo(23.8, 19.4);
-    ctx.lineTo(23.5, 21.4);
-    ctx.lineTo(17, 21.9);
-    ctx.closePath();
-    ctx.moveTo(35.5, 19.8);
-    ctx.lineTo(28.2, 19.4);
-    ctx.lineTo(28.5, 21.4);
-    ctx.lineTo(35, 21.9);
-    ctx.closePath();
-    ctx.fill();
+    // THRAGG_FACE_CLEANUP_PATCH: removed the forehead strand strokes and the
+    // brow ridge - user wanted no eyebrows / black lines on his face.
     // the walrus mustache - tight under the nose line with drooping
     // tips, kept well inside the face so it can't read as a neck ruff
     ctx.beginPath();
