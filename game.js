@@ -252,15 +252,38 @@ const CHARACTER_SKINS = {
     { id: "default", name: "Suit Light" },
     { id: "sweats", name: "Sweats" }
   ],
-  blackleg: [{ id: "default", name: "Black Leg Sanji" }],
-  hivemind: [{ id: "default", name: "Vecna" }],
-  zealot:   [{ id: "default", name: "Aiur Zealot" }],
-  spider:   [{ id: "default", name: "Spider-Man" }],
+  blackleg: [
+    { id: "default", name: "Black Leg Sanji" },
+    { id: "wholeCake", name: "Whole Cake Prince" },
+    { id: "raidSuit", name: "Raid Suit" },
+    { id: "wano", name: "Wano Yukata" }
+  ],
+  hivemind: [
+    { id: "default", name: "Vecna" },
+    { id: "creel", name: "Henry Creel" },
+    { id: "season4", name: "Season 4" }
+  ],
+  zealot: [
+    { id: "default", name: "Aiur Zealot" },
+    { id: "purifier", name: "Purifier" },
+    { id: "taldarim", name: "Tal'darim" }
+  ],
+  spider: [
+    { id: "default", name: "Spider-Man" },
+    { id: "symbiote", name: "Symbiote" },
+    { id: "miles", name: "Miles Morales" },
+    { id: "iron", name: "Iron Spider" }
+  ],
   beast: [
     { id: "default", name: "Inosuke Hashibira" },
-    { id: "boarGod", name: "Boar God" }
+    { id: "boarGod", name: "Boar God" },
+    { id: "unmasked", name: "Unmasked" },
+    { id: "ako", name: "Ako Disguise" }
   ],
-  jiji:     [{ id: "default", name: "Jiji Kito" }],
+  jiji: [
+    { id: "default", name: "Jiji Kito" },
+    { id: "school", name: "School Uniform" }
+  ],
   david: [
     { id: "default", name: "David Martinez" },
     { id: "schoolwear", name: "School" }
@@ -324,6 +347,47 @@ function isCorpAkira(f) {
 // SKINS_PATCH: Inosuke Boar God armor - golden tusks + war paint.
 function isBoarGod(f) {
   return Boolean(f && f.technique === "beast" && skinOf(f) === "boarGod");
+}
+// SKINS_PATCH: Inosuke Unmasked - the pretty face + wild hair, no boar mask.
+function isUnmasked(f) {
+  return Boolean(f && f.technique === "beast" && skinOf(f) === "unmasked");
+}
+// SKINS_PATCH: Inosuke Ako disguise - makeup + kimono + hair buns.
+function isAko(f) {
+  return Boolean(f && f.technique === "beast" && skinOf(f) === "ako");
+}
+function beastSuppressBoar(f) {
+  return isUnmasked(f) || isAko(f);
+}
+// SKINS_PATCH: Jiji school uniform.
+function isJijiSchool(f) {
+  return Boolean(f && f.technique === "jiji" && skinOf(f) === "school");
+}
+// SKINS_PATCH: Spider-Man alt suits.
+function spiderSkin(f, id) {
+  return Boolean(f && f.technique === "spider" && skinOf(f) === id);
+}
+function isSpiderAlt(f) {
+  const s = skinOf(f);
+  return f && f.technique === "spider" && s !== "default" && s !== undefined;
+}
+// SKINS_PATCH: Zealot alt factions (Purifier / Tal'darim).
+function isPurifier(f) {
+  return Boolean(f && f.technique === "zealot" && skinOf(f) === "purifier");
+}
+function isTaldarim(f) {
+  return Boolean(f && f.technique === "zealot" && skinOf(f) === "taldarim");
+}
+// SKINS_PATCH: Vecna alt forms.
+function isCreel(f) {
+  return Boolean(f && f.technique === "hivemind" && skinOf(f) === "creel");
+}
+function isVecnaS4(f) {
+  return Boolean(f && f.technique === "hivemind" && skinOf(f) === "season4");
+}
+// SKINS_PATCH: Sanji alt outfits.
+function sanjiSkin(f, id) {
+  return Boolean(f && f.technique === "blackleg" && skinOf(f) === id);
 }
 
 let localPlayerName = "Player";
@@ -8561,8 +8625,10 @@ function startDemodogHunt(f) {
 }
 
 function getVecnaMinionRect(m) {
-  if (m.kind === "bat") return { x: m.x - 9, y: m.y - 6, w: 18, h: 12 };
-  return { x: m.x - 20, y: m.y - 12, w: 40, h: 30 };
+  // VECNA_MINION_SIZE_PATCH: bumped both minions - demobats read at a full
+  // bat silhouette and demodogs now match a fighter's chest width.
+  if (m.kind === "bat") return { x: m.x - 14, y: m.y - 10, w: 28, h: 20 };
+  return { x: m.x - 30, y: m.y - 18, w: 60, h: 44 };
 }
 
 function damageVecnaMinion(m, amount, dir = 1) {
@@ -8599,8 +8665,13 @@ function updateVecnaMinions() {
       m.y += m.vy;
       m.y = Math.min(m.y, GROUND - 10);
       if (m.biteCooldown > 0) m.biteCooldown -= 1;
+      // VECNA_MINION_ANIM_PATCH: bats open their mouths as they close on the
+      // target, then flash an attack lunge on the bite.
+      const distToTarget = Math.hypot(tCenter.x - m.x, tCenter.y - m.y);
+      m.openMouth = distToTarget < 60;
       if (m.biteCooldown <= 0 && targetable && rectsOverlap(getVecnaMinionRect(m), target)) {
         m.biteCooldown = VECNA_BAT_BITE_INTERVAL;
+        m.atkTick = 10; // flash attack anim
         const dir = Math.sign(tCenter.x - m.x) || 1;
         const raw = Math.ceil(VECNA_BAT_BITE_DAMAGE * vecnaMinionDamageScale(ownerFighter));
         if (isBlockingAttack(target, dir)) {
@@ -8627,10 +8698,13 @@ function updateVecnaMinions() {
         const speed = m.empowered ? 7.4 : 6.2;
         m.vx = dir * speed;
         m.x += m.vx;
+        // VECNA_MINION_ANIM_PATCH: petal head opens as it closes in.
+        m.openMouth = Math.abs(tCenter.x - m.x) < 90;
         if (targetable && m.hitCooldown <= 0 && rectsOverlap(getVecnaMinionRect(m), target)) {
           // pounce: pin + bite
           m.state = "maul";
           m.stateTicks = m.empowered ? 46 : 34;
+          m.atkTick = 16;
           const raw = Math.ceil(VECNA_DOG_PIN_DAMAGE * vecnaMinionDamageScale(ownerFighter));
           if (isBlockingAttack(target, dir)) {
             damageShield(target, raw);
@@ -8652,13 +8726,17 @@ function updateVecnaMinions() {
       } else if (m.state === "maul") {
         m.stateTicks -= 1;
         m.vx = 0;
+        m.openMouth = true;
         m.x = tCenter.x - (Math.sign(tCenter.x - m.x) || 1) * 30;
         if (m.stateTicks % 9 === 0 && targetable) {
+          m.atkTick = 10;
           spawnHitSpark(tCenter.x + (Math.random() - 0.5) * 12, tCenter.y, 1, "light");
         }
         if (m.stateTicks <= 0) m.life = 0; // job done, vanishes
       }
     }
+    // decay per-minion anim timers
+    if ((m.atkTick || 0) > 0) m.atkTick -= 1;
 
     // summons can be destroyed: the target's melee and projectiles hurt them
     if (m.hp > 0 && m.hitCooldown <= 0 && target.attacking && !target.ko) {
@@ -17203,6 +17281,329 @@ function drawSkinOutfitOverlay(f, skinColor) {
     ctx.beginPath(); ctx.moveTo(20, 84); ctx.lineTo(19, 96); ctx.moveTo(34, 84); ctx.lineTo(35, 96); ctx.stroke();
     return;
   }
+
+  // ---- Inosuke: Ako brothel disguise ----
+  if (f.technique === "beast" && skin === "ako") {
+    // pink kimono body (torso base is already pink via palette) with a red
+    // sash tied at the waist and a paler collar V.
+    ctx.fillStyle = "#f9d1c4"; // paler pink collar
+    ctx.beginPath();
+    ctx.moveTo(14, 40); ctx.quadraticCurveTo(27, 46, 40, 40);
+    ctx.lineTo(37, 54); ctx.lineTo(30, 48); ctx.lineTo(27, 54); ctx.lineTo(24, 48); ctx.lineTo(17, 54);
+    ctx.closePath(); ctx.fill();
+    // red obi sash
+    ctx.fillStyle = "#7a1f2a"; ctx.strokeStyle = "#3a0e14"; ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.rect(10, 74, 34, 12); ctx.fill(); ctx.stroke();
+    // gold sash tie in front
+    ctx.fillStyle = "#e0b23a";
+    ctx.beginPath(); ctx.rect(24, 74, 6, 12); ctx.fill();
+    // kimono side panels darker pink
+    ctx.fillStyle = "#c05a70";
+    ctx.beginPath(); ctx.moveTo(11, 46); ctx.quadraticCurveTo(9, 66, 12, 74); ctx.lineTo(16, 74); ctx.quadraticCurveTo(14, 60, 15, 46); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(43, 46); ctx.quadraticCurveTo(45, 66, 42, 74); ctx.lineTo(38, 74); ctx.quadraticCurveTo(40, 60, 39, 46); ctx.closePath(); ctx.fill();
+    return;
+  }
+
+  // ---- Jiji: school uniform ----
+  if (f.technique === "jiji" && skin === "school") {
+    // navy sailor-style school jacket over a white shirt.
+    ctx.fillStyle = "#20304a"; ctx.strokeStyle = "#0a0f18"; ctx.lineWidth = 1.5;
+    traceTorsoShape(38, 92); ctx.fill(); ctx.stroke();
+    // white shirt slice down the middle
+    ctx.fillStyle = "#eef1f5";
+    ctx.beginPath();
+    ctx.moveTo(23, 42); ctx.quadraticCurveTo(27, 41, 31, 42);
+    ctx.quadraticCurveTo(32, 60, 31, 82); ctx.quadraticCurveTo(27, 84, 23, 82);
+    ctx.quadraticCurveTo(22, 60, 23, 42);
+    ctx.closePath(); ctx.fill();
+    // sailor collar (white with red tie)
+    ctx.fillStyle = "#eef1f5";
+    ctx.beginPath();
+    ctx.moveTo(16, 40); ctx.lineTo(27, 50); ctx.lineTo(38, 40); ctx.lineTo(34, 46); ctx.lineTo(27, 44); ctx.lineTo(20, 46); ctx.closePath();
+    ctx.fill();
+    // red bow tie
+    ctx.fillStyle = "#c1121f";
+    ctx.beginPath();
+    ctx.moveTo(24, 48); ctx.lineTo(30, 48); ctx.lineTo(32, 54); ctx.lineTo(27, 52); ctx.lineTo(22, 54); ctx.closePath();
+    ctx.fill();
+    // gold buttons down the middle
+    ctx.fillStyle = "#e0b23a";
+    ctx.beginPath(); ctx.arc(27, 62, 1.5, 0, PI2); ctx.arc(27, 72, 1.5, 0, PI2); ctx.arc(27, 82, 1.5, 0, PI2); ctx.fill();
+    return;
+  }
+
+  // ---- Spider-Man: Symbiote (all black + huge white spider) ----
+  if (f.technique === "spider" && skin === "symbiote") {
+    // black bodysuit
+    ctx.fillStyle = "#0d0d10";
+    traceTorsoShape(38, 92); ctx.fill();
+    // huge white spider emblem on the chest
+    ctx.fillStyle = "#f4f6fb";
+    // body
+    ctx.beginPath(); ctx.ellipse(27, 60, 6, 8, 0, 0, PI2); ctx.fill();
+    // head
+    ctx.beginPath(); ctx.ellipse(27, 50, 3, 3, 0, 0, PI2); ctx.fill();
+    // 8 legs (thick spider silhouette)
+    ctx.strokeStyle = "#f4f6fb"; ctx.lineWidth = 3; ctx.lineCap = "round";
+    ctx.beginPath();
+    // left legs
+    ctx.moveTo(22, 56); ctx.lineTo(13, 46);
+    ctx.moveTo(22, 60); ctx.lineTo(11, 58);
+    ctx.moveTo(22, 63); ctx.lineTo(11, 68);
+    ctx.moveTo(22, 66); ctx.lineTo(13, 80);
+    // right legs
+    ctx.moveTo(32, 56); ctx.lineTo(41, 46);
+    ctx.moveTo(32, 60); ctx.lineTo(43, 58);
+    ctx.moveTo(32, 63); ctx.lineTo(43, 68);
+    ctx.moveTo(32, 66); ctx.lineTo(41, 80);
+    ctx.stroke();
+    return;
+  }
+
+  // ---- Spider-Man: Miles Morales (black + red web + red spider) ----
+  if (f.technique === "spider" && skin === "miles") {
+    ctx.fillStyle = "#141416";
+    traceTorsoShape(38, 92); ctx.fill();
+    // red webbing lines radiating from the chest
+    ctx.strokeStyle = "#c1121f"; ctx.lineWidth = 1.2; ctx.lineCap = "round";
+    ctx.beginPath();
+    for (let a = 0; a < 8; a++) {
+      const ang = -Math.PI / 2 + (a - 3.5) * 0.35;
+      ctx.moveTo(27, 60);
+      ctx.lineTo(27 + Math.cos(ang) * 18, 60 + Math.sin(ang) * 18);
+    }
+    // arcs connecting the radial webs
+    ctx.moveTo(15, 52); ctx.quadraticCurveTo(27, 56, 39, 52);
+    ctx.moveTo(14, 62); ctx.quadraticCurveTo(27, 66, 40, 62);
+    ctx.moveTo(15, 72); ctx.quadraticCurveTo(27, 76, 39, 72);
+    ctx.stroke();
+    // spray-painted red spider (rougher, more organic)
+    ctx.fillStyle = "#c1121f";
+    ctx.beginPath(); ctx.ellipse(27, 60, 4.6, 6, 0, 0, PI2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(27, 52, 2.4, 2.4, 0, 0, PI2); ctx.fill();
+    ctx.strokeStyle = "#c1121f"; ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(23, 57); ctx.lineTo(17, 51);
+    ctx.moveTo(23, 63); ctx.lineTo(17, 65);
+    ctx.moveTo(31, 57); ctx.lineTo(37, 51);
+    ctx.moveTo(31, 63); ctx.lineTo(37, 65);
+    ctx.stroke();
+    return;
+  }
+
+  // ---- Spider-Man: Iron Spider (red + gold armor plates) ----
+  if (f.technique === "spider" && skin === "iron") {
+    // red base
+    ctx.fillStyle = "#c1121f";
+    traceTorsoShape(38, 92); ctx.fill();
+    // gold plating: shoulder yoke, ab bands, chest emblem
+    ctx.fillStyle = "#f0c94a"; ctx.strokeStyle = "#7a5100"; ctx.lineWidth = 1.4;
+    // shoulder yoke
+    ctx.beginPath();
+    ctx.moveTo(10, 40); ctx.quadraticCurveTo(27, 47, 44, 40);
+    ctx.lineTo(40, 54); ctx.quadraticCurveTo(27, 58, 14, 54); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // ab plates - three thin gold bands
+    ctx.beginPath(); ctx.rect(15, 66, 24, 4); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.rect(15, 74, 24, 4); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.rect(15, 82, 24, 4); ctx.fill(); ctx.stroke();
+    // gold spider emblem on the chest
+    ctx.fillStyle = "#f0c94a"; ctx.strokeStyle = "#7a5100";
+    ctx.beginPath(); ctx.ellipse(27, 60, 3.4, 4.4, 0, 0, PI2); ctx.fill(); ctx.stroke();
+    // 4 mechanical spider arms coming from the back (drawn behind - here as
+    // silhouettes poking up over each shoulder)
+    ctx.strokeStyle = "#7a5100"; ctx.lineWidth = 4; ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(9, 42); ctx.quadraticCurveTo(-2, 30, -6, 14);
+    ctx.moveTo(45, 42); ctx.quadraticCurveTo(56, 30, 60, 14);
+    ctx.moveTo(11, 46); ctx.quadraticCurveTo(-4, 46, -12, 32);
+    ctx.moveTo(43, 46); ctx.quadraticCurveTo(58, 46, 66, 32);
+    ctx.stroke();
+    // gold highlights on the mechanical arms
+    ctx.strokeStyle = "#f0c94a"; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(9, 42); ctx.quadraticCurveTo(-2, 30, -6, 14);
+    ctx.moveTo(45, 42); ctx.quadraticCurveTo(56, 30, 60, 14);
+    ctx.moveTo(11, 46); ctx.quadraticCurveTo(-4, 46, -12, 32);
+    ctx.moveTo(43, 46); ctx.quadraticCurveTo(58, 46, 66, 32);
+    ctx.stroke();
+    return;
+  }
+
+  // ---- Zealot: Purifier (white/orange sleek robotic) ----
+  if (f.technique === "zealot" && skin === "purifier") {
+    // white plated torso
+    ctx.fillStyle = "#e9ecf1"; ctx.strokeStyle = "#5a5f68"; ctx.lineWidth = 1.5;
+    traceTorsoShape(38, 92); ctx.fill(); ctx.stroke();
+    // grey undersuit strip down the middle
+    ctx.fillStyle = "#8a939a";
+    ctx.beginPath();
+    ctx.moveTo(24, 42); ctx.lineTo(30, 42); ctx.quadraticCurveTo(31, 64, 30, 84); ctx.lineTo(24, 84); ctx.quadraticCurveTo(23, 64, 24, 42);
+    ctx.closePath(); ctx.fill();
+    // bright orange energy lines
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.strokeStyle = "#ff7a1a"; ctx.lineWidth = 2.4; ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(14, 46); ctx.lineTo(20, 66);
+    ctx.moveTo(40, 46); ctx.lineTo(34, 66);
+    ctx.moveTo(27, 44); ctx.lineTo(27, 82);
+    ctx.stroke();
+    ctx.restore();
+    // orange chest core
+    ctx.fillStyle = "#ff9a3a"; ctx.strokeStyle = "#7a3400";
+    ctx.beginPath(); ctx.arc(27, 58, 4, 0, PI2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#fff2b0";
+    ctx.beginPath(); ctx.arc(27, 58, 1.5, 0, PI2); ctx.fill();
+    return;
+  }
+
+  // ---- Zealot: Tal'darim (dark grey + crimson red armor) ----
+  if (f.technique === "zealot" && skin === "taldarim") {
+    // dark grey plate
+    ctx.fillStyle = "#3a3238"; ctx.strokeStyle = "#0f0a0e"; ctx.lineWidth = 1.6;
+    traceTorsoShape(38, 92); ctx.fill(); ctx.stroke();
+    // crimson accents down the sides
+    ctx.fillStyle = "#8a1216";
+    ctx.beginPath();
+    ctx.moveTo(11, 44); ctx.quadraticCurveTo(9, 66, 12, 88); ctx.lineTo(16, 88); ctx.quadraticCurveTo(14, 66, 16, 44); ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(43, 44); ctx.quadraticCurveTo(45, 66, 42, 88); ctx.lineTo(38, 88); ctx.quadraticCurveTo(40, 66, 38, 44); ctx.closePath(); ctx.fill();
+    // crimson chest emblem (angular)
+    ctx.fillStyle = "#c1121f"; ctx.strokeStyle = "#3a0608";
+    ctx.beginPath();
+    ctx.moveTo(27, 48); ctx.lineTo(33, 58); ctx.lineTo(27, 68); ctx.lineTo(21, 58); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#f28080";
+    ctx.beginPath(); ctx.arc(27, 58, 1.6, 0, PI2); ctx.fill();
+    // glowing red seams
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.strokeStyle = "rgba(239, 68, 68, 0.7)"; ctx.lineWidth = 1.6; ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(21, 74); ctx.lineTo(33, 74);
+    ctx.moveTo(23, 82); ctx.lineTo(31, 82);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  // ---- Vecna: Henry Creel (white lab orderly uniform) ----
+  if (f.technique === "hivemind" && skin === "creel") {
+    // clean white shirt (rounded torso)
+    ctx.fillStyle = "#f2f4f6"; ctx.strokeStyle = "#8a939a"; ctx.lineWidth = 1.4;
+    traceTorsoShape(38, 92); ctx.fill(); ctx.stroke();
+    // buttoned placket
+    ctx.strokeStyle = "#8a939a"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(27, 42); ctx.lineTo(27, 86); ctx.stroke();
+    ctx.fillStyle = "#8a939a";
+    for (let y = 50; y <= 82; y += 10) { ctx.beginPath(); ctx.arc(27, y, 1.2, 0, PI2); ctx.fill(); }
+    // simple collar (folded down)
+    ctx.fillStyle = "#e6e8ec";
+    ctx.beginPath();
+    ctx.moveTo(20, 40); ctx.lineTo(27, 46); ctx.lineTo(34, 40); ctx.lineTo(32, 42); ctx.lineTo(27, 44); ctx.lineTo(22, 42); ctx.closePath();
+    ctx.fill();
+    // "001" patch on the chest
+    ctx.fillStyle = "#1a1a20";
+    ctx.font = "700 8px monospace"; ctx.textAlign = "center";
+    ctx.fillText("001", 34, 60);
+    ctx.textAlign = "start";
+    return;
+  }
+
+  // ---- Vecna: Season 4 form (beige, less planty) ----
+  if (f.technique === "hivemind" && skin === "season4") {
+    // rough beige skin plating over the torso
+    ctx.fillStyle = "#a68a6a"; ctx.strokeStyle = "#3a2718"; ctx.lineWidth = 1.4;
+    traceTorsoShape(38, 92); ctx.fill(); ctx.stroke();
+    // sinewy shading lines (not vine tendrils - more like flesh/muscle)
+    ctx.strokeStyle = "rgba(80, 50, 24, 0.7)"; ctx.lineWidth = 1.6; ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(15, 50); ctx.quadraticCurveTo(20, 60, 15, 82);
+    ctx.moveTo(39, 50); ctx.quadraticCurveTo(34, 60, 39, 82);
+    ctx.moveTo(20, 58); ctx.lineTo(20, 82);
+    ctx.moveTo(34, 58); ctx.lineTo(34, 82);
+    // rib lines
+    ctx.moveTo(22, 60); ctx.quadraticCurveTo(27, 62, 32, 60);
+    ctx.moveTo(21, 68); ctx.quadraticCurveTo(27, 70, 33, 68);
+    ctx.moveTo(22, 76); ctx.quadraticCurveTo(27, 78, 32, 76);
+    ctx.stroke();
+    return;
+  }
+
+  // ---- Sanji: Whole Cake Prince (white + red royal suit) ----
+  if (f.technique === "blackleg" && skin === "wholeCake") {
+    // white suit
+    ctx.fillStyle = "#f4f1e8"; ctx.strokeStyle = "#7a7060"; ctx.lineWidth = 1.4;
+    traceTorsoShape(38, 92); ctx.fill(); ctx.stroke();
+    // red inner shirt strip
+    ctx.fillStyle = "#c22623";
+    ctx.beginPath();
+    ctx.moveTo(23, 42); ctx.quadraticCurveTo(27, 41, 31, 42);
+    ctx.quadraticCurveTo(32, 60, 31, 82); ctx.quadraticCurveTo(27, 84, 23, 82);
+    ctx.quadraticCurveTo(22, 60, 23, 42);
+    ctx.closePath(); ctx.fill();
+    // red lapels
+    ctx.fillStyle = "#8a1216";
+    ctx.beginPath(); ctx.moveTo(22, 41); ctx.lineTo(15, 44); ctx.lineTo(20, 64); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(32, 41); ctx.lineTo(39, 44); ctx.lineTo(34, 64); ctx.closePath(); ctx.fill();
+    // gold buttons
+    ctx.fillStyle = "#e0b23a";
+    ctx.beginPath(); ctx.arc(21, 52, 1.4, 0, PI2); ctx.arc(21, 60, 1.4, 0, PI2); ctx.arc(21, 68, 1.4, 0, PI2);
+    ctx.arc(33, 52, 1.4, 0, PI2); ctx.arc(33, 60, 1.4, 0, PI2); ctx.arc(33, 68, 1.4, 0, PI2);
+    ctx.fill();
+    // red cape trailing behind the shoulders
+    ctx.fillStyle = "#7a1216"; ctx.strokeStyle = "#3a0608"; ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(6, 40); ctx.lineTo(2, 96); ctx.lineTo(14, 94); ctx.lineTo(16, 46); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    return;
+  }
+
+  // ---- Sanji: Onigashima Raid Suit ----
+  if (f.technique === "blackleg" && skin === "raidSuit") {
+    // sleek all-black stealth suit
+    ctx.fillStyle = "#0f0f14"; ctx.strokeStyle = "#020204"; ctx.lineWidth = 1.6;
+    traceTorsoShape(38, 92); ctx.fill(); ctx.stroke();
+    // red racing stripe down the middle
+    ctx.fillStyle = "#c92a24";
+    ctx.beginPath();
+    ctx.moveTo(25, 42); ctx.lineTo(29, 42); ctx.lineTo(30, 88); ctx.lineTo(24, 88); ctx.closePath();
+    ctx.fill();
+    // dark cape
+    ctx.fillStyle = "#20242c"; ctx.strokeStyle = "#020204"; ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(5, 40); ctx.lineTo(0, 92); ctx.lineTo(12, 92); ctx.lineTo(14, 46); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(49, 40); ctx.lineTo(54, 92); ctx.lineTo(42, 92); ctx.lineTo(40, 46); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // waist utility belt
+    ctx.fillStyle = "#4b5563"; ctx.strokeStyle = "#141821"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.rect(12, 78, 30, 6); ctx.fill(); ctx.stroke();
+    return;
+  }
+
+  // ---- Sanji: Wano Yukata (black + yellow stripes) ----
+  if (f.technique === "blackleg" && skin === "wano") {
+    // black yukata body
+    ctx.fillStyle = "#0f0f14"; ctx.strokeStyle = "#020204"; ctx.lineWidth = 1.5;
+    traceTorsoShape(38, 92); ctx.fill(); ctx.stroke();
+    // yellow vertical stripes
+    ctx.fillStyle = "#e6be3a";
+    for (let x = 14; x <= 40; x += 6) {
+      ctx.beginPath(); ctx.rect(x, 44, 2, 44); ctx.fill();
+    }
+    // brown obi belt
+    ctx.fillStyle = "#5a3a1e"; ctx.strokeStyle = "#2a1a0e"; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.rect(10, 76, 34, 10); ctx.fill(); ctx.stroke();
+    // yukata V opening at the neck
+    ctx.fillStyle = "#f4e8b8"; // pale under-layer collar
+    ctx.beginPath();
+    ctx.moveTo(20, 40); ctx.lineTo(27, 52); ctx.lineTo(34, 40); ctx.lineTo(31, 44); ctx.lineTo(27, 48); ctx.lineTo(23, 44); ctx.closePath();
+    ctx.fill();
+    return;
+  }
 }
 
 // SKINS_PATCH: wrap the base palette with per-skin colour overrides.
@@ -17236,6 +17637,35 @@ function applySkinPalette(f, pal) {
   } else if (f.technique === "beast" && skin === "boarGod") {
     // SKINS_PATCH: Boar God - deeper tan skin, dark gold-leather hakama.
     pal.body = "#b5875e"; pal.accent = "#3a2718"; pal.pants = "#2f2010"; pal.shoe = "#1a1108";
+  } else if (f.technique === "beast" && skin === "unmasked") {
+    // SKINS_PATCH: Unmasked Inosuke - lighter porcelain skin, keeps hakama.
+    pal.skin = "#f4d2b8"; pal.body = "#f4d2b8"; pal.hair = "#0f0c08";
+  } else if (f.technique === "beast" && skin === "ako") {
+    // SKINS_PATCH: Ako disguise - pale kabuki-white makeup, black hair, pink kimono base.
+    pal.skin = "#f5e8e0"; pal.body = "#e97b8a"; pal.pants = "#7a1f2a"; pal.shoe = "#f5e8e0"; pal.hair = "#141014"; pal.accent = "#f9d1c4";
+  } else if (f.technique === "jiji" && skin === "school") {
+    // SKINS_PATCH: Jiji school - navy sailor uniform.
+    pal.body = "#20304a"; pal.accent = "#e6e8ee"; pal.pants = "#141a26"; pal.shoe = "#0a0f18";
+  } else if (f.technique === "spider" && skin === "symbiote") {
+    pal.body = "#0d0d10"; pal.accent = "#f4f6fb"; pal.pants = "#0d0d10"; pal.shoe = "#0d0d10";
+  } else if (f.technique === "spider" && skin === "miles") {
+    pal.body = "#141416"; pal.accent = "#c1121f"; pal.pants = "#141416"; pal.shoe = "#141416";
+  } else if (f.technique === "spider" && skin === "iron") {
+    pal.body = "#c1121f"; pal.accent = "#f0c94a"; pal.pants = "#c1121f"; pal.shoe = "#f0c94a";
+  } else if (f.technique === "zealot" && skin === "purifier") {
+    pal.body = "#e9ecf1"; pal.accent = "#ff7a1a"; pal.pants = "#c7ccd3"; pal.shoe = "#7f8590";
+  } else if (f.technique === "zealot" && skin === "taldarim") {
+    pal.body = "#3a3238"; pal.accent = "#c1121f"; pal.pants = "#231e22"; pal.shoe = "#1a1418"; pal.mark = "#ef4444"; pal.eye = "#ef4444";
+  } else if (f.technique === "hivemind" && skin === "creel") {
+    pal.skin = "#f0d0b0"; pal.body = "#f2f4f6"; pal.accent = "#8a939a"; pal.pants = "#e6e8ec"; pal.shoe = "#1a1a20"; pal.hair = "#6a4a2c";
+  } else if (f.technique === "hivemind" && skin === "season4") {
+    pal.skin = "#c6a888"; pal.body = "#a68a6a"; pal.accent = "#6a4a2c"; pal.pants = "#5a3f28"; pal.shoe = "#3a2718"; pal.hair = "#3a2a18";
+  } else if (f.technique === "blackleg" && skin === "wholeCake") {
+    pal.body = "#f4f1e8"; pal.accent = "#c22623"; pal.pants = "#e6dfd0"; pal.shoe = "#e0b23a";
+  } else if (f.technique === "blackleg" && skin === "raidSuit") {
+    pal.body = "#0f0f14"; pal.accent = "#c92a24"; pal.pants = "#0f0f14"; pal.shoe = "#141416";
+  } else if (f.technique === "blackleg" && skin === "wano") {
+    pal.body = "#0f0f14"; pal.accent = "#e6be3a"; pal.pants = "#0f0f14"; pal.shoe = "#4a2f18";
   }
 }
 
@@ -19599,9 +20029,10 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       ctx.moveTo(36, 40); ctx.lineTo(34, 45);
       ctx.stroke();
     }
-  } else if (f.technique === "blackleg") {
+  } else if (f.technique === "blackleg" && skinOf(f) === "default") {
     // SANJI_PATCH: black double-breasted suit over a blue shirt with a
     // dark tie - lapels open in a V at the chest.
+    // SKINS_PATCH: alt Sanji skins fully replace the torso via the overlay.
     ctx.fillStyle = "#5f89b8";
     ctx.beginPath();
     ctx.moveTo(20, 37);
@@ -19639,9 +20070,10 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.arc(21.5, 70, 1.1, 0, Math.PI * 2);
     ctx.arc(32.5, 70, 1.1, 0, Math.PI * 2);
     ctx.fill();
-  } else if (f.technique === "hivemind") {
+  } else if (f.technique === "hivemind" && skinOf(f) === "default") {
     // VECNA_PATCH + LIKENESS_PATCH: exposed torso musculature - carved
     // pectoral/ab shading and deep recesses - laced with the black vines
+    // SKINS_PATCH: creel + season4 skins replace the vine-covered chest.
     // that wrap Vecna's whole body.
     // carved muscle shading
     ctx.fillStyle = "rgba(40, 16, 14, 0.55)";
@@ -19689,7 +20121,8 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.moveTo(17, 52); ctx.quadraticCurveTo(22, 54, 21, 60);
     ctx.moveTo(37, 53); ctx.quadraticCurveTo(32, 55, 33, 61);
     ctx.stroke();
-  } else if (f.technique === "spider") {
+  } else if (f.technique === "spider" && skinOf(f) === "default") {
+    // SKINS_PATCH: alt Spider skins draw their own chest fully in the overlay.
     // SPIDER_PATCH: red torso with the black web lines and the blue lower
     // torso, plus the chest spider emblem.
     ctx.fillStyle = "#1e3a8a";
@@ -19728,9 +20161,10 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.moveTo(30, 47); ctx.lineTo(35, 47);
     ctx.moveTo(30, 50); ctx.lineTo(34, 53);
     ctx.stroke();
-  } else if (f.technique === "beast") {
+  } else if (f.technique === "beast" && !isAko(f)) {
     // INOSUKE_PATCH: bare, cut torso (the whole torso is already tan skin)
     // with carved pec/ab shading, and the blue-grey hakama waistband.
+    // SKINS_PATCH: Ako's kimono covers the chest entirely, so skip.
     ctx.fillStyle = "rgba(120, 84, 54, 0.5)";
     // sternum line
     ctx.beginPath();
@@ -20426,6 +20860,55 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     };
     lens(22, -1);
     lens(30, 1);
+  } else if (f.technique === "beast" && beastSuppressBoar(f)) {
+    // SKINS_PATCH: Unmasked / Ako drop the boar mask - Inosuke's actual face
+    // (still no eyes/mouth per style rules) is drawn instead.
+    const isAkoSkin = isAko(f);
+    // wild hair puff around the head
+    ctx.fillStyle = isAkoSkin ? "#141014" : skin.hair;
+    if (isAkoSkin) {
+      // hair pulled up into two decorated buns (nicknamed 'chiri' in show)
+      ctx.beginPath(); ctx.arc(15, 8, 5.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(39, 8, 5.5, 0, Math.PI * 2); ctx.fill();
+      // gold hairpins in each bun
+      ctx.fillStyle = "#e0b23a";
+      ctx.beginPath(); ctx.arc(15, 8, 1.6, 0, Math.PI * 2); ctx.arc(39, 8, 1.6, 0, Math.PI * 2); ctx.fill();
+      // rear hair cap between the buns
+      ctx.fillStyle = "#141014";
+      ctx.beginPath();
+      ctx.moveTo(15, 12); ctx.quadraticCurveTo(27, 4, 39, 12); ctx.quadraticCurveTo(35, 18, 27, 18); ctx.quadraticCurveTo(19, 18, 15, 12);
+      ctx.closePath(); ctx.fill();
+    } else {
+      // messy long wild hair
+      ctx.beginPath();
+      ctx.moveTo(9, 26);
+      ctx.lineTo(8, 6); ctx.lineTo(15, 14); ctx.lineTo(14, 0); ctx.lineTo(22, 10); ctx.lineTo(22, -3); ctx.lineTo(28, 8); ctx.lineTo(32, -2); ctx.lineTo(34, 10); ctx.lineTo(40, 4); ctx.lineTo(39, 14); ctx.lineTo(46, 8);
+      ctx.lineTo(45, 26);
+      ctx.quadraticCurveTo(37, 20, 27, 22); ctx.quadraticCurveTo(17, 20, 9, 26);
+      ctx.closePath(); ctx.fill();
+    }
+    // eyebrows (small, if not Ako - Ako gets the makeup brows drawn below)
+    if (!isAkoSkin) {
+      ctx.strokeStyle = "rgba(0,0,0,0.7)"; ctx.lineWidth = 1.6; ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(17, 22); ctx.quadraticCurveTo(21, 20.5, 24, 22);
+      ctx.moveTo(29, 22); ctx.quadraticCurveTo(32, 20.5, 36, 22);
+      ctx.stroke();
+    }
+    if (isAkoSkin) {
+      // kabuki-white face already via palette. Add red cheek circles + tiny
+      // rosebud lip patch (a marking, not a mouth) + delicate red brows.
+      ctx.fillStyle = "rgba(224, 80, 90, 0.85)";
+      ctx.beginPath(); ctx.arc(15, 26, 3.2, 0, Math.PI * 2); ctx.arc(39, 26, 3.2, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#c1121f";
+      ctx.beginPath(); ctx.ellipse(27, 32, 1.6, 1.2, 0, 0, Math.PI * 2); ctx.fill();
+      // painted brows
+      ctx.strokeStyle = "#c1121f"; ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(17, 21); ctx.quadraticCurveTo(21, 19, 24, 21);
+      ctx.moveTo(30, 21); ctx.quadraticCurveTo(33, 19, 37, 21);
+      ctx.stroke();
+    }
   } else if (f.technique === "beast") {
     // INOSUKE_PATCH: the boar-head mask worn over the head (a headpiece,
     // like the dummy's markings - the mask's own tusks/snout/eye-holes,
@@ -20879,8 +21362,12 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       ctx.lineTo(hand.x, hand.y);
       ctx.stroke();
     };
-    if (useOutline) strokeArm("#020617", 13);
-    strokeArm(color, 8);
+    // SKINS_PATCH: Shibuya's jacket sleeves are chunkier than a bare arm - the
+    // outline widens with the sleeve so it stays crisp at the thicker width.
+    const outlineW = shibuyaSleeve && f.technique === "shrine" ? 15 : 13;
+    const fillW    = shibuyaSleeve && f.technique === "shrine" ? 11 : 8;
+    if (useOutline) strokeArm("#020617", outlineW);
+    strokeArm(color, fillW);
     if (isShrineArm) {
       // SUKUNA_ARM_BAND_PATCH: two solid tattoo rings around each upper
       // arm (drawn perpendicular to the shoulder-elbow segment), matching
@@ -22007,99 +22494,183 @@ function drawSukunaModelCleanup(f) {
 
 // VECNA_PATCH: demobats and demodogs - brawler art style, black outlines,
 // no faces (the demodog's petal head stays closed).
+// VECNA_MINION_DRAW_PATCH: bigger, animated demobats + demodogs. Both draw
+// over fighters (call site places drawVecnaMinions after drawFighter) so they
+// stay visible mid-fight; both flash an attack pose when biting, and the
+// demodog's petal head opens into a four-petal maw when it's near its target.
 function drawVecnaMinions() {
   for (const m of vecnaMinions) {
     const flash = m.hitCooldown > 12;
+    const attacking = (m.atkTick || 0) > 0;
     ctx.save();
     if (m.kind === "bat") {
-      const flap = Math.sin(frame * 0.55 + m.wob) * 7;
+      const flap = Math.sin(frame * 0.55 + m.wob) * 10;
       const dir = Math.sign(m.vx) || 1;
       ctx.translate(m.x, m.y);
       ctx.scale(dir, 1);
-      // wings
-      ctx.fillStyle = flash ? "#7f5a5a" : "#241418";
+      // scale up + lunge forward briefly on attack
+      const lunge = attacking ? 4 : 0;
+      ctx.translate(lunge, 0);
+      const s = 1.5; // BIGGER
+      ctx.scale(s, s);
+      // wings - larger + flappier
+      ctx.fillStyle = flash ? "#7f5a5a" : "#1a0d12";
       ctx.strokeStyle = "#020617";
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 1.6;
       ctx.beginPath();
       ctx.moveTo(-3, 0);
-      ctx.quadraticCurveTo(-13, -6 - flap, -19, 2 - flap);
-      ctx.quadraticCurveTo(-12, 3, -4, 4);
+      ctx.quadraticCurveTo(-15, -8 - flap, -22, 4 - flap);
+      ctx.quadraticCurveTo(-18, 6, -14, 5);
+      ctx.quadraticCurveTo(-10, 3, -4, 4);
       ctx.closePath();
       ctx.moveTo(3, 0);
-      ctx.quadraticCurveTo(13, -6 + flap, 19, 2 + flap);
-      ctx.quadraticCurveTo(12, 3, 4, 4);
+      ctx.quadraticCurveTo(15, -8 + flap, 22, 4 + flap);
+      ctx.quadraticCurveTo(18, 6, 14, 5);
+      ctx.quadraticCurveTo(10, 3, 4, 4);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
       // body
       ctx.fillStyle = flash ? "#9c6b6b" : "#33191f";
       ctx.beginPath();
-      ctx.ellipse(0, 0, 6.5, 4.6, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, 0, 7, 5, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
-      ctx.fillStyle = "#7f1d1d";
+      // ears
+      ctx.fillStyle = "#231018";
+      ctx.beginPath();
+      ctx.moveTo(-4, -4); ctx.lineTo(-6, -8); ctx.lineTo(-2, -5);
+      ctx.moveTo(4, -4); ctx.lineTo(6, -8); ctx.lineTo(2, -5);
+      ctx.fill();
+      // open jaws / fangs on attack
+      if (attacking || m.openMouth) {
+        ctx.fillStyle = "#0a0206";
+        ctx.beginPath();
+        // maw opens forward (+x)
+        ctx.moveTo(5, -1);
+        ctx.lineTo(11 + (attacking ? 3 : 0), -3);
+        ctx.lineTo(12 + (attacking ? 3 : 0), 3);
+        ctx.lineTo(5, 2);
+        ctx.closePath();
+        ctx.fill();
+        // fangs
+        ctx.fillStyle = "#f5f0e8";
+        ctx.beginPath();
+        ctx.moveTo(7, -1); ctx.lineTo(9, 1); ctx.lineTo(8, 2); ctx.closePath();
+        ctx.moveTo(9, -1); ctx.lineTo(11, 1); ctx.lineTo(10, 2); ctx.closePath();
+        ctx.fill();
+      }
+      // small red glow on the head (Vecna's mark)
+      ctx.fillStyle = "rgba(127, 29, 29, 0.85)";
       ctx.beginPath();
       ctx.ellipse(2, -1, 2, 1.4, 0, 0, Math.PI * 2);
       ctx.fill();
     } else {
       const dir = Math.sign(m.vx) || 1;
-      const lope = m.state === "hunt" ? Math.sin(frame * 0.5) * 4 : 0;
+      const lope = m.state === "hunt" ? Math.sin(frame * 0.5) * 5 : 0;
       ctx.translate(m.x, m.y);
       ctx.scale(dir, 1);
-      // legs
+      const s = 1.7; // BIGGER demodog
+      ctx.scale(s, s);
+      // legs (dark)
       ctx.strokeStyle = "#020617";
-      ctx.lineWidth = 7;
+      ctx.lineWidth = 5;
       ctx.lineCap = "round";
       ctx.beginPath();
-      ctx.moveTo(-12, 4);
-      ctx.lineTo(-15 - lope * 0.5, 15);
-      ctx.moveTo(-4, 5);
-      ctx.lineTo(-5 + lope * 0.5, 15);
-      ctx.moveTo(5, 5);
-      ctx.lineTo(4 - lope * 0.5, 15);
-      ctx.moveTo(12, 4);
-      ctx.lineTo(15 + lope * 0.5, 15);
+      ctx.moveTo(-12, 4); ctx.lineTo(-15 - lope * 0.5, 15);
+      ctx.moveTo(-4, 5);  ctx.lineTo(-5 + lope * 0.5, 15);
+      ctx.moveTo(5, 5);   ctx.lineTo(4 - lope * 0.5, 15);
+      ctx.moveTo(12, 4);  ctx.lineTo(15 + lope * 0.5, 15);
       ctx.stroke();
+      // leg fills
       ctx.strokeStyle = flash ? "#9c6b6b" : "#3b2026";
-      ctx.lineWidth = 4;
+      ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.moveTo(-12, 4);
-      ctx.lineTo(-15 - lope * 0.5, 14);
-      ctx.moveTo(-4, 5);
-      ctx.lineTo(-5 + lope * 0.5, 14);
-      ctx.moveTo(5, 5);
-      ctx.lineTo(4 - lope * 0.5, 14);
-      ctx.moveTo(12, 4);
-      ctx.lineTo(15 + lope * 0.5, 14);
+      ctx.moveTo(-12, 4); ctx.lineTo(-15 - lope * 0.5, 14);
+      ctx.moveTo(-4, 5);  ctx.lineTo(-5 + lope * 0.5, 14);
+      ctx.moveTo(5, 5);   ctx.lineTo(4 - lope * 0.5, 14);
+      ctx.moveTo(12, 4);  ctx.lineTo(15 + lope * 0.5, 14);
       ctx.stroke();
       // body
       ctx.fillStyle = flash ? "#9c6b6b" : "#3b2026";
       ctx.strokeStyle = "#020617";
-      ctx.lineWidth = 2.4;
+      ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.ellipse(0, 0, 19, 9, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
-      // closed petal head - jagged bud, no face
-      ctx.fillStyle = flash ? "#b98484" : "#4d262d";
+      // tail whipping behind
+      ctx.strokeStyle = "#231018";
+      ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.moveTo(14, -5);
-      ctx.lineTo(24, -8);
-      ctx.lineTo(27, -2);
-      ctx.lineTo(28, 4);
-      ctx.lineTo(22, 7);
-      ctx.lineTo(15, 5);
-      ctx.closePath();
-      ctx.fill();
+      ctx.moveTo(-18, -1);
+      ctx.quadraticCurveTo(-26, -6 - Math.sin(frame * 0.3) * 4, -30, 2);
       ctx.stroke();
-      ctx.strokeStyle = "rgba(127, 29, 29, 0.85)";
-      ctx.lineWidth = 1.6;
-      ctx.beginPath();
-      ctx.moveTo(24, -7);
-      ctx.lineTo(23, 6);
-      ctx.moveTo(20, -6);
-      ctx.lineTo(19, 6);
-      ctx.stroke();
+      // ---- petal head: closed bud when far, open 4-petal maw when close ----
+      const open = m.openMouth || attacking;
+      const petalCol = flash ? "#b98484" : "#4d262d";
+      const innerCol = "#0a0206";
+      if (!open) {
+        // closed bud - jagged pointed silhouette forward
+        ctx.fillStyle = petalCol;
+        ctx.beginPath();
+        ctx.moveTo(14, -6);
+        ctx.lineTo(24, -8);
+        ctx.lineTo(28, -2);
+        ctx.lineTo(29, 4);
+        ctx.lineTo(23, 8);
+        ctx.lineTo(15, 5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        // seam lines showing the bud is sealed
+        ctx.strokeStyle = "rgba(127, 29, 29, 0.85)";
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(24, -8); ctx.lineTo(23, 8);
+        ctx.moveTo(20, -7); ctx.lineTo(19, 7);
+        ctx.stroke();
+      } else {
+        // open four-petal maw - petals splay out and reveal a dark throat
+        const spread = attacking ? 1.15 : 1;
+        // dark throat
+        ctx.fillStyle = innerCol;
+        ctx.beginPath();
+        ctx.ellipse(22, 0, 6, 5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // upper petal
+        ctx.fillStyle = petalCol;
+        ctx.beginPath();
+        ctx.moveTo(15, -1);
+        ctx.lineTo(21, -10 * spread);
+        ctx.lineTo(28, -7 * spread);
+        ctx.lineTo(24, -1);
+        ctx.closePath();
+        ctx.fill(); ctx.stroke();
+        // lower petal
+        ctx.beginPath();
+        ctx.moveTo(15, 1);
+        ctx.lineTo(21, 10 * spread);
+        ctx.lineTo(28, 7 * spread);
+        ctx.lineTo(24, 1);
+        ctx.closePath();
+        ctx.fill(); ctx.stroke();
+        // side petals (front-most)
+        ctx.beginPath();
+        ctx.moveTo(20, -3);
+        ctx.lineTo(30 * spread, -5);
+        ctx.lineTo(32 * spread, 0);
+        ctx.lineTo(30 * spread, 5);
+        ctx.lineTo(20, 3);
+        ctx.closePath();
+        ctx.fill(); ctx.stroke();
+        // fangs
+        ctx.fillStyle = "#f5f0e8";
+        ctx.beginPath();
+        ctx.moveTo(20, -2); ctx.lineTo(24, 0); ctx.lineTo(20, 2); ctx.closePath();
+        ctx.moveTo(28 * spread, -3); ctx.lineTo(24, 0); ctx.lineTo(28 * spread, 3); ctx.closePath();
+        ctx.fill();
+      }
     }
     ctx.restore();
   }
@@ -22349,7 +22920,9 @@ function drawSpiderMarks() {
 }
 
 function drawEffects() {
-  drawVecnaMinions(); // VECNA_PATCH
+  // VECNA_MINION_DRAW_PATCH: minions now render OVER fighters (see draw()),
+  // so they aren't hidden behind the target mid-attack. Kept out of the
+  // pre-fighter effects pass on purpose.
   drawZealotUnits(); // ZEALOT_PATCH
   drawOrbitalBeams(); // ZEALOT_PATCH
   drawSpiderMarks(); // SPIDER_PATCH
@@ -23856,6 +24429,7 @@ function draw() {
   if (stageHazardsEnabled) drawStageHazards(); // STAGE_SELECT_PATCH (behind fighters)
   drawFighter(player, getPlayerLabel(), getPlayerLabelColor());
   drawFighter(enemy, getEnemyLabel(), getEnemyLabelColor());
+  drawVecnaMinions(); // VECNA_MINION_DRAW_PATCH: over fighters
   drawUpsideDownSpider(); // VECNA_PATCH
   drawTechniqueAimSizePreview();
   drawShieldBreakEffects();
