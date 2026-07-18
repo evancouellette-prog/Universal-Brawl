@@ -2076,13 +2076,23 @@ const VECNA_SPIDER_PIN_TICKS = 60;
 // ZEALOT_PATCH: Protoss Zealot - fast melee rushdown with a regenerating
 // energy shield, no ranged attacks. Cyan/gold theme.
 const ZEALOT_MOVE_MULTIPLIER = 1.16;
-const ZEALOT_SHIELD_FRACTION = 0.25;
-const ZEALOT_SHIELD_REGEN_DELAY = 5 * 60;
-const ZEALOT_SHIELD_REGEN_RATE = 0.5;
+// ZEALOT_OVERSHIELD_PATCH:
+// - Shield sits on top of HP as a full HP-bar-worth of soak.
+// - Damage hits the shield first; only overflow reaches HP.
+// - Recharge waits 2.5 seconds after any shield hit, then refills at
+//   1% per 0.1 seconds (10% per second). Any new hit resets the delay
+//   and stops the tick immediately.
+const ZEALOT_SHIELD_FRACTION = 1 / 5; // 1 HP bar = 1/healthBars = 108/540 for Zealot
+const ZEALOT_SHIELD_REGEN_DELAY = Math.round(2.5 * 60); // 150 ticks
+const ZEALOT_SHIELD_REGEN_PER_TICK_FRACTION = 1 / 600; // 1% per 6 ticks
+let ZEALOT_SHIELD_REGEN_RATE = 0.5; // legacy; recomputed per fighter
 const ZEALOT_CHARGE_COOLDOWN_TICKS = 10 * 60;
+// ZEALOT_BUFF_PATCH: Charge + Whirlwind were reading as tickle-taps. Buffed
+// Charge damage 20 -> 34, and Whirlwind per-tick damage 5 -> 9 (interval also
+// slightly shorter so it feels like a real shred, not chip).
 const ZEALOT_CHARGE_TICKS = 20;
 const ZEALOT_CHARGE_SPEED = 16;
-const ZEALOT_CHARGE_DAMAGE = 20;
+const ZEALOT_CHARGE_DAMAGE = 34;
 const ZEALOT_CHARGE_STUN = 30;
 const ZEALOT_FLURRY_COOLDOWN_TICKS = 8 * 60;
 const ZEALOT_FLURRY_TICKS = 40;
@@ -2092,9 +2102,13 @@ const ZEALOT_FLURRY_RANGE = 78;
 const ZEALOT_FLURRY_LAUNCH_KNOCKBACK = 34;
 const ZEALOT_WHIRL_COOLDOWN_TICKS = 14 * 60;
 const ZEALOT_WHIRL_TICKS = 54;
-const ZEALOT_WHIRL_HIT_INTERVAL = 8;
-const ZEALOT_WHIRL_HIT_DAMAGE = 5;
-const ZEALOT_WHIRL_RADIUS = 76;
+const ZEALOT_WHIRL_HIT_INTERVAL = 6;
+const ZEALOT_WHIRL_HIT_DAMAGE = 9;
+const ZEALOT_WHIRL_RADIUS = 80;
+// ZEALOT_WHIRL_PULL_PATCH: when Whirlwind lands a hit, drag the target in
+// toward Zealot's center instead of knocking them out - so they eat multiple
+// ticks of the sweep instead of a single chip and a launch.
+const ZEALOT_WHIRL_PULL_STRENGTH = 4.5; // px/tick toward Zealot's center
 const ZEALOT_ULT_TICKS = 15 * 60;
 const ZEALOT_WARP_INTERVAL = 3 * 60;
 const ZEALOT_UNIT_LIFE = 6 * 60;
@@ -3255,6 +3269,25 @@ function getAttackSpec(f, type = f.attacking) {
       attack.windup += 5;
       attack.recovery += 6;
       attack.knockback += 8;
+    }
+  }
+  // ZEALOT_SWORD_PATCH: Zealot swings TWIN PSI BLADES, not fists. The light
+  // and heavy attacks bite harder, cover more range, and their timing is
+  // tuned for a cleaner slash cadence.
+  if (f.technique === "zealot" && type !== "backThrow") {
+    if (type === "light") {
+      attack.damage += 8;      // 5 -> 13
+      attack.range += 14;      // more sword reach
+      attack.width += 6;
+      attack.knockback += 2;
+      attack.windup += 1;
+    } else if (type === "heavy") {
+      attack.damage += 18;     // 18 -> 36
+      attack.range += 22;
+      attack.width += 14;
+      attack.knockback += 7;
+      attack.windup += 2;
+      attack.recovery += 2;
     }
   }
   if (isDomainVictim(f, "unlimitedVoid") && type !== "backThrow") {
@@ -6869,9 +6902,10 @@ function getExtraCooldownItems(f) {
     return items;
   }
 
-  // ZEALOT_PATCH: Protoss shield gauge + ultimate timer, nothing JJK.
+  // ZEALOT_PATCH: shield now renders as a big bar above HP (see
+  // ensureZealotShieldBar / updateZealotShieldBar). Skip the extra-cooldown
+  // row entirely; only surface WARP if ult is up.
   if (f.technique === "zealot") {
-    items.push({ name: "SHIELDS", current: f.zealotShield || 0, max: f.zealotShieldMax || 1, mode: "resource", style: "zealot-shield-meter" });
     if ((f.zealotUltTicks || 0) > 0) {
       items.push({ name: "WARP", current: f.zealotUltTicks, max: ZEALOT_ULT_TICKS, mode: "active" });
     }
@@ -7129,13 +7163,73 @@ function updateLightHudVisibility() {
   updateResourceBarLabels();
 }
 
+// ZEALOT_OVERSHIELD_PATCH: mount a big HP-sized shield bar just above each
+// fighter's HP bar. It's dark-blue, only rendered when the fighter is Zealot,
+// and it visually mirrors the segmented-health frame size so it reads as
+// exactly one extra HP bar of soak.
+function ensureZealotShieldBar(fighterEl, side) {
+  if (!fighterEl) return null;
+  const frame = fighterEl.closest(".health-frame") || fighterEl;
+  const host = frame.parentNode;
+  if (!host) return null;
+  let bar = host.querySelector(":scope > .zealot-shield-bar." + side);
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.className = "zealot-shield-bar " + side;
+    bar.innerHTML = '<div class="zsb-fill"></div><span class="zsb-label">SHIELD</span>';
+    host.insertBefore(bar, frame);
+  }
+  return bar;
+}
+function injectZealotShieldStyle() {
+  if (document.getElementById("zealotShieldStyle")) return;
+  const s = document.createElement("style");
+  s.id = "zealotShieldStyle";
+  s.textContent = `
+    .zealot-shield-bar { display: none; position: relative; height: 22px; margin: 0 0 4px;
+      border: 2px solid #3f6ff0; background: #05122e; overflow: hidden;
+      box-shadow: 0 3px 0 rgba(0,0,0,0.25); border-radius: 2px; }
+    .zealot-shield-bar.show { display: block; }
+    .zealot-shield-bar .zsb-fill { width: 0%; height: 100%;
+      background: linear-gradient(90deg, #0a1f6e, #1b3fc4, #3f6ff0);
+      box-shadow: 0 0 10px rgba(43, 95, 240, 0.55), inset 0 1px 0 rgba(180, 205, 255, 0.35);
+      transition: width 120ms linear; }
+    .zealot-shield-bar .zsb-label { position: absolute; inset: 0; display: flex;
+      align-items: center; justify-content: center;
+      font: 800 10px system-ui, sans-serif; letter-spacing: .12em;
+      color: #dbe6ff; text-shadow: 0 1px 2px rgba(0,0,0,0.8); pointer-events: none; }
+    .zealot-shield-bar.right .zsb-fill { margin-left: auto; }
+    .zealot-shield-bar.charging { border-color: rgba(63, 111, 240, 0.4); opacity: 0.75; }
+    .zealot-shield-bar.charging .zsb-fill { animation: zsbPulse 1s ease-in-out infinite; }
+    @keyframes zsbPulse { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.5); } }
+  `;
+  document.head.appendChild(s);
+}
+function updateZealotShieldBar(fighterEl, f, side) {
+  const bar = ensureZealotShieldBar(fighterEl, side);
+  if (!bar) return;
+  const isZ = f && f.technique === "zealot";
+  bar.classList.toggle("show", Boolean(isZ));
+  if (!isZ) return;
+  const max = f.zealotShieldMax || 1;
+  const cur = f.zealotShield || 0;
+  const ratio = Math.max(0, Math.min(1, cur / max));
+  const fill = bar.querySelector(".zsb-fill");
+  if (fill) fill.style.width = `${ratio * 100}%`;
+  const charging = (f.zealotShieldRegenTimer || 0) === 0 && cur < max;
+  bar.classList.toggle("charging", charging);
+}
+
 function updateHud() {
   updatePlayerNameLabels();
   updateResourceBarLabels();
+  injectZealotShieldStyle();
   enemyNameEl.classList.toggle("player-two-name", gameMode !== "cpu");
   enemyNameEl.classList.toggle("cpu-name", gameMode === "cpu");
   renderSegmentedHealth(playerHealthEl, player);
   renderSegmentedHealth(enemyHealthEl, enemy);
+  updateZealotShieldBar(playerHealthEl, player, "left");
+  updateZealotShieldBar(enemyHealthEl, enemy, "right");
   const playerInfoRatio = isLight(player) ? Math.max(0, Math.min(1, (player.informationMeter || 0) / LIGHT_INFO_MAX)) : player.technique === "jiji" ? Math.max(0, Math.min(1, (player.jijiRage || 0) / RAGE_MAX)) : player.technique === "david" ? Math.max(0, Math.min(1, (player.davidLoad || 0) / DAVID_LOAD_MAX)) : player.technique === "akira" ? Math.max(0, Math.min(1, (player.akiraWork || 0) / AKIRA_WORK_MAX)) : Math.max(0, player.ce / player.maxCe);
   const enemyInfoRatio = isLight(enemy) ? Math.max(0, Math.min(1, (enemy.informationMeter || 0) / LIGHT_INFO_MAX)) : enemy.technique === "jiji" ? Math.max(0, Math.min(1, (enemy.jijiRage || 0) / RAGE_MAX)) : enemy.technique === "david" ? Math.max(0, Math.min(1, (enemy.davidLoad || 0) / DAVID_LOAD_MAX)) : enemy.technique === "akira" ? Math.max(0, Math.min(1, (enemy.akiraWork || 0) / AKIRA_WORK_MAX)) : Math.max(0, enemy.ce / enemy.maxCe);
   const playerNameRatio = isLight(player) ? Math.max(0, Math.min(1, (player.identityProgress || 0) / LIGHT_IDENTITY_MAX)) : Math.max(0, Math.min(1, (player.ultimateMeter || 0) / 100));
@@ -9017,7 +9111,10 @@ function canStartZealotSpecial(f) {
   );
 }
 
-// Shields regenerate after 5s of not taking damage; HP never regenerates.
+// ZEALOT_OVERSHIELD_PATCH:
+// - The shield ticks pause entirely while the delay timer is running.
+// - When it does regen it's 1% of shield-max per 6 ticks (10%/sec).
+// - Ult doubles the regen rate as before.
 function updateZealotShield(f) {
   if (!isZealot(f)) return;
   if ((f.zealotShieldBrokenFlash || 0) > 0) f.zealotShieldBrokenFlash -= 1;
@@ -9026,7 +9123,8 @@ function updateZealotShield(f) {
     return;
   }
   if ((f.zealotShield || 0) < (f.zealotShieldMax || 0)) {
-    f.zealotShield = Math.min(f.zealotShieldMax, (f.zealotShield || 0) + ZEALOT_SHIELD_REGEN_RATE * (zealotUltActive(f) ? 2 : 1));
+    const perTick = (f.zealotShieldMax || 0) * ZEALOT_SHIELD_REGEN_PER_TICK_FRACTION * (zealotUltActive(f) ? 2 : 1);
+    f.zealotShield = Math.min(f.zealotShieldMax, (f.zealotShield || 0) + perTick);
   }
 }
 
@@ -9159,6 +9257,18 @@ function updateZealotWhirlwind(f, opponent) {
       spawnHitSpark(p.x, p.y, p.dir, "block");
     }
   }
+  // ZEALOT_WHIRL_PULL_PATCH: while the spin is active, drag any grounded
+  // opponent inside the ring toward Zealot's center every tick. Multiple
+  // sweep ticks then land before they can escape.
+  if (opponent && !opponent.ko && !opponent.knockdown && !isUntargetable(opponent) && opponent.dodging <= 0) {
+    const oc = getFighterCenter(opponent);
+    const dx = center.x - oc.x;
+    const dist = Math.abs(dx);
+    if (dist > 8 && dist < ZEALOT_WHIRL_RADIUS + 40 && Math.abs(oc.y - center.y) < 90) {
+      opponent.vx += Math.sign(dx) * ZEALOT_WHIRL_PULL_STRENGTH * 0.6;
+      opponent.x  += Math.sign(dx) * ZEALOT_WHIRL_PULL_STRENGTH;
+    }
+  }
   f.zealotWhirlNextHit -= 1;
   if (f.zealotWhirlNextHit <= 0) {
     f.zealotWhirlNextHit = ZEALOT_WHIRL_HIT_INTERVAL;
@@ -9172,7 +9282,10 @@ function updateZealotWhirlwind(f, opponent) {
         applyFighterDamage(opponent, damage);
         opponent.hurt = Math.max(opponent.hurt, 5);
         opponent.stun = Math.max(opponent.stun, 6);
-        opponent.vx = Math.sign(getFighterCenter(opponent).x - center.x || 1) * getTakenKnockback(opponent, 10);
+        // ZEALOT_WHIRL_PULL_PATCH: no more knockback out of the ring - drag
+        // them INTO the center instead so the next sweep tick can land.
+        const inward = Math.sign(getFighterCenter(opponent).x - center.x) || f.dir;
+        opponent.vx = -inward * 3;
         gainUltimate(f, damage * ULT_DAMAGE_GAIN_SCALE * 0.6);
       }
       const c = getFighterCenter(opponent);
@@ -14639,7 +14752,8 @@ function updateHitSparks() {
 function updatePlayer() {
   if (gameOver) return;
   updateBluePunchCharge(player, isPressed("t", "keyt"));
-  const canControl = player.stun <= 0 && !player.knockdown && (!isMovementLocked(player) || player.ultimateAiming);
+  // ZEALOT_WHIRL_MOVE_PATCH: Whirlwind lets Zealot chase the target during the spin.
+const canControl = player.stun <= 0 && !player.knockdown && (!isMovementLocked(player) || player.ultimateAiming || (player.zealotWhirlTicks || 0) > 0);
   setShielding(player, isPressed("q", "keyq"));
   setRctHealing(player, isPressed("r", "keyr"));
 
@@ -14665,7 +14779,8 @@ function updatePlayer() {
 function updateRivalPlayer() {
   if (gameOver) return;
   updateBluePunchCharge(enemy, false);
-  const canControl = enemy.stun <= 0 && !enemy.knockdown && (!isMovementLocked(enemy) || enemy.ultimateAiming);
+  // ZEALOT_WHIRL_MOVE_PATCH: Whirlwind lets Zealot chase the target during the spin.
+  const canControl = enemy.stun <= 0 && !enemy.knockdown && (!isMovementLocked(enemy) || enemy.ultimateAiming || (enemy.zealotWhirlTicks || 0) > 0);
   setShielding(enemy, isPressed("p", "keyp"));
 
   if (canControl && enemy.dodging <= 0 && !enemy.blocking) {
@@ -17430,31 +17545,40 @@ function drawSkinOutfitOverlay(f, skinColor) {
     return;
   }
 
-  // ---- Zealot: Purifier (white/orange sleek robotic) ----
+  // ---- Zealot: Purifier (sleek white/BLUE robotic) ----
   if (f.technique === "zealot" && skin === "purifier") {
     // white plated torso
-    ctx.fillStyle = "#e9ecf1"; ctx.strokeStyle = "#5a5f68"; ctx.lineWidth = 1.5;
+    ctx.fillStyle = "#eef1f6"; ctx.strokeStyle = "#5a5f68"; ctx.lineWidth = 1.5;
     traceTorsoShape(38, 92); ctx.fill(); ctx.stroke();
-    // grey undersuit strip down the middle
-    ctx.fillStyle = "#8a939a";
+    // pale grey undersuit strip down the middle
+    ctx.fillStyle = "#b6bdc8";
     ctx.beginPath();
     ctx.moveTo(24, 42); ctx.lineTo(30, 42); ctx.quadraticCurveTo(31, 64, 30, 84); ctx.lineTo(24, 84); ctx.quadraticCurveTo(23, 64, 24, 42);
     ctx.closePath(); ctx.fill();
-    // bright orange energy lines
+    // BLUE psionic energy lines (Purifier are blue, not orange)
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
-    ctx.strokeStyle = "#ff7a1a"; ctx.lineWidth = 2.4; ctx.lineCap = "round";
+    ctx.strokeStyle = "#3fa9ff"; ctx.lineWidth = 2.4; ctx.lineCap = "round";
     ctx.beginPath();
     ctx.moveTo(14, 46); ctx.lineTo(20, 66);
     ctx.moveTo(40, 46); ctx.lineTo(34, 66);
     ctx.moveTo(27, 44); ctx.lineTo(27, 82);
     ctx.stroke();
+    // secondary softer glow
+    ctx.strokeStyle = "rgba(140, 200, 255, 0.6)"; ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(27, 44); ctx.lineTo(27, 82);
+    ctx.stroke();
     ctx.restore();
-    // orange chest core
-    ctx.fillStyle = "#ff9a3a"; ctx.strokeStyle = "#7a3400";
-    ctx.beginPath(); ctx.arc(27, 58, 4, 0, PI2); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = "#fff2b0";
-    ctx.beginPath(); ctx.arc(27, 58, 1.5, 0, PI2); ctx.fill();
+    // blue chest core with white hot center
+    ctx.fillStyle = "#3fa9ff"; ctx.strokeStyle = "#0a3a70";
+    ctx.beginPath(); ctx.arc(27, 58, 4.4, 0, PI2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#eaf5ff";
+    ctx.beginPath(); ctx.arc(27, 58, 1.8, 0, PI2); ctx.fill();
+    // pale silver shoulder plates
+    ctx.fillStyle = "#dfe5ec"; ctx.strokeStyle = "#5a5f68"; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.ellipse(10, 44, 7, 5, -0.3, 0, PI2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(44, 44, 7, 5, 0.3, 0, PI2); ctx.fill(); ctx.stroke();
     return;
   }
 
@@ -17653,9 +17777,14 @@ function applySkinPalette(f, pal) {
   } else if (f.technique === "spider" && skin === "iron") {
     pal.body = "#c1121f"; pal.accent = "#f0c94a"; pal.pants = "#c1121f"; pal.shoe = "#f0c94a";
   } else if (f.technique === "zealot" && skin === "purifier") {
-    pal.body = "#e9ecf1"; pal.accent = "#ff7a1a"; pal.pants = "#c7ccd3"; pal.shoe = "#7f8590";
+    // SKINS_PATCH: Purifier faction reads as WHITE armor with bright BLUE
+    // psionic accents in the Remastered art. Corrected from the earlier
+    // orange placeholder.
+    pal.body = "#eef1f6"; pal.accent = "#3fa9ff"; pal.pants = "#c7ccd3"; pal.shoe = "#7f8590"; pal.mark = "#7dd4ff"; pal.eye = "#7dd4ff";
   } else if (f.technique === "zealot" && skin === "taldarim") {
-    pal.body = "#3a3238"; pal.accent = "#c1121f"; pal.pants = "#231e22"; pal.shoe = "#1a1418"; pal.mark = "#ef4444"; pal.eye = "#ef4444";
+    // Tal'darim: near-black armor plated over deeper black with GLOWING RED
+    // psionic seams and blood-red pauldrons.
+    pal.body = "#231b1e"; pal.accent = "#ef4444"; pal.pants = "#100b0d"; pal.shoe = "#0a0507"; pal.mark = "#ff5252"; pal.eye = "#ff5252";
   } else if (f.technique === "hivemind" && skin === "creel") {
     pal.skin = "#f0d0b0"; pal.body = "#f2f4f6"; pal.accent = "#8a939a"; pal.pants = "#e6e8ec"; pal.shoe = "#1a1a20"; pal.hair = "#6a4a2c";
   } else if (f.technique === "hivemind" && skin === "season4") {
@@ -19433,8 +19562,12 @@ function drawZealotAbilityFx(f) {
     ctx.globalAlpha = 1;
     ctx.restore();
     // fresh warp-in double ring for the first moments of the ult
-    if ((f.zealotWarpTimer || 0) > 0) {
-      const wt = 1 - (f.zealotWarpTimer || 0) / 40;
+    // ZEALOT_WARP_RING_CRASH_FIX: warpTimer resets to ZEALOT_WARP_INTERVAL
+    // (180) between waves, which sent wt negative and the ellipse radius to
+    // -190 (crash). Only animate the ring during the last 40 ticks of the
+    // countdown and clamp wt to [0,1].
+    if ((f.zealotWarpTimer || 0) > 0 && (f.zealotWarpTimer || 0) <= 40) {
+      const wt = Math.max(0, Math.min(1, 1 - (f.zealotWarpTimer || 0) / 40));
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
       ctx.strokeStyle = TEAL(0.7 * (1 - wt));
@@ -20996,25 +21129,40 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.moveTo(37, 30); ctx.lineTo(39, 37); ctx.lineTo(33, 33); ctx.closePath();
     ctx.fill();
   } else if (f.technique === "zealot") {
-    // ZEALOT_PATCH + LIKENESS_PATCH: Protoss khaydarin nerve cords sweep
-    // down the SIDES/back of the head (clear of the face) plus the gold
-    // headdress. No face.
+    // ZEALOT_PATCH + SKINS_PATCH: three factions share the same silhouette
+    // (crown, visor, khaydarin gem, nerve cords) but recolor per faction:
+    //   Aiur     -> gold crown + blue gem  (default)
+    //   Purifier -> silver-white crown + bright cyan gem
+    //   Tal'darim-> blackened iron crown + blood-red gem
     const sway = idle * 0.6;
-    // ARTANIS_DETAIL_PATCH: small tucked nerve cords + an ornate gold
-    // horned headdress studded with a glowing blue khaydarin gem, matching
-    // the reference art. Face stays a dark visor recess (no eyes).
+    const factionColors = isPurifier(f) ? {
+      crown: "#dfe5ec", crownDark: "#a8afba", crownBright: "#ffffff", brow: "#8a939a",
+      gemOuter: "#0a1e3a", gemCore: "#3fa9ff", gemHi: "#eaf5ff",
+      visor: "#08192a", cord: "#0a1420",
+      psion: "#7dd4ff"
+    } : isTaldarim(f) ? {
+      crown: "#1a1216", crownDark: "#050203", crownBright: "#4b1a20", brow: "#0a0507",
+      gemOuter: "#1a0407", gemCore: "#ff2a2a", gemHi: "#ffd0d0",
+      visor: "#080103", cord: "#080103",
+      psion: "#ff5252"
+    } : {
+      crown: "#d8b23e", crownDark: "#b8942e", crownBright: "#f0d878", brow: "#b8942e",
+      gemOuter: "#0a2f5c", gemCore: "#3b82f6", gemHi: "#cfe8ff",
+      visor: "#0a1420", cord: "#0b1420",
+      psion: skin.accent
+    };
     const headGem = (gx, gy, rx, ry) => {
       ctx.fillStyle = "#020617";
       ctx.beginPath(); ctx.ellipse(gx, gy, rx + 1, ry + 1, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = "#0a2f5c";
+      ctx.fillStyle = factionColors.gemOuter;
       ctx.beginPath(); ctx.ellipse(gx, gy, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = "#3b82f6";
+      ctx.fillStyle = factionColors.gemCore;
       ctx.beginPath(); ctx.ellipse(gx, gy, rx * 0.58, ry * 0.58, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = "#cfe8ff";
+      ctx.fillStyle = factionColors.gemHi;
       ctx.beginPath(); ctx.ellipse(gx - rx * 0.2, gy - ry * 0.28, rx * 0.22, ry * 0.26, 0, 0, Math.PI * 2); ctx.fill();
     };
     // dark visor recess over the eye band (no eyes drawn)
-    ctx.fillStyle = "#0a1420";
+    ctx.fillStyle = factionColors.visor;
     ctx.beginPath();
     ctx.moveTo(17, 21);
     ctx.quadraticCurveTo(26, 18, 35, 21);
@@ -21022,8 +21170,20 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.quadraticCurveTo(19, 26, 17, 21);
     ctx.closePath();
     ctx.fill();
+    // faint psionic glow inside the visor (Tal'darim red, Purifier blue)
+    if (isPurifier(f) || isTaldarim(f)) {
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.fillStyle = factionColors.psion;
+      ctx.globalAlpha = 0.35 + Math.sin(frame * 0.15) * 0.1;
+      ctx.beginPath();
+      ctx.ellipse(21, 22, 2.4, 1.6, 0, 0, Math.PI * 2);
+      ctx.ellipse(31, 22, 2.4, 1.6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
     // small tucked nerve cords - short, close to the head
-    ctx.strokeStyle = "#0b1420";
+    ctx.strokeStyle = factionColors.cord;
     ctx.lineWidth = 3.4;
     ctx.lineCap = "round";
     ctx.beginPath();
@@ -21036,13 +21196,13 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.moveTo(33, 30);
     ctx.quadraticCurveTo(35, 34 - sway, 33, 38 - sway);
     ctx.stroke();
-    ctx.fillStyle = skin.accent;
+    ctx.fillStyle = factionColors.psion;
     ctx.beginPath();
     ctx.arc(15, 38 + sway, 1.6, 0, Math.PI * 2);
     ctx.arc(37, 38 - sway, 1.6, 0, Math.PI * 2);
     ctx.fill();
     // ornate horned headdress - two curved horns sweeping up and outward
-    ctx.fillStyle = "#d8b23e";
+    ctx.fillStyle = factionColors.crown;
     ctx.strokeStyle = "#020617";
     ctx.lineWidth = 1.5;
     ctx.lineJoin = "round";
@@ -21072,13 +21232,13 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.closePath();
     ctx.fill(); ctx.stroke();
     // bright bevel on the crown
-    ctx.strokeStyle = "#f0d878";
+    ctx.strokeStyle = factionColors.crownBright;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(24, 12); ctx.lineTo(26, 4); ctx.lineTo(28, 12);
     ctx.stroke();
     // brow band + temple plates
-    ctx.fillStyle = "#b8942e";
+    ctx.fillStyle = factionColors.crownDark;
     ctx.beginPath();
     ctx.moveTo(15, 17); ctx.lineTo(37, 17); ctx.lineTo(35, 21); ctx.lineTo(17, 21); ctx.closePath();
     ctx.fill();
@@ -21573,25 +21733,72 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       return lerp(activeV, recoveryV, recoveryT);
     };
 
-    const shoulder = blendPose(
-      { x: 42, y: 52 },
-      { x: 41, y: heavy ? 50 : 57 },
-      { x: 41, y: heavy ? 50 : 57 },
-      { x: 41, y: heavy ? 50 : 57 }
-    );
-    const elbow = blendPose(
-      { x: 48, y: 68 },
-      heavy ? { x: 47, y: 34 } : { x: 50, y: 52 },
-      heavy ? { x: 57, y: 44 } : { x: 58, y: 56 },
-      heavy ? { x: 51, y: 60 } : { x: 52, y: 62 }
-    );
-    const fist = blendPose(
-      { x: 43, y: 82 },
-      heavy ? { x: 37, y: 27 } : { x: 45, y: 44 },
-      heavy ? { x: 76, y: 47 } : { x: 66, y: 56 },
-      heavy ? { x: 60, y: 66 } : { x: 58, y: 64 }
-    );
+    let shoulder, elbow, fist;
+    // ZEALOT_SWORD_PATCH: replace the punch pose with a sweeping overhead
+    // sword-swing arc. The wrist starts up-and-back (blade cocked over the
+    // shoulder), then whips forward and down through the active frames; the
+    // psi blade extends along elbow->hand so the tip traces a big arc.
+    if (isZealot(f)) {
+      const shoulderP = { x: 40, y: heavy ? 48 : 52 };
+      shoulder = blendPose(
+        { x: 42, y: 52 },
+        shoulderP, shoulderP, shoulderP
+      );
+      elbow = blendPose(
+        { x: 48, y: 68 },
+        heavy ? { x: 30, y: 20 } : { x: 34, y: 26 },   // windup: elbow high & back
+        heavy ? { x: 60, y: 48 } : { x: 56, y: 50 },   // active: elbow driving out
+        heavy ? { x: 46, y: 64 } : { x: 48, y: 60 }    // recovery: settling
+      );
+      fist = blendPose(
+        { x: 43, y: 82 },
+        heavy ? { x: 22, y: -2 } : { x: 26, y: 4 },    // windup: blade over the head
+        heavy ? { x: 84, y: 82 } : { x: 74, y: 74 },   // active: blade past the hip
+        heavy ? { x: 58, y: 74 } : { x: 56, y: 70 }    // recovery
+      );
+    } else {
+      shoulder = blendPose(
+        { x: 42, y: 52 },
+        { x: 41, y: heavy ? 50 : 57 },
+        { x: 41, y: heavy ? 50 : 57 },
+        { x: 41, y: heavy ? 50 : 57 }
+      );
+      elbow = blendPose(
+        { x: 48, y: 68 },
+        heavy ? { x: 47, y: 34 } : { x: 50, y: 52 },
+        heavy ? { x: 57, y: 44 } : { x: 58, y: 56 },
+        heavy ? { x: 51, y: 60 } : { x: 52, y: 62 }
+      );
+      fist = blendPose(
+        { x: 43, y: 82 },
+        heavy ? { x: 37, y: 27 } : { x: 45, y: 44 },
+        heavy ? { x: 76, y: 47 } : { x: 66, y: 56 },
+        heavy ? { x: 60, y: 66 } : { x: 58, y: 64 }
+      );
+    }
     drawArmRig(shoulder, elbow, fist);
+    // ZEALOT_SWORD_PATCH: bright afterimage arc while the blade is mid-swing
+    if (isZealot(f) && active) {
+      const psion = isTaldarim(f) ? "rgba(239,68,68," : isPurifier(f) ? "rgba(63,169,255," : "rgba(45,212,191,";
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      const cx = 40, cy = heavy ? 48 : 52;
+      const r = heavy ? 60 : 50;
+      const t = activeT;
+      // arc from windup angle to active angle
+      const a0 = -Math.PI * 0.85;
+      const a1 = Math.PI * 0.15;
+      ctx.strokeStyle = psion + (0.5 * (1 - t)) + ")";
+      ctx.lineWidth = heavy ? 10 : 7;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, a0 + (a1 - a0) * (t * 0.4), a0 + (a1 - a0) * (t + 0.05));
+      ctx.stroke();
+      ctx.strokeStyle = psion + (0.9 * (1 - t)) + ")";
+      ctx.lineWidth = heavy ? 3 : 2.4;
+      ctx.stroke();
+      ctx.restore();
+    }
     const guardShoulder = blendPose(
       { x: 11, y: 52 },
       { x: 12, y: heavy ? 64 : 52 },
@@ -21843,6 +22050,19 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   // sweeping ring during Whirlwind.
   if (isZealot(f) && !f.ko) {
     const flick = Math.sin(frame * 0.5) * 0.06;
+    // SKINS_PATCH: psi blade tint per faction - teal Aiur / red Tal'darim /
+    // bright blue Purifier - matching the reference art.
+    const bladeGlow = isTaldarim(f) ? "rgba(239, 68, 68, 0.32)"
+                    : isPurifier(f) ? "rgba(63, 169, 255, 0.32)"
+                    : "rgba(45, 212, 191, 0.32)";
+    const bladeBody = isTaldarim(f) ? "rgba(239, 68, 68, 0.92)"
+                    : isPurifier(f) ? "rgba(63, 169, 255, 0.92)"
+                    : "rgba(45, 212, 191, 0.9)";
+    const bladeCore = isTaldarim(f) ? "rgba(255, 240, 240, 0.95)"
+                    : "rgba(235, 250, 255, 0.95)";
+    const emitter   = isTaldarim(f) ? "rgba(255, 220, 220, 0.9)"
+                    : isPurifier(f) ? "rgba(220, 240, 255, 0.9)"
+                    : "rgba(224, 255, 255, 0.9)";
     // a tapered, slightly-curved energy blade from (bx,by) toward ang
     const drawPsiBlade = (bx, by, ang, len) => {
       const tipX = bx + Math.cos(ang) * len;
@@ -21853,16 +22073,16 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       const bow = 3.4; // curve bow
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
-      // outer glow (teal)
-      ctx.fillStyle = "rgba(45, 212, 191, 0.32)";
+      // outer glow
+      ctx.fillStyle = bladeGlow;
       ctx.beginPath();
       ctx.moveTo(bx + nx * (w0 + 3), by + ny * (w0 + 3));
       ctx.quadraticCurveTo(bx + Math.cos(ang) * len * 0.5 + nx * (bow + 4), by + Math.sin(ang) * len * 0.5 + ny * (bow + 4), tipX, tipY);
       ctx.quadraticCurveTo(bx + Math.cos(ang) * len * 0.5 - nx * (bow - 1), by + Math.sin(ang) * len * 0.5 - ny * (bow - 1), bx - nx * (w0 + 3), by - ny * (w0 + 3));
       ctx.closePath();
       ctx.fill();
-      // blade body (teal)
-      ctx.fillStyle = "rgba(45, 212, 191, 0.9)";
+      // blade body
+      ctx.fillStyle = bladeBody;
       ctx.beginPath();
       ctx.moveTo(bx + nx * w0, by + ny * w0);
       ctx.quadraticCurveTo(bx + Math.cos(ang) * len * 0.5 + nx * bow, by + Math.sin(ang) * len * 0.5 + ny * bow, tipX, tipY);
@@ -21870,7 +22090,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       ctx.closePath();
       ctx.fill();
       // hot white core
-      ctx.strokeStyle = "rgba(235, 250, 255, 0.95)";
+      ctx.strokeStyle = bladeCore;
       ctx.lineWidth = 2;
       ctx.lineCap = "round";
       ctx.beginPath();
@@ -21878,7 +22098,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       ctx.quadraticCurveTo(bx + Math.cos(ang) * len * 0.5 + nx * bow * 0.5, by + Math.sin(ang) * len * 0.5 + ny * bow * 0.5, tipX, tipY);
       ctx.stroke();
       // emitter flare at the wrist
-      ctx.fillStyle = "rgba(224, 255, 255, 0.9)";
+      ctx.fillStyle = emitter;
       ctx.beginPath();
       ctx.arc(bx, by, 3, 0, Math.PI * 2);
       ctx.fill();
@@ -23614,6 +23834,80 @@ function drawTechniqueAimPreview(f) {
     ctx.font = "900 12px system-ui, sans-serif";
     ctx.textAlign = "center";
     ctx.fillText("RYUK", ghostX, ghostY + 4);
+    ctx.restore();
+    return;
+  }
+
+  // ZEALOT_AIM_PATCH: distinct teal/blue/red aim previews for Charge and
+  // Whirlwind - a rushing arrow-lane for Charge, a circular sweep ring for
+  // Whirlwind. No plain red line.
+  if (isZealot(f) && (move === "charge" || move === "psiFlurry")) {
+    const psion = isTaldarim(f) ? "rgba(239,68,68," : isPurifier(f) ? "rgba(63,169,255," : "rgba(45,212,191,";
+    const cx = aimVector.origin.x;
+    const cy = aimVector.origin.y;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    if (move === "charge") {
+      // dash lane - three receding arrows down the aim vector
+      const dir = aimVector.dir || 1;
+      const laneLen = 240;
+      const laneW = 46;
+      ctx.strokeStyle = psion + "0.55)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - laneW / 2);
+      ctx.lineTo(cx + dir * laneLen, cy - laneW / 2);
+      ctx.moveTo(cx, cy + laneW / 2);
+      ctx.lineTo(cx + dir * laneLen, cy + laneW / 2);
+      ctx.stroke();
+      // moving arrows along the lane
+      const off = (frame % 30) * (laneLen / 30);
+      ctx.strokeStyle = psion + "0.9)";
+      ctx.lineWidth = 4.5;
+      ctx.lineCap = "round";
+      for (let i = 0; i < 3; i++) {
+        const ax = cx + dir * ((off + i * 80) % laneLen);
+        ctx.beginPath();
+        ctx.moveTo(ax, cy - 12);
+        ctx.lineTo(ax + dir * 24, cy);
+        ctx.lineTo(ax, cy + 12);
+        ctx.stroke();
+      }
+      // impact ring at the end
+      ctx.fillStyle = psion + "0.28)";
+      ctx.beginPath();
+      ctx.ellipse(cx + dir * laneLen, cy + 4, 26, 34, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = psion + "0.9)";
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.ellipse(cx + dir * laneLen, cy + 4, 26, 34, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    } else {
+      // psi flurry / whirlwind aim - a spinning ring around the fighter
+      const rx = 80, ry = 34;
+      const spin = frame * 0.18;
+      ctx.strokeStyle = psion + "0.5)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy + 8, rx, ry, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      // three blade tips sweeping around the ring
+      ctx.strokeStyle = psion + "0.9)";
+      ctx.lineWidth = 5;
+      ctx.lineCap = "round";
+      for (let i = 0; i < 3; i++) {
+        const a = spin + i * (Math.PI * 2 / 3);
+        const x1 = cx + Math.cos(a) * rx * 0.75;
+        const y1 = cy + 8 + Math.sin(a) * ry * 0.75;
+        const x2 = cx + Math.cos(a) * rx * 1.05;
+        const y2 = cy + 8 + Math.sin(a) * ry * 1.05;
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      }
+      // caster core dot
+      ctx.fillStyle = psion + "0.7)";
+      ctx.beginPath(); ctx.arc(cx, cy + 8, 4, 0, Math.PI * 2); ctx.fill();
+    }
     ctx.restore();
     return;
   }
