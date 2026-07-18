@@ -232,12 +232,43 @@ let listeningForKeybind = null;
 // SKINS_PATCH: cosmetic alternate outfits per character. "default" is always
 // the base look; the extra ids are drawn as overrides in getTechniqueSkin and
 // drawFighter. Selection is saved locally.
+// SKINS_NAMES_PATCH: base skins now use the character's canonical name so the
+// gallery reads like a real roster instead of a nickname list.
 const CHARACTER_SKINS = {
-  limitless: [{ id: "default", name: "Gojo" }, { id: "finalfight", name: "Final Fight" }],
-  shrine:    [{ id: "default", name: "Sukuna" }, { id: "shibuya", name: "Shibuya" }],
-  brawler:   [{ id: "default", name: "Emperor" }, { id: "viltrumite", name: "Viltrumite" }],
-  deathnote: [{ id: "default", name: "Light" }, { id: "sweats", name: "Sweats" }],
-  david:     [{ id: "default", name: "Edgerunner" }, { id: "schoolwear", name: "School" }]
+  limitless: [
+    { id: "default", name: "Teacher Gojo" },
+    { id: "finalfight", name: "Final Fight" }
+  ],
+  shrine: [
+    { id: "default", name: "Ryomen Sukuna" },
+    { id: "shibuya", name: "Shibuya" }
+  ],
+  brawler: [
+    { id: "default", name: "King Thragg" },
+    { id: "viltrumite", name: "Viltrumite" },
+    { id: "warArmor", name: "War Armor" }
+  ],
+  deathnote: [
+    { id: "default", name: "Suit Light" },
+    { id: "sweats", name: "Sweats" }
+  ],
+  blackleg: [{ id: "default", name: "Black Leg Sanji" }],
+  hivemind: [{ id: "default", name: "Vecna" }],
+  zealot:   [{ id: "default", name: "Aiur Zealot" }],
+  spider:   [{ id: "default", name: "Spider-Man" }],
+  beast: [
+    { id: "default", name: "Inosuke Hashibira" },
+    { id: "boarGod", name: "Boar God" }
+  ],
+  jiji:     [{ id: "default", name: "Jiji Kito" }],
+  david: [
+    { id: "default", name: "David Martinez" },
+    { id: "schoolwear", name: "School" }
+  ],
+  akira: [
+    { id: "default", name: "Akira Tendo" },
+    { id: "corporate", name: "Corporate Drone" }
+  ]
 };
 const SKINS_STORAGE_KEY = "brawlCharacterSkinsV1";
 let selectedSkins = loadSelectedSkins();
@@ -275,6 +306,24 @@ function isShibuya(f) {
 // emperor's fur collar and robe are dropped for the clean uniform.
 function isViltrumite(f) {
   return Boolean(f && f.technique === "brawler" && skinOf(f) === "viltrumite");
+}
+// SKINS_PATCH: Thragg's warrior-days heavy chest plate (drops the fur collar
+// and the emperor robe like Viltrumite does, but wears bronze plate instead).
+function isWarArmor(f) {
+  return Boolean(f && f.technique === "brawler" && skinOf(f) === "warArmor");
+}
+function isThraggPlain(f) {
+  // helper: any Thragg skin that suppresses the imperial robe (viltrumite or
+  // warArmor). The emperor fur collar is drawn only when neither is active.
+  return isViltrumite(f) || isWarArmor(f);
+}
+// SKINS_PATCH: Akira's Corporate Drone skin - messy office suit + dark circles.
+function isCorpAkira(f) {
+  return Boolean(f && f.technique === "akira" && skinOf(f) === "corporate");
+}
+// SKINS_PATCH: Inosuke Boar God armor - golden tusks + war paint.
+function isBoarGod(f) {
+  return Boolean(f && f.technique === "beast" && skinOf(f) === "boarGod");
 }
 
 let localPlayerName = "Player";
@@ -16900,6 +16949,21 @@ function drawViewportBackdrop() {
 
 // SKINS_PATCH: draw an alternate outfit over the default torso (local fighter
 // space: torso ~x8-46, y38-92, centre x27). Opaque, so it hides the default.
+// SKINS_TORSO_SHAPE_PATCH: a soft-shouldered torso silhouette that hugs the
+// brawler body (shoulders at ~y40, waist at ~y92) so overlays stop reading as
+// a boxy slab. Callers fill/stroke after tracing.
+function traceTorsoShape(topY = 38, waistY = 92) {
+  ctx.beginPath();
+  ctx.moveTo(14, topY + 6);
+  ctx.quadraticCurveTo(11, topY, 20, topY);
+  ctx.quadraticCurveTo(27, topY - 3, 34, topY);
+  ctx.quadraticCurveTo(43, topY, 40, topY + 6);
+  ctx.quadraticCurveTo(45, waistY - 30, 42, waistY);
+  ctx.quadraticCurveTo(27, waistY + 4, 12, waistY);
+  ctx.quadraticCurveTo(9, waistY - 30, 14, topY + 6);
+  ctx.closePath();
+}
+
 function drawSkinOutfitOverlay(f, skinColor) {
   const skin = skinOf(f);
   if (skin === "default") return;
@@ -16966,26 +17030,35 @@ function drawSkinOutfitOverlay(f, skinColor) {
   }
 
   if (f.technique === "david" && skin === "schoolwear") {
-    // grey school blazer, white shirt + tie, red side accents. Starts high
-    // enough to hide the default yellow popped collar.
+    // SKINS_BODY_FIT_PATCH: grey school blazer follows the torso silhouette
+    // instead of a rectangle, so it stops reading as a boxy slab.
     ctx.fillStyle = "#3b3e47";
-    ctx.beginPath(); ctx.moveTo(9, 34); ctx.lineTo(45, 34); ctx.lineTo(46, 92); ctx.lineTo(8, 92); ctx.closePath(); ctx.fill();
+    traceTorsoShape(37, 92); ctx.fill();
+    // white shirt centre - narrower rounded panel that also follows the body
+    ctx.fillStyle = "#eef1f5";
+    ctx.beginPath();
+    ctx.moveTo(22, 42);
+    ctx.quadraticCurveTo(27, 40, 32, 42);
+    ctx.quadraticCurveTo(33, 60, 31, 80);
+    ctx.quadraticCurveTo(27, 82, 23, 80);
+    ctx.quadraticCurveTo(21, 60, 22, 42);
+    ctx.closePath(); ctx.fill();
+    // dark grey lapels sweeping down from the collar corners
+    ctx.fillStyle = "#2b2e36";
+    ctx.beginPath(); ctx.moveTo(21, 41); ctx.lineTo(15, 42); ctx.lineTo(20, 64); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(33, 41); ctx.lineTo(39, 42); ctx.lineTo(34, 64); ctx.closePath(); ctx.fill();
     // grey collar over the old yellow one
     ctx.fillStyle = "#2b2e36";
-    ctx.beginPath(); ctx.moveTo(18, 34); ctx.lineTo(27, 44); ctx.lineTo(36, 34); ctx.closePath(); ctx.fill();
-    // white shirt centre
-    ctx.fillStyle = "#eef1f5";
-    ctx.beginPath(); ctx.moveTo(22, 40); ctx.lineTo(32, 40); ctx.lineTo(31, 78); ctx.lineTo(23, 78); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(18, 37); ctx.lineTo(27, 46); ctx.lineTo(36, 37); ctx.closePath(); ctx.fill();
     // dark tie
     ctx.fillStyle = "#16233d";
-    ctx.beginPath(); ctx.moveTo(27, 42); ctx.lineTo(30, 48); ctx.lineTo(29, 74); ctx.lineTo(25, 74); ctx.lineTo(24, 48); ctx.closePath(); ctx.fill();
-    // blazer lapels
-    ctx.fillStyle = "#2b2e36";
-    ctx.beginPath(); ctx.moveTo(22, 40); ctx.lineTo(16, 40); ctx.lineTo(20, 62); ctx.closePath(); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(32, 40); ctx.lineTo(38, 40); ctx.lineTo(34, 62); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(27, 44); ctx.lineTo(30, 50); ctx.lineTo(29, 74); ctx.lineTo(25, 74); ctx.lineTo(24, 50); ctx.closePath(); ctx.fill();
     // red accent trim down the sides
-    ctx.strokeStyle = "#d33b34"; ctx.lineWidth = 2.6; ctx.lineCap = "round";
-    ctx.beginPath(); ctx.moveTo(12, 44); ctx.lineTo(12, 88); ctx.moveTo(42, 44); ctx.lineTo(42, 88); ctx.stroke();
+    ctx.strokeStyle = "#d33b34"; ctx.lineWidth = 2.4; ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(14, 48); ctx.quadraticCurveTo(11, 65, 14, 86);
+    ctx.moveTo(40, 48); ctx.quadraticCurveTo(43, 65, 40, 86);
+    ctx.stroke();
     // school emblem badge
     ctx.fillStyle = "#c9a227"; ctx.beginPath(); ctx.arc(35, 58, 2.4, 0, PI2); ctx.fill();
     return;
@@ -17003,9 +17076,9 @@ function drawSkinOutfitOverlay(f, skinColor) {
   }
 
   if (f.technique === "deathnote" && skin === "sweats") {
-    // grey zip hoodie over the default outfit.
+    // SKINS_BODY_FIT_PATCH: grey zip hoodie now follows the torso silhouette.
     ctx.fillStyle = "#8b9099";
-    ctx.beginPath(); ctx.moveTo(9, 38); ctx.lineTo(45, 38); ctx.lineTo(46, 92); ctx.lineTo(8, 92); ctx.closePath(); ctx.fill();
+    traceTorsoShape(38, 92); ctx.fill();
     // hood behind the neck
     ctx.fillStyle = "#767b83";
     ctx.beginPath(); ctx.moveTo(17, 40); ctx.quadraticCurveTo(27, 30, 37, 40); ctx.quadraticCurveTo(27, 45, 17, 40); ctx.closePath(); ctx.fill();
@@ -17014,9 +17087,120 @@ function drawSkinOutfitOverlay(f, skinColor) {
     ctx.beginPath(); ctx.moveTo(27, 42); ctx.lineTo(27, 90); ctx.stroke();
     ctx.strokeStyle = "#dfe3e8"; ctx.lineWidth = 1.2; ctx.lineCap = "round";
     ctx.beginPath(); ctx.moveTo(24, 44); ctx.lineTo(24, 54); ctx.moveTo(30, 44); ctx.lineTo(30, 53); ctx.stroke();
-    // kangaroo pocket
+    // kangaroo pocket - slight curve rather than a flat line
     ctx.strokeStyle = "#6b7078"; ctx.lineWidth = 1.4;
-    ctx.beginPath(); ctx.moveTo(15, 74); ctx.lineTo(39, 74); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(15, 74); ctx.quadraticCurveTo(27, 78, 39, 74); ctx.stroke();
+    return;
+  }
+
+  if (f.technique === "brawler" && skin === "warArmor") {
+    // SKINS_PATCH: heavy Viltrumite war armor. Bronze plated chestplate
+    // that follows the torso, with shoulder pauldrons + a leather kilt.
+    // Torso base fill is bronze via the palette.
+    // bronze chest plate (rounded pectoral halves + segmented abs)
+    ctx.fillStyle = "#a66c34"; ctx.strokeStyle = "#3a2410"; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(12, 42);
+    ctx.quadraticCurveTo(27, 39, 42, 42);
+    ctx.quadraticCurveTo(46, 68, 42, 88);
+    ctx.quadraticCurveTo(27, 92, 12, 88);
+    ctx.quadraticCurveTo(8, 68, 12, 42);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // sculpted pectoral divide + ab lines
+    ctx.strokeStyle = "#5a3a20"; ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(27, 44); ctx.quadraticCurveTo(24, 52, 20, 58); ctx.moveTo(27, 44); ctx.quadraticCurveTo(30, 52, 34, 58);
+    ctx.moveTo(27, 58); ctx.lineTo(27, 84);
+    ctx.moveTo(20, 66); ctx.quadraticCurveTo(27, 68, 34, 66);
+    ctx.moveTo(20, 74); ctx.quadraticCurveTo(27, 76, 34, 74);
+    ctx.moveTo(20, 82); ctx.quadraticCurveTo(27, 84, 34, 82);
+    ctx.stroke();
+    // shoulder pauldrons - rounded bronze caps that overhang the sockets
+    ctx.fillStyle = "#8a5a2c";
+    ctx.beginPath(); ctx.ellipse(10, 46, 8, 6, -0.3, 0, PI2); ctx.fill();
+    ctx.strokeStyle = "#3a2410"; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = "#8a5a2c";
+    ctx.beginPath(); ctx.ellipse(44, 46, 8, 6, 0.3, 0, PI2); ctx.fill();
+    ctx.stroke();
+    // dark leather kilt (leg wraps below the belt)
+    ctx.fillStyle = "#3a2c1a"; ctx.strokeStyle = "#1e1408"; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(10, 90); ctx.lineTo(44, 90); ctx.lineTo(46, 108); ctx.lineTo(8, 108); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // vertical leather strips on the kilt
+    ctx.strokeStyle = "rgba(20,10,4,0.8)"; ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    for (let x = 14; x <= 40; x += 6) { ctx.moveTo(x, 92); ctx.lineTo(x, 106); }
+    ctx.stroke();
+    // simple bronze rivets on the belt seam
+    ctx.fillStyle = "#c48a48";
+    for (let x = 14; x <= 40; x += 6) { ctx.beginPath(); ctx.arc(x, 90, 1.3, 0, PI2); ctx.fill(); }
+    return;
+  }
+
+  if (f.technique === "akira" && skin === "corporate") {
+    // SKINS_PATCH: Black Company corporate drone. Cheap dark-grey suit
+    // jacket, white shirt hanging out at the hem, loose red tie.
+    // suit jacket (follows the torso, slightly rumpled hem)
+    ctx.fillStyle = "#2f2f38"; ctx.strokeStyle = "#0f0f14"; ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(11, 42); ctx.quadraticCurveTo(27, 38, 43, 42);
+    ctx.quadraticCurveTo(46, 68, 43, 88);
+    // untucked messy hem
+    ctx.lineTo(41, 92); ctx.lineTo(38, 88); ctx.lineTo(35, 93); ctx.lineTo(32, 88);
+    ctx.lineTo(27, 92); ctx.lineTo(22, 88); ctx.lineTo(19, 93); ctx.lineTo(16, 88);
+    ctx.lineTo(13, 92); ctx.lineTo(11, 88);
+    ctx.quadraticCurveTo(8, 68, 11, 42);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    // dark lapels (open V)
+    ctx.fillStyle = "#1a1a20";
+    ctx.beginPath(); ctx.moveTo(22, 41); ctx.lineTo(15, 43); ctx.lineTo(21, 66); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(32, 41); ctx.lineTo(39, 43); ctx.lineTo(33, 66); ctx.closePath(); ctx.fill();
+    // untucked white shirt panel poking through
+    ctx.fillStyle = "#e6e6ea";
+    ctx.beginPath();
+    ctx.moveTo(23, 45); ctx.quadraticCurveTo(27, 44, 31, 45);
+    ctx.lineTo(32, 90); ctx.lineTo(29, 94); ctx.lineTo(30, 96);
+    ctx.lineTo(25, 96); ctx.lineTo(26, 94); ctx.lineTo(22, 90);
+    ctx.closePath(); ctx.fill();
+    // loose red tie, hanging crooked
+    ctx.fillStyle = "#a02a23"; ctx.strokeStyle = "#3a0f0c"; ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(26, 46); ctx.lineTo(30, 46); ctx.lineTo(31, 52);
+    ctx.lineTo(30, 78); ctx.lineTo(27, 82); ctx.lineTo(24, 78);
+    ctx.lineTo(25, 52); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // tie knot loose (small notch)
+    ctx.strokeStyle = "rgba(0,0,0,0.5)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(25, 50); ctx.lineTo(31, 50); ctx.stroke();
+    return;
+  }
+
+  if (f.technique === "beast" && skin === "boarGod") {
+    // SKINS_PATCH: mythical Boar God - tribal war paint striping the tan
+    // torso, gold armor plates over the shoulders, and a rope belt.
+    // dark tribal warpaint stripes across the chest + abs
+    ctx.strokeStyle = "rgba(60, 24, 12, 0.9)"; ctx.lineWidth = 3; ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(14, 52); ctx.quadraticCurveTo(27, 58, 40, 52);
+    ctx.moveTo(15, 62); ctx.quadraticCurveTo(27, 68, 39, 62);
+    ctx.moveTo(16, 72); ctx.quadraticCurveTo(27, 76, 38, 72);
+    ctx.moveTo(20, 44); ctx.lineTo(20, 52);
+    ctx.moveTo(34, 44); ctx.lineTo(34, 52);
+    ctx.stroke();
+    // gold pauldrons
+    ctx.fillStyle = "#e0b93a"; ctx.strokeStyle = "#5a3a10"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.ellipse(10, 44, 8, 5.5, -0.35, 0, PI2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(44, 44, 8, 5.5, 0.35, 0, PI2); ctx.fill(); ctx.stroke();
+    // gold pauldron highlights
+    ctx.fillStyle = "rgba(255, 235, 170, 0.55)";
+    ctx.beginPath(); ctx.arc(8, 42, 2, 0, PI2); ctx.arc(46, 42, 2, 0, PI2); ctx.fill();
+    // rope belt with tassels
+    ctx.strokeStyle = "#8a5a2c"; ctx.lineWidth = 4; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(11, 82); ctx.quadraticCurveTo(27, 86, 43, 82); ctx.stroke();
+    ctx.strokeStyle = "#5a3a10"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(20, 84); ctx.lineTo(19, 96); ctx.moveTo(34, 84); ctx.lineTo(35, 96); ctx.stroke();
     return;
   }
 }
@@ -17039,10 +17223,19 @@ function applySkinPalette(f, pal) {
     pal.body = "#1b2742"; pal.accent = "#d33b34"; pal.pants = "#141a2a";
   } else if (f.technique === "brawler" && skin === "viltrumite") {
     pal.body = "#e9ecf1"; pal.accent = "#9aa1aa"; pal.pants = "#c7ccd3"; pal.shoe = "#8a9099";
+  } else if (f.technique === "brawler" && skin === "warArmor") {
+    // SKINS_PATCH: War Armor Thragg - bronze plate + dark leather leggings.
+    pal.body = "#8a5a2c"; pal.accent = "#3a2410"; pal.pants = "#3a2c1a"; pal.shoe = "#20140a";
   } else if (f.technique === "deathnote" && skin === "sweats") {
     pal.body = "#8b9099"; pal.accent = "#5a5f68"; pal.pants = "#71767e"; pal.shoe = "#dfe3e8";
   } else if (f.technique === "david" && skin === "schoolwear") {
     pal.body = "#3b3e47"; pal.accent = "#d13b34"; pal.pants = "#2b2e36"; pal.shoe = "#14161b";
+  } else if (f.technique === "akira" && skin === "corporate") {
+    // SKINS_PATCH: Corporate Drone - dark grey office suit, white shirt.
+    pal.body = "#2f2f38"; pal.accent = "#1a1a20"; pal.pants = "#1c1c22"; pal.shoe = "#0f0f14";
+  } else if (f.technique === "beast" && skin === "boarGod") {
+    // SKINS_PATCH: Boar God - deeper tan skin, dark gold-leather hakama.
+    pal.body = "#b5875e"; pal.accent = "#3a2718"; pal.pants = "#2f2010"; pal.shoe = "#1a1108";
   }
 }
 
@@ -19316,10 +19509,9 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     // via the palette.) THRAGG_NO_PANTS_PANEL_PATCH: the red leg coat-panels
     // were removed per request; the fur collar stays on the base emperor
     // (drawn below) and is dropped only for the Viltrumite skin.
-    // SKINS_PATCH: the Viltrumite skin skips the emperor robe ornaments
-    // entirely - its clean white torso (via the palette) shows through and
-    // the tight-suit plating is added by drawSkinOutfitOverlay.
-    if (!isViltrumite(f)) {
+    // SKINS_PATCH: any alt Thragg skin (viltrumite or warArmor) skips the
+    // emperor robe ornaments so the alternate outfit reads on its own.
+    if (!isThraggPlain(f)) {
     // grey inner-robe strip down the center chest-to-hem
     ctx.fillStyle = "#c2c7cf";
     ctx.beginPath();
@@ -19374,8 +19566,8 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     }
     // THRAGG_EMPEROR_PATCH: the big grey-white fur collar standing up around
     // the neck and over the shoulders. SKINS_PATCH: the Viltrumite battlesuit
-    // skin drops the fur for the clean tight uniform.
-    if (!isViltrumite(f)) {
+    // and War Armor skins drop the fur for their own silhouettes.
+    if (!isThraggPlain(f)) {
       ctx.fillStyle = "#e7eaee";
       ctx.save();
       ctx.beginPath();
@@ -19732,22 +19924,39 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       ctx.stroke();
       ctx.restore();
     }
-  } else if (f.technique === "akira") {
+  } else if (f.technique === "akira" && !isCorpAkira(f)) {
     // AKIRA_PATCH: an open teal hooded jacket over a white tee. A shark fin
     // pokes up over the shoulder while the Shark Suit is active.
+    // SKINS_BODY_FIT_PATCH: the tee + jacket panels curve with the torso so
+    // the chest stops reading as a boxy slab.
     const shark = (f.akiraSharkTicks || 0) > 0;
-    // white tee
+    // white tee - rounded panel that hugs the ribcage
     ctx.fillStyle = "#eef1ee";
     ctx.beginPath();
-    ctx.moveTo(20, 42); ctx.lineTo(34, 42); ctx.lineTo(33, 92); ctx.lineTo(21, 92); ctx.closePath();
+    ctx.moveTo(21, 43);
+    ctx.quadraticCurveTo(27, 41, 33, 43);
+    ctx.quadraticCurveTo(34, 62, 33, 90);
+    ctx.quadraticCurveTo(27, 92, 21, 90);
+    ctx.quadraticCurveTo(20, 62, 21, 43);
+    ctx.closePath();
     ctx.fill();
-    // teal jacket panels
+    // teal jacket panels - curved silhouette that tucks in at the waist
     ctx.fillStyle = "#1b9280";
     ctx.beginPath();
-    ctx.moveTo(9, 40); ctx.lineTo(22, 43); ctx.lineTo(20, 93); ctx.lineTo(8, 90); ctx.closePath();
+    ctx.moveTo(11, 42);
+    ctx.quadraticCurveTo(17, 40, 22, 43);
+    ctx.quadraticCurveTo(21, 66, 20, 93);
+    ctx.quadraticCurveTo(12, 92, 10, 89);
+    ctx.quadraticCurveTo(8, 66, 11, 42);
+    ctx.closePath();
     ctx.fill();
     ctx.beginPath();
-    ctx.moveTo(45, 40); ctx.lineTo(32, 43); ctx.lineTo(34, 93); ctx.lineTo(46, 90); ctx.closePath();
+    ctx.moveTo(43, 42);
+    ctx.quadraticCurveTo(37, 40, 32, 43);
+    ctx.quadraticCurveTo(33, 66, 34, 93);
+    ctx.quadraticCurveTo(42, 92, 44, 89);
+    ctx.quadraticCurveTo(46, 66, 43, 42);
+    ctx.closePath();
     ctx.fill();
     // hood behind the neck
     ctx.fillStyle = "#177a6b";
@@ -19778,9 +19987,11 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       ctx.moveTo(30, 36); ctx.quadraticCurveTo(44, 20, 46, 4); ctx.quadraticCurveTo(34, 12, 28, 34); ctx.closePath();
       ctx.fill(); ctx.stroke();
     }
-  } else if (f.technique === "david") {
+  } else if (f.technique === "david" && skinOf(f) !== "schoolwear") {
     // DAVID_PATCH: his iconic open bright-yellow tech jacket with cyan/white
     // reflective stripes, over a black shirt with a gold cross necklace.
+    // SKINS_PATCH: the schoolwear skin fully replaces the jacket, so skip
+    // the base overlay entirely for that skin.
     const psycho = (f.davidPsychosisTicks || 0) > 0;
     // black inner shirt (behind the open jacket)
     ctx.fillStyle = "#15161a";
@@ -20093,27 +20304,35 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.moveTo(18, 10.5);
     ctx.quadraticCurveTo(26, 8.5, 33, 11);
     ctx.stroke();
-    // SANJI_EYEBROW_PATCH: the trademark curly swirl brow on the visible
-    // (non-fringe) side of the face. It's an eyebrow, drawn as a spiral -
-    // no eye beneath it, matching the no-facial-features rule.
+    // SANJI_EYEBROW_PATCH: the trademark curly-swirl brow on the visible
+    // (non-fringe) side of the face - drawn as an actual multi-loop spiral
+    // so it reads unmistakably like Sanji at any size. No eye beneath it,
+    // matching the no-facial-features rule.
     ctx.strokeStyle = skin.hair;
     ctx.lineWidth = 2.2;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.beginPath();
-    // brow bar sweeping in, then curling into a spiral
-    ctx.moveTo(15.5, 19.5);
-    ctx.quadraticCurveTo(19, 17.4, 22.5, 18.2);
-    ctx.quadraticCurveTo(25.6, 19, 24.6, 21.4);
-    ctx.quadraticCurveTo(23.8, 23.2, 22.1, 22.2);
-    ctx.quadraticCurveTo(21.2, 21.6, 21.9, 20.7);
+    // straight brow bar sweeping in from the temple
+    ctx.moveTo(14.5, 19.6);
+    ctx.quadraticCurveTo(18, 17.6, 22, 18.2);
+    // then a fat outer loop that curls back on itself twice - the classic
+    // Vinsmoke swirl. Traced as a shrinking parametric spiral.
+    const cxSw = 24.4, cySw = 20.0;
+    const loops = 2.4;
+    const steps = 26;
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      const ang = t * loops * Math.PI * 2;
+      const r = 3.4 * (1 - t) + 0.4;
+      ctx.lineTo(cxSw + Math.cos(ang) * r, cySw + Math.sin(ang) * r);
+    }
     ctx.stroke();
-    // thin dark accent so the swirl reads at small sizes
-    ctx.strokeStyle = "rgba(120, 84, 20, 0.7)";
+    // small dark accent inside the swirl so it stays legible when zoomed out
+    ctx.strokeStyle = "rgba(120, 84, 20, 0.75)";
     ctx.lineWidth = 0.9;
     ctx.beginPath();
-    ctx.moveTo(16, 19.4);
-    ctx.quadraticCurveTo(19, 17.6, 22.3, 18.4);
+    ctx.moveTo(15.2, 19.5); ctx.quadraticCurveTo(18.4, 17.9, 22, 18.4);
     ctx.stroke();
     // chin stubble - a light scratchy patch, not a mouth
     ctx.strokeStyle = "rgba(120, 90, 40, 0.6)";
@@ -20247,9 +20466,21 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.ellipse(20, 21, 2.6, 3.2, 0.2, 0, Math.PI * 2);
     ctx.ellipse(32, 21, 2.6, 3.2, -0.2, 0, Math.PI * 2);
     ctx.fill();
-    // white tusks curving up from the snout
-    ctx.fillStyle = "#f1ece0";
-    ctx.strokeStyle = "#b9b0a0";
+    // tusks curving up from the snout - white on base Inosuke, glowing gold
+    // on the Boar God skin.
+    const boarGod = isBoarGod(f);
+    if (boarGod) {
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.fillStyle = "rgba(240, 200, 80, 0.35)";
+      ctx.beginPath();
+      ctx.moveTo(20, 33); ctx.quadraticCurveTo(13, 33, 12, 22); ctx.quadraticCurveTo(17, 30, 21, 31); ctx.closePath();
+      ctx.moveTo(32, 33); ctx.quadraticCurveTo(39, 33, 40, 22); ctx.quadraticCurveTo(35, 30, 31, 31); ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.fillStyle = boarGod ? "#f0c94a" : "#f1ece0";
+    ctx.strokeStyle = boarGod ? "#7a5100" : "#b9b0a0";
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(20, 33);
@@ -20263,6 +20494,18 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.quadraticCurveTo(35, 30, 31, 31);
     ctx.closePath();
     ctx.fill(); ctx.stroke();
+    // SKINS_PATCH: red tribal war paint on the Boar God skin - two chevron
+    // stripes across the cheeks and a vertical line on the brow.
+    if (boarGod) {
+      ctx.strokeStyle = "rgba(180, 40, 40, 0.9)";
+      ctx.lineWidth = 2; ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(17, 26); ctx.lineTo(22, 24);
+      ctx.moveTo(32, 24); ctx.lineTo(37, 26);
+      ctx.moveTo(26, 12); ctx.lineTo(26, 20);
+      ctx.moveTo(28, 12); ctx.lineTo(28, 20);
+      ctx.stroke();
+    }
     // a little dark hair poking out under the mask
     ctx.fillStyle = "#2a2622";
     ctx.beginPath();
@@ -20393,13 +20636,8 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       ctx.moveTo(25, 14); ctx.lineTo(25, 4);
       ctx.moveTo(32, 14); ctx.lineTo(33, 6);
       ctx.stroke();
-      // young brows
-      ctx.strokeStyle = "#7a3a20";
-      ctx.lineWidth = 1.6;
-      ctx.beginPath();
-      ctx.moveTo(18, 20); ctx.quadraticCurveTo(21, 18.5, 24, 20);
-      ctx.moveTo(28, 20); ctx.quadraticCurveTo(31, 18.5, 34, 20);
-      ctx.stroke();
+      // JIJI_NO_BROWS_PATCH: eyebrows removed per request - Jiji reads as a
+      // clean-faced young boy now.
     } else {
       // EVIL EYE: pale skin, white/lavender hair swept back into a few points,
       // a glowing purple third eye on the forehead, glowing purple eyes, a
@@ -20542,6 +20780,21 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.moveTo(20, 13); ctx.quadraticCurveTo(24, 9, 28, 12);
     ctx.moveTo(30, 12); ctx.quadraticCurveTo(34, 12, 37, 17);
     ctx.stroke();
+    // SKINS_PATCH: Corporate Drone Akira has huge dark eye-bag shadows -
+    // no eyes drawn (house style), just the sleep-deprived under-eye shading.
+    if (isCorpAkira(f)) {
+      ctx.fillStyle = "rgba(30, 15, 32, 0.65)";
+      ctx.beginPath();
+      ctx.ellipse(20, 25, 4.5, 2.4, 0.15, 0, Math.PI * 2);
+      ctx.ellipse(32, 25, 4.5, 2.4, -0.15, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(30, 15, 32, 0.45)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(15, 28); ctx.quadraticCurveTo(20, 30, 25, 28);
+      ctx.moveTo(27, 28); ctx.quadraticCurveTo(32, 30, 37, 28);
+      ctx.stroke();
+    }
   } else if (f.technique === "david") {
     // DAVID_PATCH: dark-brown hair, spiked up and swept back off the forehead
     // with tapered sides (his Edgerunners cut). Clean face - no brows.
