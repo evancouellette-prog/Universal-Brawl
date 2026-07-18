@@ -25,8 +25,24 @@ body {
 }
 
 .shell {
-  width: min(1100px, 100vw);
-  padding: 18px;
+  width: min(1180px, 100vw);
+  padding: 10px 14px 12px;
+}
+/* UI_COMPACT_PATCH: shrink the desktop HUD footprint so the fight canvas
+   gets more room. Mobile keeps its own sizing rules (mobile-controls-on
+   overrides below). */
+@media (min-width: 641px) {
+  .topbar { gap: 10px !important; margin-bottom: 6px !important; }
+  .fighter-panel { gap: 4px !important; }
+  .fighter-name { font-size: 12px !important; }
+  .stars { font-size: 16px !important; }
+  .health-frame { height: 22px !important; }
+  .ce-frame, .ultimate-frame { height: 12px !important; }
+  .ct-cooldowns { gap: 4px !important; }
+  .ct-slot { min-height: 24px !important; padding: 3px 6px !important; font-size: 11px !important; }
+  .extra-cooldowns { gap: 3px !important; }
+  .extra-cooldown { min-height: 20px !important; padding: 2px 5px !important; font-size: 10px !important; }
+  .resource-label { font-size: 9px !important; }
 }
 
 .topbar {
