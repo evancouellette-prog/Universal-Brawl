@@ -2100,11 +2100,23 @@ const ZEALOT_FLURRY_HITS = 5;
 const ZEALOT_FLURRY_HIT_DAMAGE = 6;
 const ZEALOT_FLURRY_RANGE = 78;
 const ZEALOT_FLURRY_LAUNCH_KNOCKBACK = 34;
-const ZEALOT_WHIRL_COOLDOWN_TICKS = 14 * 60;
-const ZEALOT_WHIRL_TICKS = 54;
-const ZEALOT_WHIRL_HIT_INTERVAL = 6;
-const ZEALOT_WHIRL_HIT_DAMAGE = 9;
+// ZEALOT_WHIRL_HOLD_PATCH: Whirlwind is now a hold-to-spin. Tap-then-hold
+// starts the spin; releasing the button ends it. RPM ramps up with charge
+// so it visibly speeds up over the first ~2 seconds, and per-hit damage +
+// hit rate scale with the spin ratio. Cooldown is smaller (it self-limits
+// via max hold duration + regen).
+const ZEALOT_WHIRL_COOLDOWN_TICKS = 6 * 60;   // 6s off-cd after release
+const ZEALOT_WHIRL_MAX_HOLD_TICKS = 5 * 60;   // 5s cap (safety)
+const ZEALOT_WHIRL_CHARGE_TICKS = 120;        // 2s to reach max RPM
+const ZEALOT_WHIRL_HIT_INTERVAL_MIN = 3;      // fastest hit tick (max charge)
+const ZEALOT_WHIRL_HIT_INTERVAL_MAX = 10;     // slowest hit tick (fresh start)
+const ZEALOT_WHIRL_HIT_DAMAGE_MIN = 6;        // per-tick damage at 0 charge
+const ZEALOT_WHIRL_HIT_DAMAGE_MAX = 14;       // per-tick damage at full charge
+const ZEALOT_WHIRL_HIT_DAMAGE = ZEALOT_WHIRL_HIT_DAMAGE_MIN; // legacy alias
 const ZEALOT_WHIRL_RADIUS = 80;
+// legacy alias (kept for save/restore compat)
+const ZEALOT_WHIRL_HIT_INTERVAL = ZEALOT_WHIRL_HIT_INTERVAL_MAX;
+const ZEALOT_WHIRL_TICKS = ZEALOT_WHIRL_MAX_HOLD_TICKS;
 // ZEALOT_WHIRL_PULL_PATCH: when Whirlwind lands a hit, drag the target in
 // toward Zealot's center instead of knocking them out - so they eat multiple
 // ticks of the sweep instead of a single chip and a launch.
@@ -3770,6 +3782,10 @@ function makeFighter(config) {
     zealotWhirlCooldown: 0,
     zealotWhirlTicks: 0,
     zealotWhirlNextHit: 0,
+    // ZEALOT_WHIRL_HOLD_PATCH: hold-to-spin state.
+    zealotWhirlHolding: false,   // is the special button still pressed?
+    zealotWhirlCharge: 0,        // 0..ZEALOT_WHIRL_CHARGE_TICKS
+    zealotWhirlAngle: 0,         // current body rotation, radians
     zealotUltTicks: 0,
     zealotWarpTimer: 0,
     // SPIDER_PATCH: web/mark/mobility state.
@@ -5921,6 +5937,7 @@ if (data.type === "role") {
       if (data.action === "sanji-cook") startSanjiCook(enemy); // SANJI_COOK_PATCH
       if (data.action === "upside-slip") startUpsideDownSlip(enemy); // VECNA_PATCH
       if (data.action === "zealot-whirl") startZealotWhirlwind(enemy); // ZEALOT_PATCH
+      if (data.action === "zealot-whirl-release") releaseZealotWhirlwind(enemy); // ZEALOT_WHIRL_HOLD_PATCH
       if (data.action === "spider-swing") startWebSwing(enemy); // SPIDER_PATCH
       if (data.action === "spider-rush") startSpiderRush(enemy); // SPIDER_PATCH
       if (data.action === "beast-crazy") startBeastCrazy(enemy); // INOSUKE_PATCH
@@ -7167,6 +7184,9 @@ function updateLightHudVisibility() {
 // fighter's HP bar. It's dark-blue, only rendered when the fighter is Zealot,
 // and it visually mirrors the segmented-health frame size so it reads as
 // exactly one extra HP bar of soak.
+// ZEALOT_OVERSHIELD_PATCH: the shield bar sits above the HP bar and matches
+// its exact dimensions - same frame, same height, no label, no stock stubs -
+// just one dark-blue bar the size of a normal HP bar.
 function ensureZealotShieldBar(fighterEl, side) {
   if (!fighterEl) return null;
   const frame = fighterEl.closest(".health-frame") || fighterEl;
@@ -7174,9 +7194,11 @@ function ensureZealotShieldBar(fighterEl, side) {
   if (!host) return null;
   let bar = host.querySelector(":scope > .zealot-shield-bar." + side);
   if (!bar) {
+    // reuse the exact HP frame class so it inherits height, border, padding,
+    // and box-shadow from the base HP styles - then override the colors.
     bar = document.createElement("div");
-    bar.className = "zealot-shield-bar " + side;
-    bar.innerHTML = '<div class="zsb-fill"></div><span class="zsb-label">SHIELD</span>';
+    bar.className = "health-frame zealot-shield-bar " + side;
+    bar.innerHTML = '<div class="zsb-fill"></div>';
     host.insertBefore(bar, frame);
   }
   return bar;
@@ -7186,22 +7208,19 @@ function injectZealotShieldStyle() {
   const s = document.createElement("style");
   s.id = "zealotShieldStyle";
   s.textContent = `
-    .zealot-shield-bar { display: none; position: relative; height: 22px; margin: 0 0 4px;
-      border: 2px solid #3f6ff0; background: #05122e; overflow: hidden;
-      box-shadow: 0 3px 0 rgba(0,0,0,0.25); border-radius: 2px; }
+    /* ZEALOT_SHIELD_HUD_PATCH: match the HP bar 1:1. Inherits .health-frame
+       height/border/box-shadow; only recolored to dark blue. */
+    .zealot-shield-bar { display: none; position: relative;
+      margin: 0 0 4px; padding: 0;
+      border-color: #3f6ff0; background: #05122e; overflow: hidden; }
     .zealot-shield-bar.show { display: block; }
     .zealot-shield-bar .zsb-fill { width: 0%; height: 100%;
       background: linear-gradient(90deg, #0a1f6e, #1b3fc4, #3f6ff0);
       box-shadow: 0 0 10px rgba(43, 95, 240, 0.55), inset 0 1px 0 rgba(180, 205, 255, 0.35);
       transition: width 120ms linear; }
-    .zealot-shield-bar .zsb-label { position: absolute; inset: 0; display: flex;
-      align-items: center; justify-content: center;
-      font: 800 10px system-ui, sans-serif; letter-spacing: .12em;
-      color: #dbe6ff; text-shadow: 0 1px 2px rgba(0,0,0,0.8); pointer-events: none; }
-    .zealot-shield-bar.right .zsb-fill { margin-left: auto; }
-    .zealot-shield-bar.charging { border-color: rgba(63, 111, 240, 0.4); opacity: 0.75; }
+    .fighter-panel.right .zealot-shield-bar .zsb-fill { margin-left: auto; }
     .zealot-shield-bar.charging .zsb-fill { animation: zsbPulse 1s ease-in-out infinite; }
-    @keyframes zsbPulse { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.5); } }
+    @keyframes zsbPulse { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.4); } }
   `;
   document.head.appendChild(s);
 }
@@ -9232,18 +9251,54 @@ function updateZealotFlurry(f, opponent) {
 
 function startZealotWhirlwind(f) {
   if (!isZealot(f) || !canStartZealotSpecial(f) || (f.zealotWhirlCooldown || 0) > 0) return false;
-  f.zealotWhirlCooldown = ZEALOT_WHIRL_COOLDOWN_TICKS;
-  f.zealotWhirlTicks = ZEALOT_WHIRL_TICKS;
-  f.zealotWhirlNextHit = ZEALOT_WHIRL_HIT_INTERVAL;
+  // ZEALOT_WHIRL_HOLD_PATCH: kick off the spin, mark as held. Cooldown is
+  // applied on release, not on start, so the whole "hold" reads as one use.
+  f.zealotWhirlTicks = ZEALOT_WHIRL_MAX_HOLD_TICKS;
+  f.zealotWhirlNextHit = ZEALOT_WHIRL_HIT_INTERVAL_MAX;
+  f.zealotWhirlHolding = true;
+  f.zealotWhirlCharge = 0;
+  f.zealotWhirlAngle = 0;
   f.blocking = false;
   showActionWarning("WHIRLWIND");
   return true;
 }
 
+// ZEALOT_WHIRL_HOLD_PATCH: called when the whirlwind key/button is released.
+// Ends the spin and starts the ability cooldown.
+function releaseZealotWhirlwind(f) {
+  if (!isZealot(f)) return;
+  if (!f.zealotWhirlHolding && (f.zealotWhirlTicks || 0) <= 0) return;
+  f.zealotWhirlHolding = false;
+  f.zealotWhirlTicks = 0;
+  f.zealotWhirlCharge = 0;
+  f.zealotWhirlCooldown = ZEALOT_WHIRL_COOLDOWN_TICKS;
+}
+
 function updateZealotWhirlwind(f, opponent) {
   if ((f.zealotWhirlTicks || 0) <= 0) return;
-  if (f.ko || f.stun > 0 || f.knockdown) { f.zealotWhirlTicks = 0; return; }
+  if (f.ko || f.stun > 0 || f.knockdown) {
+    releaseZealotWhirlwind(f);
+    return;
+  }
+  // ZEALOT_WHIRL_HOLD_PATCH: end the spin when the button is released or the
+  // safety cap expires.
+  if (!f.zealotWhirlHolding) { releaseZealotWhirlwind(f); return; }
   f.zealotWhirlTicks -= 1;
+  if (f.zealotWhirlTicks <= 0) { releaseZealotWhirlwind(f); return; }
+  // charge ramps 0 -> ZEALOT_WHIRL_CHARGE_TICKS over the hold. Full charge
+  // = fastest hit interval + biggest per-hit damage + fastest visible spin.
+  if ((f.zealotWhirlCharge || 0) < ZEALOT_WHIRL_CHARGE_TICKS) f.zealotWhirlCharge = (f.zealotWhirlCharge || 0) + 1;
+  const chargeRatio = (f.zealotWhirlCharge || 0) / ZEALOT_WHIRL_CHARGE_TICKS;
+  // advance body-rotation angle (used in drawFighter transform)
+  const spinSpeed = 0.16 + chargeRatio * 0.48; // rad/tick, ~1.5 -> 5.7 turns/sec
+  f.zealotWhirlAngle = (f.zealotWhirlAngle || 0) + spinSpeed;
+  const HIT_INTERVAL = Math.max(
+    ZEALOT_WHIRL_HIT_INTERVAL_MIN,
+    Math.round(ZEALOT_WHIRL_HIT_INTERVAL_MAX - (ZEALOT_WHIRL_HIT_INTERVAL_MAX - ZEALOT_WHIRL_HIT_INTERVAL_MIN) * chargeRatio)
+  );
+  const HIT_DAMAGE = Math.round(
+    ZEALOT_WHIRL_HIT_DAMAGE_MIN + (ZEALOT_WHIRL_HIT_DAMAGE_MAX - ZEALOT_WHIRL_HIT_DAMAGE_MIN) * chargeRatio
+  );
   // reflect weak projectiles that get close
   const center = getFighterCenter(f);
   for (const p of projectiles) {
@@ -9271,13 +9326,14 @@ function updateZealotWhirlwind(f, opponent) {
   }
   f.zealotWhirlNextHit -= 1;
   if (f.zealotWhirlNextHit <= 0) {
-    f.zealotWhirlNextHit = ZEALOT_WHIRL_HIT_INTERVAL;
+    // hit interval + per-hit damage both scale with the hold ramp.
+    f.zealotWhirlNextHit = HIT_INTERVAL;
     if (opponent && !opponent.ko && opponent.dodging <= 0 && !isUntargetable(opponent) &&
       Math.abs(getFighterCenter(opponent).x - center.x) < ZEALOT_WHIRL_RADIUS &&
       Math.abs(getFighterCenter(opponent).y - center.y) < 70) {
       const blocked = isBlockingAttack(opponent, Math.sign(getFighterCenter(opponent).x - center.x) || f.dir);
-      const damage = blocked ? 0 : getTakenDamage(opponent, Math.ceil(ZEALOT_WHIRL_HIT_DAMAGE * getOutgoingDamageMultiplier(f)));
-      if (blocked) damageShield(opponent, ZEALOT_WHIRL_HIT_DAMAGE);
+      const damage = blocked ? 0 : getTakenDamage(opponent, Math.ceil(HIT_DAMAGE * getOutgoingDamageMultiplier(f)));
+      if (blocked) damageShield(opponent, HIT_DAMAGE);
       else {
         applyFighterDamage(opponent, damage);
         opponent.hurt = Math.max(opponent.hurt, 5);
@@ -19675,21 +19731,33 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   const davidMech = davidUltActive(f) && !f.ko && !f.lying;
   const bulkX = f.technique === "brawler" ? 1.16 : davidMech ? 1.22 : 1;
   const bulkY = f.technique === "brawler" ? 1.1 : davidMech ? 1.5 : 1;
-  // ZEALOT_WHIRL_SPIN_PATCH: during Whirlwind the WHOLE body spins - the
-  // horizontal scale sweeps through zero (edge-on) and flips sign, reading as
-  // a fast pirouetting top rather than just the blades circling. The magnitude
-  // is floored so he never fully vanishes at the edge-on moment.
+  // ZEALOT_WHIRL_SPIN_PATCH v2: real full-body spin. Two effects layer:
+  //   - horizontal scale sweeps through zero (edge-on flip) so the sprite
+  //     reads as rotating about its vertical axis (a 2D pirouette trick).
+  //   - a small ctx.rotate wobble tilts the body around its center for extra
+  //     motion. Both drive off zealotWhirlAngle so they visibly speed up as
+  //     the hold ramps.
   const whirling = isZealot(f) && (f.zealotWhirlTicks || 0) > 0 && !f.ko && !f.lying;
-  const whirlCos = whirling ? Math.cos(frame * 0.85) : 1;
+  const whirlAngle = whirling ? (f.zealotWhirlAngle || 0) : 0;
+  const whirlCos = whirling ? Math.cos(whirlAngle) : 1;
   const whirlSpinX = whirling ? Math.sign(whirlCos || 1) * (0.22 + 0.78 * Math.abs(whirlCos)) : 1;
+  // small body-tilt wobble in addition, so a viewer clearly sees "spinning"
+  const whirlTilt = whirling ? Math.sin(whirlAngle * 0.5) * 0.18 : 0;
   if (f.ko || f.lying) {
     ctx.translate(f.x + f.w / 2, f.y + f.h);
     ctx.rotate(f.koFallDir * f.koRotation);
     ctx.scale(f.dir * bulkX, bulkY);
     ctx.translate(-f.w / 2, -f.h);
+  } else if (whirling) {
+    // anchor the spin around the fighter's TORSO center so his feet don't
+    // arc wildly across the ground.
+    ctx.translate(f.x + f.w / 2, f.y - bob + idle * 0.7 + f.h * 0.5);
+    ctx.rotate(whirlTilt);
+    ctx.scale(f.dir * bulkX * whirlSpinX, bulkY);
+    ctx.translate(-f.w / 2, -f.h * 0.5);
   } else {
     ctx.translate(f.x + f.w / 2, f.y - bob + idle * 0.7 + f.h);
-    ctx.scale(f.dir * bulkX * whirlSpinX, bulkY);
+    ctx.scale(f.dir * bulkX, bulkY);
     ctx.translate(-f.w / 2, -f.h);
   }
 
@@ -20336,30 +20404,49 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.moveTo(11, 74); ctx.lineTo(43, 74);
     ctx.stroke();
   } else if (f.technique === "zealot") {
-    // ZEALOT_PATCH + ARTANIS_DETAIL_PATCH: ornate gold hero armor studded
-    // with glowing blue khaydarin gems - layered chest plates, big
-    // gem-set pauldrons, an ab guard, and a hip gem, matching the ref art.
-    const gem = (gx, gy, rx, ry) => {
-      // teardrop-ish blue gem set in a gold bezel
-      ctx.fillStyle = "#020617";
-      ctx.beginPath();
-      ctx.ellipse(gx, gy, rx + 1.1, ry + 1.1, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "#0a2f5c";
-      ctx.beginPath();
-      ctx.ellipse(gx, gy, rx, ry, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "#3b82f6";
-      ctx.beginPath();
-      ctx.ellipse(gx, gy, rx * 0.6, ry * 0.6, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "#bfe3ff";
-      ctx.beginPath();
-      ctx.ellipse(gx - rx * 0.22, gy - ry * 0.28, rx * 0.24, ry * 0.28, 0, 0, Math.PI * 2);
-      ctx.fill();
+    // ZEALOT_PATCH + SKINS_PATCH: ornate hero armor. The plate + pauldron
+    // colors + chest gems all come from the faction palette so Aiur reads as
+    // gold+blue, Purifier as silver-white+cyan, and Tal'darim as black+red.
+    const armor = isPurifier(f) ? {
+      main:     "#e6ecf4",   // primary plate
+      dark:     "#a8afba",   // shading / ab guard
+      bright:   "#ffffff",   // collar bevel
+      shadow:   "#5a5f68",   // ridge lines
+      pauldron: "#dfe5ec",
+      pauldronEdge: "#5a5f68",
+      gemOuter: "#0a1e3a", gemCore: "#3fa9ff", gemHi: "#eaf5ff",
+      seam: "#3fa9ff"
+    } : isTaldarim(f) ? {
+      main:     "#1c1418",
+      dark:     "#0e0709",
+      bright:   "#4b1a20",
+      shadow:   "#050203",
+      pauldron: "#231b1e",
+      pauldronEdge: "#050203",
+      gemOuter: "#1a0407", gemCore: "#ff2a2a", gemHi: "#ffd0d0",
+      seam: "#ff5252"
+    } : {
+      main:     "#9a7a10",
+      dark:     "#b8942e",
+      bright:   "#e8c85a",
+      shadow:   "#6f5608",
+      pauldron: "#d8b23e",
+      pauldronEdge: "#7a5f08",
+      gemOuter: "#0a2f5c", gemCore: "#3b82f6", gemHi: "#bfe3ff",
+      seam: skin.accent
     };
-    // upper chest plate (darker gold)
-    ctx.fillStyle = "#9a7a10";
+    const gem = (gx, gy, rx, ry) => {
+      ctx.fillStyle = "#020617";
+      ctx.beginPath(); ctx.ellipse(gx, gy, rx + 1.1, ry + 1.1, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = armor.gemOuter;
+      ctx.beginPath(); ctx.ellipse(gx, gy, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = armor.gemCore;
+      ctx.beginPath(); ctx.ellipse(gx, gy, rx * 0.6, ry * 0.6, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = armor.gemHi;
+      ctx.beginPath(); ctx.ellipse(gx - rx * 0.22, gy - ry * 0.28, rx * 0.24, ry * 0.28, 0, 0, Math.PI * 2); ctx.fill();
+    };
+    // upper chest plate
+    ctx.fillStyle = armor.main;
     ctx.beginPath();
     ctx.moveTo(13, 39);
     ctx.lineTo(41, 40);
@@ -20369,7 +20456,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.closePath();
     ctx.fill();
     // bright bevel highlight along the collar
-    ctx.strokeStyle = "#e8c85a";
+    ctx.strokeStyle = armor.bright;
     ctx.lineWidth = 2.2;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
@@ -20377,14 +20464,14 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.moveTo(15, 41); ctx.lineTo(27, 45); ctx.lineTo(39, 41);
     ctx.stroke();
     // central chest ridge splitting the pecs
-    ctx.strokeStyle = "#6f5608";
+    ctx.strokeStyle = armor.shadow;
     ctx.lineWidth = 1.6;
     ctx.beginPath();
     ctx.moveTo(27, 45); ctx.lineTo(27, 60);
     ctx.stroke();
     // big shoulder pauldrons with a gem each
-    ctx.fillStyle = "#d8b23e";
-    ctx.strokeStyle = "#7a5f08";
+    ctx.fillStyle = armor.pauldron;
+    ctx.strokeStyle = armor.pauldronEdge;
     ctx.lineWidth = 1.4;
     ctx.beginPath();
     ctx.moveTo(9, 41); ctx.lineTo(21, 38); ctx.lineTo(19, 51); ctx.lineTo(8, 50); ctx.closePath();
@@ -20395,11 +20482,11 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     gem(13.5, 45, 2.4, 3);
     gem(40.5, 45, 2.4, 3);
     // ab guard with vertical segments
-    ctx.fillStyle = "#b8942e";
+    ctx.fillStyle = armor.dark;
     ctx.beginPath();
     ctx.moveTo(18, 60); ctx.lineTo(36, 60); ctx.lineTo(34, 73); ctx.lineTo(27, 76); ctx.lineTo(20, 73); ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = "#6f5608";
+    ctx.strokeStyle = armor.shadow;
     ctx.lineWidth = 1.3;
     ctx.beginPath();
     ctx.moveTo(23, 61); ctx.lineTo(22, 74);
@@ -20408,8 +20495,8 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     // the signature big chest gem + a hip gem
     gem(27, 52, 3.4, 4.4);
     gem(27, 69, 2.6, 3.2);
-    // cyan energy seams
-    ctx.strokeStyle = skin.accent;
+    // psion energy seams
+    ctx.strokeStyle = armor.seam;
     ctx.lineWidth = 1.4;
     ctx.globalAlpha = 0.8;
     ctx.beginPath();
@@ -25444,6 +25531,11 @@ window.addEventListener("keyup", (event) => {
       clearSpecialHoldState(active);
       if (gameMode === "online" && onlineRole === "p2") sendOnlineInput("teleport", active?.techniqueAim || mouseAimWorld);
       return;
+    }
+    // ZEALOT_WHIRL_HOLD_PATCH: releasing the special key stops Whirlwind.
+    if (active?.technique === "zealot") {
+      releaseZealotWhirlwind(active);
+      if (gameMode === "online" && onlineRole === "p2") sendOnlineInput("zealot-whirl-release");
     }
     clearSpecialHoldState(active);
   }
