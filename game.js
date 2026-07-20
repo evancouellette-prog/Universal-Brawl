@@ -9147,16 +9147,30 @@ function updateZealotShield(f) {
   }
 }
 
-function startZealotCharge(f) {
+// ZEALOT_CHARGE_360_PATCH: Charge is now aimed with the cursor and flies in
+// any direction, not just at the opponent. If no aim is provided (e.g. CPU),
+// fall back to firing at the opponent.
+function startZealotCharge(f, aimPoint = null) {
   if (!isZealot(f) || !canStartZealotSpecial(f) || (f.zealotChargeCooldown || 0) > 0) return false;
   const opponent = getOpponent(f);
-  if (!opponent || opponent.ko) return false;
+  const center = getFighterCenter(f);
+  const aim = sanitizeAimPoint(aimPoint) || (opponent && !opponent.ko ? getFighterCenter(opponent) : null);
+  if (!aim) return false;
+  let dx = aim.x - center.x;
+  let dy = aim.y - center.y;
+  const dist = Math.max(0.001, Math.hypot(dx, dy));
+  const ux = dx / dist;
+  const uy = dy / dist;
   f.zealotChargeCooldown = ZEALOT_CHARGE_COOLDOWN_TICKS;
   f.zealotChargeTicks = ZEALOT_CHARGE_TICKS;
   f.zealotChargeHit = false;
-  f.dir = getFighterCenter(opponent).x >= getFighterCenter(f).x ? 1 : -1;
+  f.zealotChargeVx = ux * ZEALOT_CHARGE_SPEED;
+  f.zealotChargeVy = uy * ZEALOT_CHARGE_SPEED;
+  f.dir = ux >= 0 ? 1 : -1;
   f.blocking = false;
-  f.vx = f.dir * ZEALOT_CHARGE_SPEED;
+  f.vx = f.zealotChargeVx;
+  // if aiming upward, launch off the ground so we can actually rise
+  if (uy < -0.2 && f.grounded) { f.vy = Math.min(f.vy, uy * ZEALOT_CHARGE_SPEED); f.grounded = false; }
   return true;
 }
 
@@ -9164,7 +9178,11 @@ function updateZealotCharge(f, opponent) {
   if ((f.zealotChargeTicks || 0) <= 0) return;
   if (f.ko || f.stun > 0 || f.knockdown) { f.zealotChargeTicks = 0; return; }
   f.zealotChargeTicks -= 1;
-  f.vx = f.dir * ZEALOT_CHARGE_SPEED * (zealotUltActive(f) ? 1.15 : 1);
+  const ultBoost = zealotUltActive(f) ? 1.15 : 1;
+  f.vx = (f.zealotChargeVx || f.dir * ZEALOT_CHARGE_SPEED) * ultBoost;
+  // apply the vertical charge component but let gravity still affect us so
+  // upward charges taper - feels less like flying.
+  if (Math.abs(f.zealotChargeVy || 0) > 0.01) f.vy = (f.zealotChargeVy) * ultBoost;
   if (frame % 2 === 0) spawnHitSpark(f.x + f.w / 2 - f.dir * 14, f.y + f.h - 16, -f.dir, "blue");
   if (!f.zealotChargeHit && opponent && !opponent.ko && opponent.dodging <= 0 && !isUntargetable(opponent) && rectsOverlap(expandRect(f, 10), opponent)) {
     f.zealotChargeHit = true;
@@ -9190,60 +9208,90 @@ function updateZealotCharge(f, opponent) {
   }
 }
 
-function startZealotFlurry(f) {
+// ZEALOT_FLURRY_AOE_PATCH: Psi Blade Flurry is now a wide AoE barrage of
+// blade slashes around Zealot. No target lock, no in-range gate at start -
+// he just goes berserk in a big radius and every hostile fighter caught in
+// the area eats hits at a steady interval. Also records slash events so the
+// draw layer can flash bright afterimage arcs.
+function startZealotFlurry(f, aimPoint = null) {
   if (!isZealot(f) || !canStartZealotSpecial(f) || (f.zealotFlurryCooldown || 0) > 0) return false;
-  const opponent = getOpponent(f);
-  if (!opponent || opponent.ko) return false;
-  const gap = Math.abs(getFighterCenter(opponent).x - getFighterCenter(f).x);
-  if (gap > ZEALOT_FLURRY_RANGE) return false;
   f.zealotFlurryCooldown = ZEALOT_FLURRY_COOLDOWN_TICKS;
   f.zealotFlurryTicks = ZEALOT_FLURRY_TICKS;
   f.zealotFlurryNextHit = 3;
-  f.dir = getFighterCenter(opponent).x >= getFighterCenter(f).x ? 1 : -1;
+  const aim = sanitizeAimPoint(aimPoint);
+  const center = getFighterCenter(f);
+  if (aim) f.dir = aim.x >= center.x ? 1 : -1;
+  else {
+    const opp = getOpponent(f);
+    if (opp && !opp.ko) f.dir = getFighterCenter(opp).x >= center.x ? 1 : -1;
+  }
   f.blocking = false;
   f.vx = 0;
-  opponent.blocking = false;
+  f.zealotFlurrySlashes = []; // draw layer reads this for arc afterimages
+  showActionWarning("PSI BLADE FLURRY");
   return true;
 }
 
 function updateZealotFlurry(f, opponent) {
   if ((f.zealotFlurryTicks || 0) <= 0) return;
-  if (f.ko || f.stun > 0 || f.knockdown || !opponent || opponent.ko) { f.zealotFlurryTicks = 0; return; }
+  if (f.ko || f.stun > 0 || f.knockdown) { f.zealotFlurryTicks = 0; return; }
   f.zealotFlurryTicks -= 1;
-  f.vx = 0;
+  // Zealot pins himself in place a bit as he barrages - low friction slide
+  f.vx *= 0.5;
+  // decay any active slash afterimages
+  if (Array.isArray(f.zealotFlurrySlashes)) {
+    for (const s of f.zealotFlurrySlashes) s.life -= 1;
+    f.zealotFlurrySlashes = f.zealotFlurrySlashes.filter((s) => s.life > 0);
+  }
   const ult = zealotUltActive(f);
-  const hitsPerTick = ult ? 1.4 : 1;
-  const inRange = Math.abs(getFighterCenter(opponent).x - getFighterCenter(f).x) <= ZEALOT_FLURRY_RANGE + 14;
+  const hitsPerTick = ult ? 1.6 : 1.15;
   f.zealotFlurryNextHit -= hitsPerTick;
-  if (f.zealotFlurryNextHit <= 0 && f.zealotFlurryTicks > 5 && inRange && opponent.dodging <= 0 && !isUntargetable(opponent)) {
-    f.zealotFlurryNextHit = Math.round(ZEALOT_FLURRY_TICKS / (ZEALOT_FLURRY_HITS + 1));
-    const blocked = isBlockingAttack(opponent, f.dir);
-    const damage = blocked ? 0 : getTakenDamage(opponent, Math.ceil(ZEALOT_FLURRY_HIT_DAMAGE * (ult ? 1.3 : 1) * getOutgoingDamageMultiplier(f)));
-    if (blocked) damageShield(opponent, ZEALOT_FLURRY_HIT_DAMAGE);
+  if (f.zealotFlurryNextHit > 0) return;
+  f.zealotFlurryNextHit = Math.round(ZEALOT_FLURRY_TICKS / (ZEALOT_FLURRY_HITS + 2));
+  const center = getFighterCenter(f);
+  // record a random-angle slash for the draw pass
+  const angle = (Math.random() - 0.5) * Math.PI * 1.5;
+  const list = f.zealotFlurrySlashes || (f.zealotFlurrySlashes = []);
+  list.push({ ang: angle, life: 10 });
+  if (list.length > 12) list.shift();
+  // hit ALL nearby hostile fighters in a big area around Zealot
+  const R = ZEALOT_FLURRY_RANGE + 40; // wider AoE than the old locked-in range
+  for (const t of [player, enemy]) {
+    if (!t || t === f || t.ko || t.dodging > 0 || isUntargetable(t)) continue;
+    const tc = getFighterCenter(t);
+    const dx = tc.x - center.x, dy = tc.y - center.y;
+    if (Math.abs(dx) > R || Math.abs(dy) > 90) continue;
+    const dir = Math.sign(dx) || f.dir;
+    const blocked = isBlockingAttack(t, dir);
+    const rawDmg = Math.ceil(ZEALOT_FLURRY_HIT_DAMAGE * (ult ? 1.3 : 1) * getOutgoingDamageMultiplier(f));
+    const damage = blocked ? 0 : getTakenDamage(t, rawDmg);
+    if (blocked) damageShield(t, ZEALOT_FLURRY_HIT_DAMAGE);
     else {
-      applyFighterDamage(opponent, damage);
-      opponent.hurt = Math.max(opponent.hurt, 6);
-      opponent.stun = Math.max(opponent.stun, 8);
+      applyFighterDamage(t, damage);
+      t.hurt = Math.max(t.hurt, 6);
+      t.stun = Math.max(t.stun, 8);
       gainUltimate(f, damage * ULT_DAMAGE_GAIN_SCALE * 0.7);
     }
-    const c = getFighterCenter(opponent);
-    spawnHitSpark(c.x + (Math.random() - 0.5) * 16, c.y + (Math.random() - 0.5) * 24, f.dir, "blue");
+    spawnHitSpark(tc.x + (Math.random() - 0.5) * 22, tc.y + (Math.random() - 0.5) * 32, dir, "blue");
     hitStopTicks = Math.max(hitStopTicks, 1);
     updateHud();
   }
-  if (f.zealotFlurryTicks <= 0 && !opponent.ko && Math.abs(getFighterCenter(opponent).x - getFighterCenter(f).x) <= ZEALOT_FLURRY_RANGE + 20) {
-    // final hit launches
-    const damage = getTakenDamage(opponent, Math.ceil((ZEALOT_FLURRY_HIT_DAMAGE + 4) * getOutgoingDamageMultiplier(f)));
-    applyFighterDamage(opponent, damage);
-    opponent.vx = f.dir * getTakenKnockback(opponent, ZEALOT_FLURRY_LAUNCH_KNOCKBACK);
-    opponent.vy = -8;
-    opponent.grounded = false;
-    opponent.knockdown = true;
-    opponent.knockdownTimer = 22;
-    opponent.stun = Math.max(opponent.stun, 20);
-    const c = getFighterCenter(opponent);
+  if (f.zealotFlurryTicks <= 0) {
+    // final flourish: any target still in the ring gets launched.
+    const opp = opponent && !opponent.ko && Math.abs(getFighterCenter(opponent).x - center.x) <= R + 20 ? opponent : null;
+    if (opp) {
+    const damage = getTakenDamage(opp, Math.ceil((ZEALOT_FLURRY_HIT_DAMAGE + 4) * getOutgoingDamageMultiplier(f)));
+    applyFighterDamage(opp, damage);
+    opp.vx = f.dir * getTakenKnockback(opp, ZEALOT_FLURRY_LAUNCH_KNOCKBACK);
+    opp.vy = -8;
+    opp.grounded = false;
+    opp.knockdown = true;
+    opp.knockdownTimer = 22;
+    opp.stun = Math.max(opp.stun, 20);
+    const c = getFighterCenter(opp);
     spawnHitSpark(c.x, c.y, f.dir, "heavy");
     shake = Math.max(shake, 10);
+    }
     hitStopTicks = Math.max(hitStopTicks, HITSTOP_HEAVY);
     updateHud();
   }
@@ -11817,8 +11865,8 @@ function startTechnique(f, slot, chargeRatio = 0, aimPoint = null, releasingChar
 
   // ZEALOT_PATCH: both mouse specials are melee.
   if (f.technique === "zealot") {
-    if (move === "charge") startZealotCharge(f);
-    if (move === "psiFlurry") startZealotFlurry(f);
+    if (move === "charge") startZealotCharge(f, aimPoint || f.techniqueAim || mouseAimWorld);
+    if (move === "psiFlurry") startZealotFlurry(f, aimPoint || f.techniqueAim || mouseAimWorld);
     return;
   }
 
@@ -17833,13 +17881,14 @@ function applySkinPalette(f, pal) {
   } else if (f.technique === "spider" && skin === "iron") {
     pal.body = "#c1121f"; pal.accent = "#f0c94a"; pal.pants = "#c1121f"; pal.shoe = "#f0c94a";
   } else if (f.technique === "zealot" && skin === "purifier") {
-    // SKINS_PATCH: Purifier faction reads as WHITE armor with bright BLUE
-    // psionic accents in the Remastered art. Corrected from the earlier
-    // orange placeholder.
+    // SKINS_PATCH: Purifier - white/silver mechanical robots. FACE (skin
+    // slot) is WHITE per user request; armor stays white with blue accents.
+    pal.skin = "#f4f6fa";
     pal.body = "#eef1f6"; pal.accent = "#3fa9ff"; pal.pants = "#c7ccd3"; pal.shoe = "#7f8590"; pal.mark = "#7dd4ff"; pal.eye = "#7dd4ff";
   } else if (f.technique === "zealot" && skin === "taldarim") {
-    // Tal'darim: near-black armor plated over deeper black with GLOWING RED
-    // psionic seams and blood-red pauldrons.
+    // Tal'darim: near-black armor + WHITE face (per user reference) with
+    // glowing red psionic seams and blood-red pauldrons.
+    pal.skin = "#f4f6fa";
     pal.body = "#231b1e"; pal.accent = "#ef4444"; pal.pants = "#100b0d"; pal.shoe = "#0a0507"; pal.mark = "#ff5252"; pal.eye = "#ff5252";
   } else if (f.technique === "hivemind" && skin === "creel") {
     pal.skin = "#f0d0b0"; pal.body = "#f2f4f6"; pal.accent = "#8a939a"; pal.pants = "#e6e8ec"; pal.shoe = "#1a1a20"; pal.hair = "#6a4a2c";
@@ -19591,6 +19640,37 @@ function drawZealotAbilityFx(f) {
     ctx.restore();
   }
 
+  // ---- Psi Blade Flurry AoE barrage --------------------------------------
+  if ((f.zealotFlurryTicks || 0) > 0) {
+    const R = 118; // matches ZEALOT_FLURRY_RANGE + 40
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    // faint AoE ring around the caster
+    ctx.strokeStyle = TEAL(0.35);
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(c.x, midY + 8, R, R * 0.5, 0, 0, PI2); ctx.stroke();
+    // draw all active slash afterimages as bright arcs sweeping around him
+    const slashes = f.zealotFlurrySlashes || [];
+    for (const s of slashes) {
+      const a = (s.ang || 0) + (10 - s.life) * 0.15;
+      const fade = Math.max(0, s.life / 10);
+      const x1 = c.x + Math.cos(a) * (R * 0.35);
+      const y1 = midY + 8 + Math.sin(a) * (R * 0.35);
+      const x2 = c.x + Math.cos(a) * R;
+      const y2 = midY + 8 + Math.sin(a) * R * 0.9;
+      // wide colored trail
+      ctx.strokeStyle = TEAL(0.55 * fade);
+      ctx.lineWidth = 9;
+      ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      // hot white core of the slash
+      ctx.strokeStyle = TEAL_HI(0.95 * fade);
+      ctx.lineWidth = 2.4;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   // ---- Warp Reinforcements ult: teal aura + warp rings -------------------
   if ((f.zealotUltTicks || 0) > 0) {
     ctx.save();
@@ -21216,11 +21296,10 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.moveTo(37, 30); ctx.lineTo(39, 37); ctx.lineTo(33, 33); ctx.closePath();
     ctx.fill();
   } else if (f.technique === "zealot") {
-    // ZEALOT_PATCH + SKINS_PATCH: three factions share the same silhouette
-    // (crown, visor, khaydarin gem, nerve cords) but recolor per faction:
-    //   Aiur     -> gold crown + blue gem  (default)
-    //   Purifier -> silver-white crown + bright cyan gem
-    //   Tal'darim-> blackened iron crown + blood-red gem
+    // ZEALOT_PATCH + SKINS_PATCH v3: each faction now has a distinct head:
+    //   Aiur     -> gold horned crown + blue khaydarin gem, tan face
+    //   Purifier -> mechanical white faceplate with a blue eye slit
+    //   Tal'darim-> triangular crimson-crown skull silhouette, white face
     const sway = idle * 0.6;
     const factionColors = isPurifier(f) ? {
       crown: "#dfe5ec", crownDark: "#a8afba", crownBright: "#ffffff", brow: "#8a939a",
@@ -21228,7 +21307,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       visor: "#08192a", cord: "#0a1420",
       psion: "#7dd4ff"
     } : isTaldarim(f) ? {
-      crown: "#1a1216", crownDark: "#050203", crownBright: "#4b1a20", brow: "#0a0507",
+      crown: "#3a0a10", crownDark: "#1a0407", crownBright: "#ff4d5c", brow: "#0a0507",
       gemOuter: "#1a0407", gemCore: "#ff2a2a", gemHi: "#ffd0d0",
       visor: "#080103", cord: "#080103",
       psion: "#ff5252"
@@ -21248,6 +21327,138 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       ctx.fillStyle = factionColors.gemHi;
       ctx.beginPath(); ctx.ellipse(gx - rx * 0.2, gy - ry * 0.28, rx * 0.22, ry * 0.26, 0, 0, Math.PI * 2); ctx.fill();
     };
+
+    // -------------------- Purifier: mechanical faceplate ------------------
+    if (isPurifier(f)) {
+      // paint over the tan skin ellipse with a clean white plate silhouette
+      ctx.fillStyle = "#f4f6fa";
+      ctx.strokeStyle = "#5a5f68";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.ellipse(26, 23, 13, 15, 0, 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
+      // side face-plate seams
+      ctx.strokeStyle = "#8a939a"; ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(14, 24); ctx.quadraticCurveTo(20, 34, 26, 36);
+      ctx.moveTo(38, 24); ctx.quadraticCurveTo(32, 34, 26, 36);
+      ctx.moveTo(26, 12); ctx.lineTo(26, 20);
+      ctx.stroke();
+      // central rivets down the seam
+      ctx.fillStyle = "#5a5f68";
+      ctx.beginPath();
+      ctx.arc(26, 15, 0.9, 0, Math.PI * 2);
+      ctx.arc(26, 30, 0.9, 0, Math.PI * 2);
+      ctx.fill();
+      // wide blue eye slit (a mechanical visor, no eyes)
+      ctx.fillStyle = "#0a1a2e";
+      ctx.beginPath();
+      ctx.moveTo(14, 22); ctx.lineTo(38, 22); ctx.lineTo(36, 27); ctx.lineTo(16, 27); ctx.closePath();
+      ctx.fill();
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      const glow = 0.55 + Math.sin(frame * 0.18) * 0.18;
+      ctx.fillStyle = `rgba(63, 169, 255, ${glow})`;
+      ctx.beginPath();
+      ctx.moveTo(15, 23); ctx.lineTo(37, 23); ctx.lineTo(35, 26); ctx.lineTo(17, 26); ctx.closePath();
+      ctx.fill();
+      // hot white core line
+      ctx.strokeStyle = `rgba(220, 240, 255, ${glow})`;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(16, 24.5); ctx.lineTo(36, 24.5); ctx.stroke();
+      ctx.restore();
+      // side antenna prongs (mechanical) rising up from the temples
+      ctx.strokeStyle = "#8a939a"; ctx.lineWidth = 2; ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(14, 14); ctx.lineTo(10, 4);
+      ctx.moveTo(38, 14); ctx.lineTo(42, 4);
+      ctx.stroke();
+      // tiny blue LED on each prong tip
+      ctx.fillStyle = "#3fa9ff";
+      ctx.beginPath(); ctx.arc(10, 4, 1.4, 0, Math.PI * 2); ctx.arc(42, 4, 1.4, 0, Math.PI * 2); ctx.fill();
+      // slim silver crown fin between them
+      ctx.fillStyle = "#dfe5ec"; ctx.strokeStyle = "#5a5f68"; ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(22, 12); ctx.lineTo(26, -2); ctx.lineTo(30, 12); ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      // small forehead gem
+      headGem(26, 10, 2.1, 2.6);
+      // mouth-plate vents (a marking, not a mouth)
+      ctx.strokeStyle = "#8a939a"; ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(22, 32); ctx.lineTo(24, 32);
+      ctx.moveTo(25, 34); ctx.lineTo(27, 34);
+      ctx.moveTo(28, 32); ctx.lineTo(30, 32);
+      ctx.stroke();
+    } else if (isTaldarim(f)) {
+    // -------------------- Tal'darim: triangular skull-crown ---------------
+      // repaint the head as a stark WHITE face
+      ctx.fillStyle = "#f4f6fa";
+      ctx.strokeStyle = "#3a0a10";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      // triangular head silhouette - wide crown, tapered chin
+      ctx.moveTo(26, -4);   // apex
+      ctx.lineTo(8, 18);    // top-left corner of the "triangle"
+      ctx.lineTo(12, 34);   // narrows in toward the chin
+      ctx.lineTo(26, 40);   // chin point
+      ctx.lineTo(40, 34);
+      ctx.lineTo(44, 18);
+      ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      // dark cheek-hollows shading, so the face still reads as gaunt
+      ctx.fillStyle = "rgba(60, 20, 20, 0.25)";
+      ctx.beginPath();
+      ctx.moveTo(11, 22); ctx.quadraticCurveTo(16, 30, 20, 36); ctx.lineTo(15, 36); ctx.closePath();
+      ctx.moveTo(41, 22); ctx.quadraticCurveTo(36, 30, 32, 36); ctx.lineTo(37, 36); ctx.closePath();
+      ctx.fill();
+      // triangular blood-crimson crown: a big central spike + two lateral fangs
+      ctx.fillStyle = factionColors.crown;
+      ctx.strokeStyle = "#0a0405";
+      ctx.lineWidth = 1.5;
+      ctx.lineJoin = "round";
+      // left fang
+      ctx.beginPath();
+      ctx.moveTo(6, 6); ctx.lineTo(14, -8); ctx.lineTo(18, 8); ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      // right fang
+      ctx.beginPath();
+      ctx.moveTo(46, 6); ctx.lineTo(38, -8); ctx.lineTo(34, 8); ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      // central massive triangle blade
+      ctx.beginPath();
+      ctx.moveTo(18, 10); ctx.lineTo(26, -14); ctx.lineTo(34, 10); ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      // red bevel highlight along the central blade
+      ctx.strokeStyle = factionColors.crownBright;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(24, 6); ctx.lineTo(26, -10); ctx.lineTo(28, 6); ctx.stroke();
+      // narrow red eye slits (a marking, not real eyes)
+      ctx.fillStyle = "#c8121f";
+      ctx.beginPath();
+      ctx.moveTo(15, 22); ctx.lineTo(23, 22); ctx.lineTo(22, 24); ctx.lineTo(16, 24); ctx.closePath();
+      ctx.moveTo(29, 22); ctx.lineTo(37, 22); ctx.lineTo(36, 24); ctx.lineTo(30, 24); ctx.closePath();
+      ctx.fill();
+      // glowing red core inside each slit
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      const glow = 0.55 + Math.sin(frame * 0.15) * 0.18;
+      ctx.fillStyle = `rgba(255, 60, 60, ${glow})`;
+      ctx.beginPath();
+      ctx.ellipse(19, 23, 3, 1, 0, 0, Math.PI * 2);
+      ctx.ellipse(33, 23, 3, 1, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      // small forehead gem
+      headGem(26, 8, 2, 2.5);
+      // tribal red stripes on the cheeks (Tal'darim war markings)
+      ctx.strokeStyle = "rgba(200, 18, 31, 0.8)"; ctx.lineWidth = 1.4; ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(14, 28); ctx.lineTo(20, 30);
+      ctx.moveTo(32, 30); ctx.lineTo(38, 28);
+      ctx.stroke();
+    } else {
+    // -------------------- Aiur (default) ----------------------------------
     // dark visor recess over the eye band (no eyes drawn)
     ctx.fillStyle = factionColors.visor;
     ctx.beginPath();
@@ -21257,18 +21468,6 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.quadraticCurveTo(19, 26, 17, 21);
     ctx.closePath();
     ctx.fill();
-    // faint psionic glow inside the visor (Tal'darim red, Purifier blue)
-    if (isPurifier(f) || isTaldarim(f)) {
-      ctx.save();
-      ctx.globalCompositeOperation = "lighter";
-      ctx.fillStyle = factionColors.psion;
-      ctx.globalAlpha = 0.35 + Math.sin(frame * 0.15) * 0.1;
-      ctx.beginPath();
-      ctx.ellipse(21, 22, 2.4, 1.6, 0, 0, Math.PI * 2);
-      ctx.ellipse(31, 22, 2.4, 1.6, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
     // small tucked nerve cords - short, close to the head
     ctx.strokeStyle = factionColors.cord;
     ctx.lineWidth = 3.4;
@@ -21331,6 +21530,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.fill();
     // the forehead khaydarin gem
     headGem(26, 12, 2.3, 3);
+    }
   } else if (f.technique === "jiji") {
     // JIJI_PATCH: Jiji form - a young boy with bright, messy spiky red hair.
     // Evil Eye form - purple-skinned possession with a big glowing eye, wild
