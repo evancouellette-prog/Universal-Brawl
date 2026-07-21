@@ -2831,7 +2831,9 @@ function startRyukStrike(f, aimPoint = null, cost = 0) {
   if (cost > 0) f.ce = Math.max(0, f.ce - cost);
   const infoRatio = getLightInfoRatio(f);
   const radius = 66 + Math.floor(infoRatio * 28);
-  const startup = Math.max(8, Math.ceil(18 - infoRatio * 8 - ((f.potatoFocusTicks || 0) > 0 ? 4 : 0)));
+  // SHINIGAMI_STRIKE_SWIFT_PATCH: was 8-18 ticks slow pop-in. Now a snap
+  // teleport-in: 4-8 ticks. Ryuk warps in instantly, slams, done.
+  const startup = Math.max(4, Math.ceil(8 - infoRatio * 3 - ((f.potatoFocusTicks || 0) > 0 ? 2 : 0)));
   projectiles.push({
     owner: f === player ? "player" : "enemy",
     move: "ryukStrike",
@@ -19058,6 +19060,29 @@ function drawLightSummonEffect(f) {
   ctx.restore();
 }
 
+// LIGHT_RYUK_COMPANION_PATCH: a persistent Ryuk shadow floating BEHIND
+// Light in every state (idle, walking, jumping). While the Shinigami Strike
+// projectile or the punch assist is drawing Ryuk elsewhere, we skip this
+// idle companion so there aren't two Ryuks.
+function drawLightRyukCompanion(f) {
+  if (!isLight(f) || f.ko || f.lying) return;
+  // Skip if there's an active Shinigami Strike from Light on the field.
+  for (const p of projectiles) {
+    if (p.move === "ryukStrike" && p.owner === (f === player ? "player" : "enemy")) return;
+  }
+  // Skip during Light's own light/heavy punches (drawRyukPunchAssist handles Ryuk).
+  if (f.attacking === "light" || f.attacking === "heavy") return;
+  const dir = f.dir || 1;
+  const cx = f.x + f.w / 2;
+  // Ryuk stands one body-width behind Light and floats slightly off the ground.
+  const bx = cx - dir * 62;
+  const by = f.y + f.h - 4 + Math.sin(frame * 0.06) * 3; // gentle float
+  ctx.save();
+  ctx.globalAlpha = 0.9;
+  drawDeathNoteCharacterModel("ryuk", bx, by, 0.92, { alpha: 1, dir });
+  ctx.restore();
+}
+
 function drawLightAuraEffect(f) {
   if (!isLight(f)) return;
   const center = getFighterCenter(f);
@@ -19310,6 +19335,10 @@ function drawFighterShadow(f) {
 function drawRyukPunchAssist(f, attack, active) {
   if (!isLight(f) || !attack || (f.attacking !== "light" && f.attacking !== "heavy")) return;
 
+  // LIGHT_RYUK_BEHIND_PATCH: Ryuk now stands BEHIND Light (in the -x
+  // direction of Light's local space) and reaches OVER/PAST him to throw the
+  // punch. He's the one striking - not Light. During active frames his fist
+  // extends forward past Light's body to the strike point.
   const heavy = f.attacking === "heavy";
   const total = Math.max(1, attack.windup + attack.active + attack.recovery);
   const progress = Math.max(0, Math.min(1, f.attackFrame / total));
@@ -19321,42 +19350,50 @@ function drawRyukPunchAssist(f, attack, active) {
     ? 1 - Math.max(0, Math.min(1, (f.attackFrame - attack.windup - attack.active) / Math.max(1, attack.recovery)))
     : 1;
   const alpha = Math.max(0, Math.min(1, Math.min(1, windupRatio * 1.25) * fadeOut));
-  const strikeX = f.w + (heavy ? 44 : 34);
+  // Ryuk stands one body-width BEHIND Light (-x in local space)
+  const ryukX = -(heavy ? 42 : 36);
+  const ryukY = 128; // ground-level foot
+  const strikeX = f.w + (heavy ? 44 : 34); // hitbox forward of Light
   const strikeY = heavy ? 56 : 50;
-  const summonY = heavy ? 4 : 12;
-  const drop = active ? activeRatio : Math.min(0.72, windupRatio) * 0.45;
-  // RYUK_PUNCH_SIZE_PATCH:
-  // Keep Ryuk large during his punch assist so he matches his bigger summon look.
-  const ryukX = strikeX - (heavy ? 36 : 30);
-  const ryukY = summonY + drop * (heavy ? 28 : 20);
 
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.globalCompositeOperation = "source-over";
 
-  ctx.fillStyle = `rgba(0,0,0,${0.16 + alpha * 0.18})`;
-  for (let i = 0; i < 7; i += 1) {
-    const a = frame * 0.08 + i * 0.9;
-    ctx.beginPath();
-    ctx.arc(strikeX + Math.cos(a) * (20 + i * 1.8), strikeY + Math.sin(a) * (10 + i), 4 + (i % 3), 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  drawDeathNoteCharacterModel("ryuk", ryukX, ryukY + (heavy ? 84 : 80), heavy ? 1.08 : 0.98, {
+  // Ryuk himself, drawn BEHIND Light. During windup he raises his arm
+  // over Light's shoulder; on active he punches forward past Light.
+  drawDeathNoteCharacterModel("ryuk", ryukX, ryukY, heavy ? 1.15 : 1.02, {
     alpha: 1,
     pose: "punch",
     punch: active ? 1 : windupRatio * 0.7
   });
 
-  // Hitbox visual is drawn by drawHitboxHint() using the same style as everyone else.
-
-  if (progress > 0.72) {
-    const vanish = (progress - 0.72) / 0.28;
-    ctx.fillStyle = `rgba(0,0,0,${0.36 * (1 - vanish)})`;
-    for (let i = 0; i < 8; i += 1) {
-      const a = i * 0.78 + frame * 0.04;
+  // Big black shadow-fist reaching from Ryuk over Light's shoulder to the
+  // strike point. On windup the fist is cocked at Ryuk's side; on active
+  // it snaps forward through Light to the hit zone.
+  const fistProgress = active ? activeRatio : Math.min(1, windupRatio * 0.4);
+  const fistX = ryukX + (strikeX - ryukX) * fistProgress;
+  const fistY = ryukY - 46 + (strikeY - (ryukY - 46)) * fistProgress;
+  const armStart = { x: ryukX + 6, y: ryukY - 60 };
+  ctx.strokeStyle = `rgba(0, 0, 0, ${0.7 * alpha})`;
+  ctx.lineWidth = heavy ? 12 : 9;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(armStart.x, armStart.y);
+  ctx.lineTo(fistX, fistY);
+  ctx.stroke();
+  // fist
+  ctx.fillStyle = `rgba(15, 5, 22, ${0.9 * alpha})`;
+  ctx.beginPath();
+  ctx.arc(fistX, fistY, heavy ? 12 : 9, 0, Math.PI * 2);
+  ctx.fill();
+  // dark motion swirl at the strike point during active
+  if (active) {
+    ctx.fillStyle = `rgba(0,0,0,${0.16 + activeRatio * 0.22})`;
+    for (let i = 0; i < 7; i += 1) {
+      const a = frame * 0.08 + i * 0.9;
       ctx.beginPath();
-      ctx.arc(ryukX + Math.cos(a) * (14 + vanish * 26), ryukY + 20 + Math.sin(a) * (22 + vanish * 20), 5 + (i % 2) * 2, 0, Math.PI * 2);
+      ctx.arc(strikeX + Math.cos(a) * (20 + i * 1.8), strikeY + Math.sin(a) * (10 + i), 4 + (i % 3), 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -19791,6 +19828,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   const shoeColor = skin.shoe;
   const idle = !running && !jumpPose && !f.attacking && !f.blocking && !f.ko ? Math.sin(frame * 0.08) : 0;
   drawSukunaKingPassiveEffect(f);
+  drawLightRyukCompanion(f); // LIGHT_RYUK_COMPANION_PATCH
   drawLightAuraEffect(f);
   drawLightSummonEffect(f);
   drawBindingVowEffect(f);
@@ -21392,25 +21430,24 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       ctx.stroke();
     } else if (isTaldarim(f)) {
     // -------------------- Tal'darim: triangular skull-crown ---------------
-      // repaint the head as a stark WHITE face
+      // TALDARIM_TRIANGLE_HEAD_PATCH: an actual 3-sided triangle silhouette
+      // - wide across the crown, sharp point at the chin - painted stark
+      // WHITE. No hexagonal cheek corners.
       ctx.fillStyle = "#f4f6fa";
       ctx.strokeStyle = "#3a0a10";
       ctx.lineWidth = 1.5;
       ctx.beginPath();
-      // triangular head silhouette - wide crown, tapered chin
-      ctx.moveTo(26, -4);   // apex
-      ctx.lineTo(8, 18);    // top-left corner of the "triangle"
-      ctx.lineTo(12, 34);   // narrows in toward the chin
-      ctx.lineTo(26, 40);   // chin point
-      ctx.lineTo(40, 34);
-      ctx.lineTo(44, 18);
+      ctx.moveTo(4, 6);     // top-left crown corner
+      ctx.lineTo(48, 6);    // top-right crown corner
+      ctx.lineTo(26, 42);   // sharp chin point
       ctx.closePath();
       ctx.fill(); ctx.stroke();
-      // dark cheek-hollows shading, so the face still reads as gaunt
+      // dark cheek-hollow shading following the two slanting sides so the
+      // face still reads as gaunt-boned.
       ctx.fillStyle = "rgba(60, 20, 20, 0.25)";
       ctx.beginPath();
-      ctx.moveTo(11, 22); ctx.quadraticCurveTo(16, 30, 20, 36); ctx.lineTo(15, 36); ctx.closePath();
-      ctx.moveTo(41, 22); ctx.quadraticCurveTo(36, 30, 32, 36); ctx.lineTo(37, 36); ctx.closePath();
+      ctx.moveTo(6, 8);  ctx.lineTo(26, 40); ctx.lineTo(18, 32); ctx.lineTo(10, 18); ctx.closePath();
+      ctx.moveTo(46, 8); ctx.lineTo(26, 40); ctx.lineTo(34, 32); ctx.lineTo(42, 18); ctx.closePath();
       ctx.fill();
       // triangular blood-crimson crown: a big central spike + two lateral fangs
       ctx.fillStyle = factionColors.crown;
@@ -24356,31 +24393,41 @@ function drawProjectiles() {
       const impactRatio = Math.max(0, Math.min(1, impactAge / 9));
       const pulse = 1 + Math.sin(frame * 0.32) * 0.035;
       if ((p.startup || 0) > 0) {
-        const charge = summonRatio;
+        // SHINIGAMI_STRIKE_TELEPORT_PATCH: Ryuk warps in instead of the
+        // old slow dashed pop-in. Draws a bright teleport flash + swirling
+        // wings, no fade-in of the character silhouette.
+        const teleT = summonRatio; // 0..1 over the (now short) startup
         ctx.globalCompositeOperation = "lighter";
-        ctx.fillStyle = `rgba(0,0,0,${0.16 + charge * 0.18})`;
-        ctx.strokeStyle = `rgba(0,0,0,${0.58 + charge * 0.28})`;
-        ctx.lineWidth = 4;
-        ctx.setLineDash([12, 10]);
+        // outer warp flash - shrinks in as Ryuk arrives
+        const flashR = p.radius * (2.2 - teleT * 1.4);
+        const flashGrad = ctx.createRadialGradient(0, -p.radius * 0.3, 4, 0, -p.radius * 0.3, flashR);
+        flashGrad.addColorStop(0, `rgba(220, 200, 255, ${0.85 * (1 - teleT * 0.4)})`);
+        flashGrad.addColorStop(0.4, `rgba(120, 60, 200, ${0.55 * (1 - teleT * 0.4)})`);
+        flashGrad.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = flashGrad;
         ctx.beginPath();
-        ctx.arc(0, 0, p.radius, 0, Math.PI * 2);
+        ctx.arc(0, -p.radius * 0.3, flashR, 0, Math.PI * 2);
         ctx.fill();
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        ctx.globalCompositeOperation = "source-over";
-        drawDeathNoteCharacterModel("ryuk", 0, -p.radius * (0.48 - charge * 0.17), Math.max(0.82, p.radius / 76), {
-          alpha: 0.18 + charge * 0.62
-        });
-
-        ctx.globalAlpha = 0.32 + charge * 0.38;
-        ctx.fillStyle = "rgba(0,0,0,0.75)";
-        for (let i = 0; i < 8; i += 1) {
-          const a = frame * 0.045 + i * 0.82;
-          ctx.beginPath();
-          ctx.arc(Math.cos(a) * p.radius * (0.55 + charge * 0.2), Math.sin(a) * p.radius * 0.32 - p.radius * 0.12, 5 + (i % 3) * 2, 0, Math.PI * 2);
-          ctx.fill();
+        // sharp vertical lightning bolt streaks (Ryuk's warp signature)
+        ctx.strokeStyle = `rgba(200, 170, 255, ${0.9 * (1 - teleT * 0.5)})`;
+        ctx.lineWidth = 3;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        for (let i = 0; i < 5; i++) {
+          const ang = (i / 5) * Math.PI * 2 + frame * 0.08;
+          const r0 = p.radius * 0.15;
+          const r1 = p.radius * (1.4 - teleT);
+          ctx.moveTo(Math.cos(ang) * r0, Math.sin(ang) * r0 - p.radius * 0.2);
+          ctx.lineTo(Math.cos(ang) * r1, Math.sin(ang) * r1 - p.radius * 0.2);
         }
+        ctx.stroke();
+
+        // once the warp has almost finished, Ryuk fades in fully solid
+        // (no drawn-out ghost fade - this happens over 2-3 frames now).
+        ctx.globalCompositeOperation = "source-over";
+        drawDeathNoteCharacterModel("ryuk", 0, -p.radius * 0.35, Math.max(0.9, p.radius / 72), {
+          alpha: Math.min(1, teleT * 3.5)
+        });
         ctx.restore();
         continue;
       }
