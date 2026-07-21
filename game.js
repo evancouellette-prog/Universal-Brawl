@@ -291,6 +291,9 @@ const CHARACTER_SKINS = {
   akira: [
     { id: "default", name: "Akira Tendo" },
     { id: "corporate", name: "Corporate Drone" }
+  ],
+  gardener: [
+    { id: "default", name: "Crazy Dave" }
   ]
 };
 const SKINS_STORAGE_KEY = "brawlCharacterSkinsV1";
@@ -2394,6 +2397,17 @@ const TECHNIQUE_STATS = {
     knockbackTakenMultiplier: 1,
     ceRegenRate: CE_REGEN_RATE,
     ceLowRegenBonus: CE_LOW_REGEN_BONUS
+  },
+  // DAVE_PATCH: Crazy Dave (PvZ) - "Health: 950". The CE meter doubles as
+  // his Sun bank (max 250) with a steady passive trickle; Sunflowers add more.
+  gardener: {
+    maxHealth: 950,
+    healthBars: 10,
+    maxCe: 250,
+    damageTakenMultiplier: 1,
+    knockbackTakenMultiplier: 1,
+    ceRegenRate: 0.14,
+    ceLowRegenBonus: 0.04
   }
 };
 const keys = new Set();
@@ -3245,6 +3259,24 @@ function getAttackSpec(f, type = f.attacking) {
       attack.knockback += 4;
     }
   }
+  // DAVE_PATCH: M1 is the frying pan - surprisingly good range, and the
+  // built-in 3-hit light combo already knocks back on the finisher. M2 is a
+  // quick shovel jab - faster than the pan, great for interrupting.
+  if (f.technique === "gardener" && type !== "backThrow") {
+    if (type === "light") {
+      attack.damage += 1;
+      attack.range += 16;
+      attack.width += 10;
+      attack.knockback += 2;
+    } else if (type === "heavy") {
+      attack.damage = Math.max(6, attack.damage - 4);
+      attack.range += 10;
+      attack.windup = 4;
+      attack.active = 5;
+      attack.recovery = 9;
+      attack.knockback = Math.max(4, attack.knockback - 6);
+    }
+  }
   // SANJI_PATCH: every melee is a kick - quick, longer reach than a punch,
   // modest damage. Ifrit Jambe speeds him up 25% and adds fire damage.
   if (f.technique === "blackleg" && type !== "backThrow") {
@@ -3361,7 +3393,17 @@ const techniqueMoves = {
   projectileLauncher: { cost: 0, damage: DAVID_LAUNCHER_DAMAGE, speed: 11, radius: 16, knockback: 26, life: 120 },
   // AKIRA_PATCH: both mouse specials are melee dashes, handled in startTechnique.
   joyRide: { cost: 0, damage: AKIRA_JOYRIDE_DAMAGE, speed: 0, radius: 1, knockback: 0, life: 1 },
-  voltPunch: { cost: 0, damage: AKIRA_VOLT_DAMAGE, speed: 0, radius: 1, knockback: 0, life: 1 }
+  voltPunch: { cost: 0, damage: AKIRA_VOLT_DAMAGE, speed: 0, radius: 1, knockback: 0, life: 1 },
+  // DAVE_PATCH: seed packets. cost = Sun; the actual behavior lives in the
+  // davePlants system - these specs exist so the cost/HUD plumbing has entries.
+  peashooter: { cost: 100, damage: 6, speed: 0, radius: 1, knockback: 0, life: 1 },
+  sunflower:  { cost: 50,  damage: 0, speed: 0, radius: 1, knockback: 0, life: 1 },
+  wallnut:    { cost: 75,  damage: 0, speed: 0, radius: 1, knockback: 0, life: 1 },
+  cherrybomb: { cost: 150, damage: 40, speed: 0, radius: 1, knockback: 0, life: 1 },
+  snowpea:    { cost: 150, damage: 5, speed: 0, radius: 1, knockback: 0, life: 1 },
+  bonkchoy:   { cost: 100, damage: 5, speed: 0, radius: 1, knockback: 0, life: 1 },
+  potatomine: { cost: 50,  damage: 30, speed: 0, radius: 1, knockback: 0, life: 1 },
+  chomper:    { cost: 150, damage: 22, speed: 0, radius: 1, knockback: 0, life: 1 }
 };
 
 function getTechniqueMoveKey(f, slot) {
@@ -3381,6 +3423,11 @@ function getTechniqueMoveKey(f, slot) {
   if (f.technique === "david") return slot === 2 ? "projectileLauncher" : "gorillaArms"; // DAVID_PATCH
   if (f.technique === "akira") return slot === 2 ? "voltPunch" : "joyRide"; // AKIRA_PATCH
   if (f.technique === "hivemind") return slot === 2 ? "demodogHunt" : "demobatSwarm"; // VECNA_PATCH
+  // DAVE_PATCH: mouse slots are the first two selected seed packets.
+  if (f.technique === "gardener") {
+    const loadout = getDaveLoadout();
+    return slot === 2 ? loadout[1] : loadout[0];
+  }
   return "blue";
 }
 
@@ -3417,6 +3464,16 @@ function getTechniqueDisplayName(move) {
   if (move === "joyRide") return "JOY RIDE"; // AKIRA_PATCH
   if (move === "voltPunch") return "VOLT PUNCH"; // AKIRA_PATCH
   if (move === "overtime") return "OVERTIME"; // AKIRA_PATCH
+  // DAVE_PATCH:
+  if (move === "peashooter") return "PEASHOOTER";
+  if (move === "sunflower") return "SUNFLOWER";
+  if (move === "wallnut") return "WALL-NUT";
+  if (move === "cherrybomb") return "CHERRY BOMB";
+  if (move === "snowpea") return "SNOW PEA";
+  if (move === "bonkchoy") return "BONK CHOY";
+  if (move === "potatomine") return "POTATO MINE";
+  if (move === "chomper") return "CHOMPER";
+  if (move === "plantfood") return "PLANT FOOD";
   return move.toUpperCase();
 }
 
@@ -3514,12 +3571,13 @@ function pickRandomTechnique() {
   if (roll < 0.86) return "spider"; // SPIDER_PATCH
   if (roll < 0.91) return "beast"; // INOSUKE_PATCH
   if (roll < 0.95) return "jiji"; // JIJI_PATCH
-  if (roll < 0.98) return "david"; // DAVID_PATCH
+  if (roll < 0.965) return "david"; // DAVID_PATCH
+  if (roll < 0.985) return "gardener"; // DAVE_PATCH
   return "akira"; // AKIRA_PATCH
 }
 
 function isValidTechnique(technique) {
-  return technique === "limitless" || technique === "shrine" || technique === "deathnote" || technique === "brawler" || technique === "blackleg" || technique === "hivemind" || technique === "zealot" || technique === "spider" || technique === "beast" || technique === "jiji" || technique === "david" || technique === "akira"; // + INOSUKE + JIJI + DAVID + AKIRA
+  return technique === "limitless" || technique === "shrine" || technique === "deathnote" || technique === "brawler" || technique === "blackleg" || technique === "hivemind" || technique === "zealot" || technique === "spider" || technique === "beast" || technique === "jiji" || technique === "david" || technique === "akira" || technique === "gardener"; // + INOSUKE + JIJI + DAVID + AKIRA + DAVE
 }
 
 function rollCpuOpponentTechnique(reason = "") {
@@ -3897,6 +3955,15 @@ function makeFighter(config) {
     akiraJumpCount: 0,
     akiraTravel: 0,
     akiraLowHpTimer: 0,
+    // DAVE_PATCH: Crazy Dave state.
+    davePlantCooldowns: null,    // per-plant cooldown ticks {plantId: ticks}
+    davePlantFoodCooldown: 0,
+    daveUltTicks: 0,             // Crazy Garden active
+    daveManualAim: false,        // T toggles Auto/Manual aim
+    davePlantAnimTicks: 0,       // planting stoop animation
+    daveMutterTimer: 0,          // nonsense mutter scheduler
+    daveMutterShowTicks: 0,
+    daveMutterText: "",
     blocking: false,
     shieldTicks: SHIELD_MAX_TICKS,
     shieldCooldown: 0,
@@ -5954,6 +6021,9 @@ if (data.type === "role") {
       if (data.action === "akira-overtime") startOvertime(enemy); // AKIRA_PATCH
       if (data.action === "akira-beer") drinkBeer(enemy); // AKIRA_PATCH
       if (data.action === "akira-shark") startSharkSuit(enemy); // AKIRA_PATCH
+      if (data.action === "dave-plant") daveSlotPlant(enemy, Number(data.daveSlot) || 0, data.aim); // DAVE_PATCH
+      if (data.action === "dave-food") useDavePlantFood(enemy, data.aim); // DAVE_PATCH
+      if (data.action === "dave-aim") toggleDaveAim(enemy); // DAVE_PATCH
       if (data.action === "dodge") startDodge(enemy, getVectorFromInput(remoteInput));
       if (data.action === "jump") jumpFighterWithMove(enemy, (remoteInput.right ? 1 : 0) - (remoteInput.left ? 1 : 0));
       if (data.action === "infinity" && !hasCtLock(enemy)) toggleInfinity(enemy);
@@ -6476,6 +6546,8 @@ function resetRoundActors() {
   enemy = makeFighter({ x: STAGE_W - 230, w: 52, h: 128, dir: -1, color: "#dc2626", accent: "#991b1b" });
   projectiles = [];
   vecnaMinions = []; // VECNA_PATCH
+  davePlants = []; // DAVE_PATCH
+  davePeas = []; // DAVE_PATCH
   endUpsideDown(); // VECNA_PATCH
   zealotUnits = []; // ZEALOT_PATCH
   orbitalBeams = []; // ZEALOT_PATCH
@@ -7174,6 +7246,9 @@ function updateLightHudVisibility() {
 
   if (playerPanel) playerPanel.classList.toggle("light-hud", playerLight);
   if (enemyPanel) enemyPanel.classList.toggle("light-hud", enemyLight);
+  // DAVE_PATCH: the CE bar doubles as Dave's Sun bank - gold + "SUN" label.
+  if (playerPanel) playerPanel.classList.toggle("dave-hud", isDave(player));
+  if (enemyPanel) enemyPanel.classList.toggle("dave-hud", isDave(enemy));
 
   playerCeFrame?.classList.toggle("light-info-frame", playerLight);
   playerUltFrame?.classList.toggle("light-name-frame", playerLight);
@@ -11584,6 +11659,444 @@ function updateAkiraSystems(f, opponent) {
   f.speed = BASE_MOVE_SPEED * cpuMult * mult;
 }
 
+// ==========================================================================
+// DAVE_PATCH: Crazy Dave (Plants vs. Zombies) - technique id "gardener".
+// Seed Packets: pick 4 plants pre-match (slots LC / RC / S / F). Sun is the
+// CE meter (max 250, passive trickle + Sunflowers). T toggles Auto/Manual
+// aim; Manual places plants at the crosshair, Auto picks a smart spot.
+// R = Plant Food (empowers one plant 5s). Ultimate = Crazy Garden.
+// ==========================================================================
+
+const DAVE_PLANT_IDS = ["peashooter", "sunflower", "wallnut", "cherrybomb", "snowpea", "bonkchoy", "potatomine", "chomper"];
+const DAVE_PLANT_SPECS = {
+  peashooter: { name: "Peashooter", cost: 100, cooldown: 6 * 60,  hp: 90,  life: 30 * 60, w: 34, h: 44 },
+  sunflower:  { name: "Sunflower",  cost: 50,  cooldown: 8 * 60,  hp: 70,  life: 30 * 60, w: 34, h: 46 },
+  wallnut:    { name: "Wall-nut",   cost: 75,  cooldown: 14 * 60, hp: 300, life: 45 * 60, w: 44, h: 52 },
+  cherrybomb: { name: "Cherry Bomb",cost: 150, cooldown: 16 * 60, hp: 60,  life: 4 * 60,  w: 40, h: 40 },
+  snowpea:    { name: "Snow Pea",   cost: 150, cooldown: 10 * 60, hp: 90,  life: 30 * 60, w: 34, h: 44 },
+  bonkchoy:   { name: "Bonk Choy",  cost: 100, cooldown: 9 * 60,  hp: 110, life: 30 * 60, w: 34, h: 46 },
+  potatomine: { name: "Potato Mine",cost: 50,  cooldown: 12 * 60, hp: 70,  life: 40 * 60, w: 34, h: 26 },
+  chomper:    { name: "Chomper",    cost: 150, cooldown: 14 * 60, hp: 120, life: 35 * 60, w: 40, h: 52 }
+};
+const DAVE_PLANT_LIMIT = 4;
+const DAVE_PLANT_LIMIT_ULT = 7;
+const DAVE_ULT_TICKS = 12 * 60;
+const DAVE_PLANTFOOD_TICKS = 5 * 60;
+const DAVE_PLANTFOOD_COOLDOWN = 18 * 60;
+const DAVE_LOADOUT_KEY = "daveSeedPacketsV1";
+const DAVE_MUTTERS = [
+  "Blabble grabble...",
+  "The zombies... they're coming...",
+  "Where is my taco?!",
+  "RABABABA!",
+  "Wabby wabbo!",
+  "My plants are my friends."
+];
+
+let davePlants = [];
+let davePeas = [];
+
+function isDave(f) {
+  return Boolean(f && f.technique === "gardener");
+}
+
+function getDaveLoadout() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(DAVE_LOADOUT_KEY) || "null");
+    if (Array.isArray(saved)) {
+      const clean = saved.filter((id) => DAVE_PLANT_IDS.includes(id)).slice(0, 4);
+      if (clean.length === 4) return clean;
+    }
+  } catch (err) { /* fall through to default */ }
+  return ["peashooter", "sunflower", "wallnut", "bonkchoy"];
+}
+
+function setDaveLoadout(ids) {
+  try { localStorage.setItem(DAVE_LOADOUT_KEY, JSON.stringify(ids.slice(0, 4))); } catch (err) { /* ignore */ }
+}
+
+function daveUltActive(f) {
+  return Boolean(isDave(f) && (f.daveUltTicks || 0) > 0);
+}
+
+function davePlantLimit(f) {
+  return daveUltActive(f) ? DAVE_PLANT_LIMIT_ULT : DAVE_PLANT_LIMIT;
+}
+
+function ownedDavePlants(f) {
+  const owner = getFighterOwner(f);
+  return davePlants.filter((p) => p.owner === owner && p.hp > 0);
+}
+
+function getDavePlantRect(p) {
+  const spec = DAVE_PLANT_SPECS[p.kind];
+  return { x: p.x - spec.w / 2, y: p.y - spec.h, w: spec.w, h: spec.h };
+}
+
+// Where a plant would go right now: crosshair X in Manual mode, a smart
+// forward spot in Auto mode. Plants always sit on the main ground.
+function getDavePlantSpot(f, aimPoint = null) {
+  let x;
+  if (f.daveManualAim) {
+    const aim = sanitizeAimPoint(aimPoint) || sanitizeAimPoint(f.techniqueAim) || mouseAimWorld;
+    x = aim.x;
+  } else {
+    const mine = ownedDavePlants(f);
+    x = f.x + f.w / 2 + f.dir * (100 + (mine.length % 3) * 78);
+  }
+  return { x: Math.max(60, Math.min(STAGE_W - 60, x)), y: GROUND };
+}
+
+function canDavePlaceNow(f) {
+  return Boolean(
+    f && !gameOver && !paused && !isSpecialLocked(f) && !f.ko &&
+    f.stun <= 0 && !f.knockdown && f.dodging <= 0
+  );
+}
+
+function placeDavePlant(f, plantId, aimPoint = null) {
+  if (!isDave(f) || !canDavePlaceNow(f)) return false;
+  const spec = DAVE_PLANT_SPECS[plantId];
+  if (!spec) return false;
+  const cds = f.davePlantCooldowns || (f.davePlantCooldowns = {});
+  if ((cds[plantId] || 0) > 0) return false;
+  if (f.ce < getTechniqueCost(f, plantId)) { showActionWarning("Not Enough Sun"); return false; }
+  const mine = ownedDavePlants(f);
+  if (mine.length >= davePlantLimit(f)) { showActionWarning("Garden Full"); return false; }
+  const spot = getDavePlantSpot(f, aimPoint);
+  // nudge off other plants so they don't stack on one pixel
+  for (const p of davePlants) {
+    if (p.hp > 0 && Math.abs(p.x - spot.x) < 34) spot.x += (spot.x >= p.x ? 1 : -1) * 36;
+  }
+  spot.x = Math.max(60, Math.min(STAGE_W - 60, spot.x));
+  f.ce = Math.max(0, f.ce - getTechniqueCost(f, plantId));
+  cds[plantId] = daveUltActive(f) ? Math.round(spec.cooldown * 0.5) : spec.cooldown;
+  davePlants.push({
+    kind: plantId,
+    owner: getFighterOwner(f),
+    x: spot.x,
+    y: spot.y,
+    hp: spec.hp,
+    maxHp: spec.hp,
+    life: spec.life,
+    fuse: plantId === "cherrybomb" ? 60 : 0,
+    armTicks: plantId === "potatomine" ? 120 : 0,
+    atkCooldown: 30,
+    foodTicks: 0,
+    chewTicks: 0,
+    atkTick: 0,
+    sway: Math.random() * Math.PI * 2
+  });
+  // planting animation flash on Dave + soil poof on the spot
+  f.davePlantAnimTicks = daveUltActive(f) ? 8 : 14;
+  spawnHitSpark(spot.x, GROUND - 14, f.dir, "brown");
+  updateHud();
+  return true;
+}
+
+// Plant by loadout slot (0-3) - used by the S/F keys, mobile and the bot.
+function daveSlotPlant(f, index, aimPoint = null) {
+  if (!isDave(f)) return false;
+  const loadout = getDaveLoadout();
+  return placeDavePlant(f, loadout[index], aimPoint);
+}
+
+function useDavePlantFood(f, aimPoint = null) {
+  if (!isDave(f) || !canDavePlaceNow(f)) return false;
+  if ((f.davePlantFoodCooldown || 0) > 0) return false;
+  const mine = ownedDavePlants(f);
+  if (!mine.length) { showActionWarning("No Plants"); return false; }
+  // Manual aim feeds the plant nearest the crosshair; Auto feeds the plant
+  // closest to the opponent (the one doing the fighting).
+  const opponent = getOpponent(f);
+  const refX = f.daveManualAim
+    ? (sanitizeAimPoint(aimPoint) || mouseAimWorld).x
+    : (opponent ? opponent.x + opponent.w / 2 : f.x);
+  let best = mine[0];
+  for (const p of mine) if (Math.abs(p.x - refX) < Math.abs(best.x - refX)) best = p;
+  best.foodTicks = DAVE_PLANTFOOD_TICKS;
+  f.davePlantFoodCooldown = DAVE_PLANTFOOD_COOLDOWN;
+  // instant Plant Food perks
+  if (best.kind === "sunflower") { f.ce = Math.min(f.maxCe, f.ce + 100); }
+  if (best.kind === "wallnut") { best.hp = best.maxHp; }
+  if (best.kind === "potatomine") { best.armTicks = 0; }
+  if (best.kind === "cherrybomb") { best.fuse = Math.min(best.fuse || 1, 10); }
+  spawnHitSpark(best.x, best.y - 30, 1, "heavy");
+  showActionWarning("PLANT FOOD");
+  updateHud();
+  return true;
+}
+
+function toggleDaveAim(f) {
+  if (!isDave(f)) return false;
+  f.daveManualAim = !f.daveManualAim;
+  showActionWarning(f.daveManualAim ? "MANUAL AIM" : "AUTO AIM");
+  return true;
+}
+
+function startDaveUltimate(f) {
+  if (!isDave(f) || daveUltActive(f)) return false;
+  if (!canStartUltimate(f)) {
+    const warning = getUltimateFailureMessage(f);
+    if (warning) showActionWarning(warning);
+    return false;
+  }
+  f.ultimateMeter = 0;
+  f.daveUltTicks = DAVE_ULT_TICKS;
+  triggerUltCutscene(f); // ULT_CUTSCENES_PATCH
+  showActionWarning("CRAZY GARDEN!");
+  shake = Math.max(shake, 10);
+  spawnHitSpark(f.x + f.w / 2, f.y + f.h * 0.4, f.dir, "heavy");
+  updateHud();
+  return true;
+}
+
+function updateDaveSystems(f) {
+  if (!isDave(f)) return;
+  if (!f.davePlantCooldowns) f.davePlantCooldowns = {};
+  const cdStep = daveUltActive(f) ? 2 : 1; // Crazy Garden: faster cooldowns
+  for (const id of Object.keys(f.davePlantCooldowns)) {
+    if (f.davePlantCooldowns[id] > 0) f.davePlantCooldowns[id] = Math.max(0, f.davePlantCooldowns[id] - cdStep);
+  }
+  if ((f.davePlantFoodCooldown || 0) > 0) f.davePlantFoodCooldown = Math.max(0, f.davePlantFoodCooldown - cdStep);
+  if ((f.davePlantAnimTicks || 0) > 0) f.davePlantAnimTicks -= 1;
+  if ((f.daveUltTicks || 0) > 0) {
+    f.daveUltTicks -= 1;
+    // Sun generation doubled while the Crazy Garden is up.
+    f.ce = Math.min(f.maxCe, f.ce + f.ceRegenRate);
+    if (frame % 5 === 0) spawnHitSpark(f.x + Math.random() * f.w, f.y + Math.random() * f.h, 1, "block");
+  }
+  // nonsense mutters
+  if ((f.daveMutterShowTicks || 0) > 0) f.daveMutterShowTicks -= 1;
+  f.daveMutterTimer = (f.daveMutterTimer || (300 + Math.random() * 300)) - 1;
+  if (f.daveMutterTimer <= 0 && !f.ko) {
+    f.daveMutterText = DAVE_MUTTERS[Math.floor(Math.random() * DAVE_MUTTERS.length)];
+    f.daveMutterShowTicks = 110;
+    f.daveMutterTimer = 480 + Math.random() * 480;
+  }
+}
+
+function damageDavePlant(p, amount, dir = 1) {
+  p.hp -= amount;
+  const rect = getDavePlantRect(p);
+  spawnHitSpark(rect.x + rect.w / 2, rect.y + rect.h / 2, dir, "light");
+  if (p.hp <= 0) spawnHitSpark(p.x, p.y - 16, dir, "brown");
+}
+
+function daveFireInterval(p, base) {
+  let interval = base;
+  if (p.foodTicks > 0) interval = Math.round(interval * 0.35);
+  const ownerFighter = p.owner === "player" ? player : enemy;
+  if (daveUltActive(ownerFighter)) interval = Math.round(interval * 0.6); // plants gain attack speed
+  return Math.max(6, interval);
+}
+
+function davePlantDamageScale(p) {
+  return p.foodTicks > 0 ? 1.5 : 1;
+}
+
+function explodeDavePlant(p, radius, damage) {
+  const boomR = p.foodTicks > 0 ? radius * 1.4 : radius;
+  const ownerFighter = p.owner === "player" ? player : enemy;
+  const target = p.owner === "player" ? enemy : player;
+  spawnHitSpark(p.x, p.y - 20, 1, "heavy");
+  spawnHitSpark(p.x - 20, p.y - 30, -1, "heavy");
+  spawnHitSpark(p.x + 20, p.y - 30, 1, "heavy");
+  shake = Math.max(shake, 9);
+  if (target && !target.ko && target.dodging <= 0 && !isUntargetable(target)) {
+    const tc = getFighterCenter(target);
+    if (Math.hypot(tc.x - p.x, tc.y - (p.y - 20)) <= boomR + Math.max(target.w, target.h) * 0.4) {
+      const dir = Math.sign(tc.x - p.x) || 1;
+      const raw = Math.ceil(damage * davePlantDamageScale(p));
+      if (isBlockingAttack(target, dir)) {
+        damageShield(target, raw);
+      } else {
+        const dealt = applyFighterDamage(target, getTakenDamage(target, raw));
+        gainUltimate(ownerFighter, dealt * ULT_DAMAGE_GAIN_SCALE);
+        target.hurt = Math.max(target.hurt, 14);
+        target.stun = Math.max(target.stun, 16);
+        target.vx = dir * 9;
+        target.vy = Math.min(target.vy, -6);
+        target.grounded = false;
+      }
+      if (!pacifistBot && target.health <= 0) startKnockout(ownerFighter, target);
+    }
+  }
+  p.hp = 0;
+  p.life = 0;
+  updateHud();
+}
+
+function fireDavePea(p, chilled) {
+  const target = p.owner === "player" ? enemy : player;
+  if (!target || target.ko) return;
+  const tc = getFighterCenter(target);
+  const ownerFighter = p.owner === "player" ? player : enemy;
+  // Manual aim: peas fly toward the crosshair (the local Dave only - the
+  // remote side simply leads the target, keeping both sims sensible).
+  let aimX = tc.x, aimY = tc.y;
+  if (ownerFighter.daveManualAim && ownerFighter === (gameMode === "online" && onlineRole === "p2" ? enemy : player)) {
+    aimX = mouseAimWorld.x; aimY = mouseAimWorld.y;
+  }
+  const sx = p.x, sy = p.y - DAVE_PLANT_SPECS[p.kind].h + 12;
+  const dist = Math.max(1, Math.hypot(aimX - sx, aimY - sy));
+  const speed = 9.5;
+  davePeas.push({
+    owner: p.owner,
+    x: sx, y: sy,
+    vx: ((aimX - sx) / dist) * speed,
+    vy: ((aimY - sy) / dist) * speed,
+    damage: Math.ceil((chilled ? 5 : 6) * davePlantDamageScale(p)),
+    chill: chilled,
+    life: 90
+  });
+  p.atkTick = 8;
+}
+
+function updateDavePlants() {
+  if (!davePlants.length && !davePeas.length) return;
+
+  for (const p of davePlants) {
+    if (p.hp <= 0 || p.life <= 0) continue;
+    const spec = DAVE_PLANT_SPECS[p.kind];
+    const ownerFighter = p.owner === "player" ? player : enemy;
+    const target = p.owner === "player" ? enemy : player;
+    const targetable = target && !target.ko && target.dodging <= 0 && !isUntargetable(target);
+    const tc = target ? getFighterCenter(target) : null;
+    p.life -= 1;
+    if (p.foodTicks > 0) p.foodTicks -= 1;
+    if ((p.atkTick || 0) > 0) p.atkTick -= 1;
+    if (p.atkCooldown > 0) p.atkCooldown -= 1;
+
+    if (p.kind === "peashooter" || p.kind === "snowpea") {
+      if (targetable && p.atkCooldown <= 0) {
+        fireDavePea(p, p.kind === "snowpea");
+        p.atkCooldown = daveFireInterval(p, 70);
+      }
+    } else if (p.kind === "sunflower") {
+      if (p.atkCooldown <= 0 && ownerFighter && !ownerFighter.ko) {
+        const gain = daveUltActive(ownerFighter) ? 50 : 25;
+        ownerFighter.ce = Math.min(ownerFighter.maxCe, ownerFighter.ce + gain);
+        p.atkTick = 14;
+        p.atkCooldown = daveFireInterval(p, 300);
+        spawnHitSpark(p.x, p.y - spec.h - 6, 1, "block");
+        updateHud();
+      }
+    } else if (p.kind === "wallnut") {
+      // solid to the opponent: shove them out horizontally
+      if (target && !target.ko && rectsOverlap(getDavePlantRect(p), target)) {
+        const dir = Math.sign(target.x + target.w / 2 - p.x) || 1;
+        target.x = dir > 0 ? p.x + spec.w / 2 : p.x - spec.w / 2 - target.w;
+        if (Math.sign(target.vx) === -dir) target.vx = 0;
+      }
+    } else if (p.kind === "cherrybomb") {
+      p.fuse -= 1;
+      if (p.fuse <= 0) { explodeDavePlant(p, 150, 40); continue; }
+    } else if (p.kind === "potatomine") {
+      if (p.armTicks > 0) p.armTicks -= 1;
+      else if (targetable && tc && Math.abs(tc.x - p.x) < 60 && tc.y > GROUND - 130) {
+        explodeDavePlant(p, 110, 30);
+        continue;
+      }
+    } else if (p.kind === "bonkchoy") {
+      if (targetable && tc && p.atkCooldown <= 0 && Math.abs(tc.x - p.x) < 80 && tc.y > GROUND - 150) {
+        const dir = Math.sign(tc.x - p.x) || 1;
+        p.atkTick = 10;
+        p.punchDir = dir;
+        const raw = Math.ceil(5 * davePlantDamageScale(p));
+        if (isBlockingAttack(target, dir)) damageShield(target, raw);
+        else {
+          const dealt = applyFighterDamage(target, getTakenDamage(target, raw));
+          gainUltimate(ownerFighter, dealt * ULT_DAMAGE_GAIN_SCALE);
+          target.hurt = Math.max(target.hurt, 6);
+          spawnHitSpark(tc.x, tc.y, dir, "light");
+        }
+        if (!pacifistBot && target.health <= 0) startKnockout(ownerFighter, target);
+        p.atkCooldown = daveFireInterval(p, 24);
+        updateHud();
+      }
+    } else if (p.kind === "chomper") {
+      if (p.chewTicks > 0) p.chewTicks -= 1;
+      else if (targetable && tc && p.atkCooldown <= 0 && Math.abs(tc.x - p.x) < 95 && tc.y > GROUND - 160) {
+        const dir = Math.sign(tc.x - p.x) || 1;
+        p.atkTick = 14;
+        p.punchDir = dir;
+        const raw = Math.ceil(22 * davePlantDamageScale(p));
+        if (isBlockingAttack(target, dir)) damageShield(target, raw);
+        else {
+          const dealt = applyFighterDamage(target, getTakenDamage(target, raw));
+          gainUltimate(ownerFighter, dealt * ULT_DAMAGE_GAIN_SCALE);
+          target.hurt = Math.max(target.hurt, 10);
+          target.stun = Math.max(target.stun, 10);
+          spawnHitSpark(tc.x, tc.y, dir, "heavy");
+        }
+        if (!pacifistBot && target.health <= 0) startKnockout(ownerFighter, target);
+        p.chewTicks = daveFireInterval(p, 6 * 60);
+        p.atkCooldown = 30;
+        updateHud();
+      }
+    }
+
+    // plants can be destroyed: the opponent's melee and projectiles hurt them
+    if ((p.hitCooldown || 0) > 0) p.hitCooldown -= 1;
+    if (p.hp > 0 && (p.hitCooldown || 0) <= 0 && target && target.attacking && !target.ko) {
+      const attack = getAttackSpec(target);
+      if (attack) {
+        const activeStart = attack.windup;
+        const activeEnd = attack.windup + attack.active;
+        // melee hitboxes sit at torso height, so pad the plant's intake box
+        // upward - otherwise swings whiff over short plants.
+        const pr = getDavePlantRect(p);
+        const padded = { x: pr.x - 8, y: pr.y - 34, w: pr.w + 16, h: pr.h + 34 };
+        if (target.attackFrame >= activeStart && target.attackFrame <= activeEnd && rectsOverlap(getHitbox(target), padded)) {
+          p.hitCooldown = 16;
+          damageDavePlant(p, attack.damage, target.dir);
+        }
+      }
+    }
+    if (p.hp > 0 && target) {
+      for (const proj of projectiles) {
+        if (proj.hit || proj.visualOnly || (proj.startup || 0) > 0) continue;
+        if (proj.owner !== p.owner) {
+          if (projectileOverlapsTarget(proj, getDavePlantRect(p))) {
+            damageDavePlant(p, proj.damage || 8, proj.dir || 1);
+            proj.hit = true;
+            break;
+          }
+        }
+      }
+    }
+  }
+  davePlants = davePlants.filter((p) => p.hp > 0 && p.life > 0);
+
+  // peas
+  for (const pea of davePeas) {
+    pea.x += pea.vx;
+    pea.y += pea.vy;
+    pea.life -= 1;
+    const target = pea.owner === "player" ? enemy : player;
+    const ownerFighter = pea.owner === "player" ? player : enemy;
+    if (!target || target.ko) { pea.life = 0; continue; }
+    if (target.dodging > 0 || isUntargetable(target)) continue;
+    if (pea.x > target.x - 6 && pea.x < target.x + target.w + 6 && pea.y > target.y - 6 && pea.y < target.y + target.h + 6) {
+      const dir = Math.sign(pea.vx) || 1;
+      if (isBlockingAttack(target, dir)) {
+        damageShield(target, pea.damage);
+      } else {
+        const dealt = applyFighterDamage(target, getTakenDamage(target, pea.damage));
+        gainUltimate(ownerFighter, dealt * ULT_DAMAGE_GAIN_SCALE);
+        target.hurt = Math.max(target.hurt, 5);
+        if (pea.chill) target.vx *= 0.4; // snow pea chill
+        spawnHitSpark(pea.x, pea.y, dir, pea.chill ? "blue" : "light");
+      }
+      if (!pacifistBot && target.health <= 0) startKnockout(ownerFighter, target);
+      pea.life = 0;
+      updateHud();
+    }
+  }
+  davePeas = davePeas.filter((pea) => pea.life > 0 && pea.x > -80 && pea.x < STAGE_W + 80 && pea.y > -200 && pea.y < H + 80);
+}
+
 function startKnockout(attacker, defender) {
   if (roundEnding || roundResolved) return;
   gameOver = true;
@@ -11868,6 +12381,13 @@ function startTechnique(f, slot, chargeRatio = 0, aimPoint = null, releasingChar
   if (f.technique === "hivemind") {
     if (move === "demobatSwarm") startDemobatSwarm(f);
     if (move === "demodogHunt") startDemodogHunt(f);
+    return;
+  }
+
+  // DAVE_PATCH: mouse slots plant the first two seed packets. Cost and
+  // per-plant cooldowns are handled inside placeDavePlant.
+  if (f.technique === "gardener") {
+    placeDavePlant(f, move, aimPoint || f.techniqueAim || null);
     return;
   }
 
@@ -12401,7 +12921,8 @@ const ULT_CUTSCENES = {
   beast:      { name: "BEAST BREATHING", tint: "rgba(40, 30, 8, 0.60)", accent: "#eab308", ticks: 84 },
   jiji:       { name: "FULL POSSESSION", tint: "rgba(60, 8, 90, 0.60)", accent: "#c026d3", ticks: 96 },
   david:      { name: "CYBER SKELETON", tint: "rgba(0, 40, 60, 0.60)",  accent: "#22d3ee", ticks: 96 },
-  akira:      { name: "BUCKET LIST!",  tint: "rgba(6, 60, 50, 0.60)",   accent: "#34d399", ticks: 90 }
+  akira:      { name: "BUCKET LIST!",  tint: "rgba(6, 60, 50, 0.60)",   accent: "#34d399", ticks: 90 },
+  gardener:   { name: "CRAZY GARDEN",  tint: "rgba(20, 60, 10, 0.60)",  accent: "#84cc16", ticks: 90 } // DAVE_PATCH
 };
 let ultCutscene = null;
 function triggerUltCutscene(f) {
@@ -12586,6 +13107,7 @@ function beginUltimateAim(f, aimPoint = null) {
   if (f.technique === "jiji") return startJijiUltimate(f); // JIJI_PATCH
   if (f.technique === "david") return startDavidUltimate(f); // DAVID_PATCH
   if (f.technique === "akira") return startAkiraUltimate(f); // AKIRA_PATCH
+  if (f.technique === "gardener") return startDaveUltimate(f); // DAVE_PATCH
   if (!canStartUltimate(f)) {
     const warning = getUltimateFailureMessage(f);
     if (warning) showActionWarning(warning);
@@ -15766,6 +16288,21 @@ function updateEnemyAi() {
 
   // AKIRA_PATCH: CPU Akira presses Joy Ride / Volt Punch, drinks Beer when
   // hurt, Overtimes at range, and pops the Shark Suit defensively.
+  // DAVE_PATCH: bot Dave gardens on a timer - drop affordable seed packets,
+  // feed the garden Plant Food, and fire the ult when it's charged. The
+  // regular melee AI handles the pan up close.
+  if (enemy.technique === "gardener" && !pacifistBot && enemy.stun <= 0 && !enemy.knockdown && !gameOver) {
+    enemy.daveBotTimer = (enemy.daveBotTimer || 0) - 1;
+    if (enemy.daveBotTimer <= 0) {
+      enemy.daveBotTimer = 80 + Math.random() * 100;
+      const loadout = getDaveLoadout();
+      daveSlotPlant(enemy, Math.floor(Math.random() * loadout.length));
+      if (ownedDavePlants(enemy).length >= 2 && (enemy.davePlantFoodCooldown || 0) <= 0 && Math.random() < 0.5) {
+        useDavePlantFood(enemy);
+      }
+      if (enemy.ultimateMeter >= MAX_ULTIMATE) startDaveUltimate(enemy);
+    }
+  }
   if (enemy.technique === "akira" && !pacifistBot && enemy.stun <= 0 && !enemy.knockdown && !gameOver && !isAkiraCommitted(enemy)) {
     const aGap = Math.abs((player.x + player.w / 2) - (enemy.x + enemy.w / 2));
     if ((enemy.akiraBeerCooldown || 0) <= 0 && enemy.health < enemy.maxHealth * 0.45 && aGap > 180 && Math.random() < getCpuDecisionChance(0.01, 0.025, 0.05)) {
@@ -15984,6 +16521,7 @@ function updateFighter(f, opponent) {
   updateDavidSystems(f, opponent);
   // AKIRA_PATCH
   updateAkiraSystems(f, opponent);
+  updateDaveSystems(f); // DAVE_PATCH
 
   if (f.ko) {
     f.attacking = null;
@@ -18265,6 +18803,21 @@ function getBaseTechniqueSkin(f, flash) {
       hair: "#cc3a48",
       eye: "#5a3020",
       mark: "#e8722a"
+    };
+  }
+
+  // DAVE_PATCH: Crazy Dave - white tank top, khaki pants, big brown beard
+  // and the famous saucepan helmet (both drawn in the head section).
+  if (f.technique === "gardener") {
+    return {
+      body: "#f1f3f5",
+      skin: "#eab68f",
+      accent: "#8d6e3f",
+      pants: "#7a6234",
+      shoe: "#5b4423",
+      hair: "#6b4a2c",
+      eye: "#3a2a1a",
+      mark: "#84cc16"
     };
   }
 
@@ -21085,6 +21638,76 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       ctx.stroke();
       ctx.restore();
     }
+  } else if (f.technique === "gardener") {
+    // DAVE_PATCH: tank-top seams + garden belt, plus the frying pan /
+    // shovel props during his melee swings and a trowel flick on planting.
+    ctx.strokeStyle = "rgba(90, 74, 46, 0.45)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(16, 40); ctx.lineTo(20, 52);
+    ctx.moveTo(38, 40); ctx.lineTo(34, 52);
+    ctx.stroke();
+    ctx.fillStyle = "#5b4423";
+    ctx.fillRect(10, 84, 34, 6);
+    ctx.strokeStyle = "#020617";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(10, 84, 34, 6);
+    ctx.fillStyle = "#8d6e3f";
+    ctx.fillRect(30, 80, 9, 12);
+    ctx.strokeRect(30, 80, 9, 12);
+    const daveAtk = f.attacking === "light" || f.attacking === "heavy" ? getAttackSpec(f) : null;
+    if (f.attacking === "light" && daveAtk) {
+      // frying pan sweep
+      const prog = Math.min(1, f.attackFrame / Math.max(1, daveAtk.windup + daveAtk.active));
+      ctx.save();
+      ctx.translate(40, 50);
+      ctx.rotate(-1.3 + prog * 1.9);
+      ctx.fillStyle = "#3a3f46";
+      ctx.fillRect(0, -2.4, 26, 4.8);
+      ctx.strokeStyle = "#020617";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(0, -2.4, 26, 4.8);
+      ctx.fillStyle = "#525a64";
+      ctx.beginPath();
+      ctx.arc(34, 0, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = "#6a737e";
+      ctx.beginPath();
+      ctx.arc(34, 0, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    } else if (f.attacking === "heavy" && daveAtk) {
+      // shovel jab
+      const prog = Math.min(1, f.attackFrame / Math.max(1, daveAtk.windup + daveAtk.active));
+      const reach = 10 + prog * 18;
+      ctx.save();
+      ctx.translate(40, 56);
+      ctx.fillStyle = "#8d6e3f";
+      ctx.fillRect(0, -2, reach + 12, 4);
+      ctx.strokeStyle = "#020617";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(0, -2, reach + 12, 4);
+      ctx.fillStyle = "#9aa5b1";
+      ctx.beginPath();
+      ctx.moveTo(reach + 12, -7);
+      ctx.quadraticCurveTo(reach + 26, 0, reach + 12, 7);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+    if ((f.davePlantAnimTicks || 0) > 0) {
+      ctx.save();
+      ctx.translate(44, 70);
+      ctx.rotate(0.9 - (f.davePlantAnimTicks / 14) * 0.8);
+      ctx.fillStyle = "#9aa5b1";
+      ctx.fillRect(0, -1.6, 12, 3.2);
+      ctx.strokeStyle = "#020617";
+      ctx.lineWidth = 1.6;
+      ctx.strokeRect(0, -1.6, 12, 3.2);
+      ctx.restore();
+    }
   } else if (isPracticeDummy(f)) {
     ctx.strokeStyle = "#111827";
     ctx.lineWidth = 3;
@@ -22030,6 +22653,62 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
         }
       });
     }
+  } else if (f.technique === "gardener") {
+    // DAVE_PATCH: the big brown beard (a hair silhouette, not a face) and
+    // his famous saucepan helmet with the handle out the back.
+    const sway = idle * 0.4;
+    ctx.fillStyle = skin.hair;
+    ctx.beginPath();
+    ctx.moveTo(13, 22);
+    ctx.quadraticCurveTo(12, 38, 20, 44 + sway);
+    ctx.quadraticCurveTo(26, 48 + sway, 32, 44 + sway);
+    ctx.quadraticCurveTo(40, 38, 39, 22);
+    ctx.quadraticCurveTo(38, 30, 34, 32);
+    ctx.quadraticCurveTo(30, 34, 26, 34);
+    ctx.quadraticCurveTo(22, 34, 18, 32);
+    ctx.quadraticCurveTo(14, 30, 13, 22);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "#3f2b16";
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    // mustache resting on the beard + wild side tufts
+    ctx.fillStyle = skin.hair;
+    ctx.beginPath();
+    ctx.ellipse(20, 30, 6, 2.6, 0.25, 0, Math.PI * 2);
+    ctx.ellipse(32, 30, 6, 2.6, -0.25, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(12, 20, 4, 6, 0.3, 0, Math.PI * 2);
+    ctx.ellipse(40, 20, 4, 6, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+    // saucepan body
+    ctx.fillStyle = "#9aa5b1";
+    ctx.beginPath();
+    ctx.roundRect(13, -3, 26, 12, [9, 9, 2, 2]);
+    ctx.fill();
+    ctx.strokeStyle = "#020617";
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+    // handle out the back (local -x is behind the facing direction)
+    ctx.fillStyle = "#5f6b7a";
+    ctx.beginPath();
+    ctx.roundRect(-4, 1, 18, 4.5, 2);
+    ctx.fill();
+    ctx.stroke();
+    // rim over the brow
+    ctx.fillStyle = "#7b8794";
+    ctx.beginPath();
+    ctx.roundRect(11, 7, 30, 4.5, 2);
+    ctx.fill();
+    ctx.stroke();
+    // shine
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.55)";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(17, 1);
+    ctx.quadraticCurveTo(22, -2, 28, 0);
+    ctx.stroke();
   } else if (f.technique === "akira") {
     // AKIRA_PATCH: short, slightly messy black hair with a soft fringe.
     const sway = idle * 0.4;
@@ -22943,6 +23622,7 @@ function renderTechniquePreviews() {
   drawTechniquePreview(techniquePreviewCanvases.jiji, "jiji"); // JIJI_PATCH
   drawTechniquePreview(techniquePreviewCanvases.david, "david"); // DAVID_PATCH
   drawTechniquePreview(techniquePreviewCanvases.akira, "akira"); // AKIRA_PATCH
+  drawTechniquePreview(techniquePreviewCanvases.gardener, "gardener"); // DAVE_PATCH
 }
 
 // THRAGG_BRAWLER_PATCH: install his character-select card the same way
@@ -23239,6 +23919,95 @@ function installAkiraTechniqueOption() {
 }
 window.addEventListener("DOMContentLoaded", installAkiraTechniqueOption);
 
+// DAVE_PATCH: character-select card + the Seed Packets picker (choose 4 of
+// 8 plants; saved locally) + the gold "SUN" energy-bar theme.
+function installGardenerTechniqueOption() {
+  if (!techniqueScreen) return;
+  const existing = techniqueScreen.querySelector('[data-technique="gardener"]');
+  if (!existing) {
+    const sample = techniqueScreen.querySelector(".technique-button");
+    const button = sample ? sample.cloneNode(true) : document.createElement("button");
+    button.type = "button";
+    button.className = sample ? sample.className : "technique-button";
+    button.dataset.technique = "gardener";
+    button.innerHTML = `
+      <canvas id="gardenerPreview" class="skin-preview-canvas" width="180" height="160" aria-hidden="true"></canvas>
+      <strong>Crazy Dave</strong>
+      <span>PvZ - defend the lawn with a living garden</span>
+      <small>Pick 4 seed packets · Sun economy · Plant Food · Crazy Garden ult · T swaps Auto/Manual aim</small>
+    `;
+    const holder = sample?.parentNode || techniqueScreen;
+    holder.appendChild(button);
+  }
+  const canvas = document.getElementById("gardenerPreview");
+  if (canvas) techniquePreviewCanvases.gardener = canvas;
+  techniqueButtons = Array.from(document.querySelectorAll(".technique-button"));
+  techniqueButtons.forEach((button) => {
+    if (button.dataset.gardenerBound === "1") return;
+    button.dataset.gardenerBound = "1";
+    button.addEventListener("click", () => finishTechniqueSelect(button.dataset.technique));
+  });
+
+  installDaveSeedPicker();
+  renderTechniquePreviews();
+}
+
+function installDaveSeedPicker() {
+  const panel = techniqueScreen?.querySelector(".technique-panel");
+  if (!panel || panel.querySelector(".dave-seed-picker")) return;
+  if (!document.getElementById("daveSeedPickerStyle")) {
+    const style = document.createElement("style");
+    style.id = "daveSeedPickerStyle";
+    style.textContent = `
+      .dave-seed-picker { margin-top: 10px; padding: 8px 10px; border: 1px solid rgba(132, 204, 22, 0.4);
+        border-radius: 12px; background: rgba(20, 34, 12, 0.5); }
+      .dave-seed-picker h3 { margin: 0 0 6px; font: 800 12px system-ui, sans-serif; color: #d8f5a2;
+        letter-spacing: 0.05em; text-transform: uppercase; }
+      .dave-seed-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+      .dave-seed-chip { padding: 5px 10px; border-radius: 999px; border: 1px solid #46551f;
+        background: #16210c; color: #c4d69a; font: 700 11px system-ui, sans-serif; cursor: pointer; }
+      .dave-seed-chip.selected { background: #3f6212; border-color: #a3e635; color: #f7fee7; }
+      /* DAVE_PATCH: gold Sun bar */
+      .fighter-panel.dave-hud .ce-fill { background: linear-gradient(90deg, #7a5c10, #e8a80c, #ffd43b) !important;
+        box-shadow: 0 0 12px rgba(255, 212, 59, 0.45), inset 0 1px 0 rgba(255,255,255,0.35) !important; }
+      .fighter-panel.dave-hud .ce-frame { position: relative !important; overflow: hidden !important; }
+      .fighter-panel.dave-hud .ce-frame::before { content: "SUN"; position: absolute; left: 8px; top: 50%;
+        transform: translateY(-50%); z-index: 4; font: 900 10px system-ui, sans-serif; letter-spacing: 0.08em;
+        color: #fff7db; pointer-events: none; text-shadow: 0 1px 4px rgba(0,0,0,0.9); }
+    `;
+    document.head.appendChild(style);
+  }
+  const box = document.createElement("div");
+  box.className = "dave-seed-picker";
+  box.innerHTML = `<h3>Crazy Dave's Seed Packets - pick 4</h3><div class="dave-seed-chips"></div>`;
+  const chips = box.querySelector(".dave-seed-chips");
+  const refresh = () => {
+    const loadout = getDaveLoadout();
+    chips.querySelectorAll(".dave-seed-chip").forEach((chip) => {
+      chip.classList.toggle("selected", loadout.includes(chip.dataset.plant));
+    });
+  };
+  for (const id of DAVE_PLANT_IDS) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "dave-seed-chip";
+    chip.dataset.plant = id;
+    chip.textContent = `${DAVE_PLANT_SPECS[id].name} (${DAVE_PLANT_SPECS[id].cost}☀)`;
+    chip.addEventListener("click", () => {
+      let loadout = getDaveLoadout();
+      if (loadout.includes(id)) return; // always keep exactly 4: swap, don't remove
+      loadout = loadout.slice(1).concat(id); // oldest pick rotates out
+      setDaveLoadout(loadout);
+      refresh();
+      if (typeof relabelMobileAbilityButtons === "function") relabelMobileAbilityButtons();
+    });
+    chips.appendChild(chip);
+  }
+  panel.appendChild(box);
+  refresh();
+}
+window.addEventListener("DOMContentLoaded", installGardenerTechniqueOption);
+
 
 function drawSukunaModelCleanup(f) {
   if (!f || f.technique !== "shrine") return;
@@ -23349,6 +24118,423 @@ function drawSukunaModelCleanup(f) {
 // over fighters (call site places drawVecnaMinions after drawFighter) so they
 // stay visible mid-fight; both flash an attack pose when biting, and the
 // demodog's petal head opens into a four-petal maw when it's near its target.
+// ==========================================================================
+// DAVE_PATCH: plant rendering. Simple, chunky, black-outlined sprites in the
+// house style. Plants sit on the ground; sway/idle uses `frame`.
+// ==========================================================================
+
+function drawDavePlantSprite(p, ghost = false) {
+  const spec = DAVE_PLANT_SPECS[p.kind];
+  const sway = Math.sin(frame * 0.05 + (p.sway || 0)) * 2;
+  const target = p.owner === "player" ? enemy : player;
+  const face = p.punchDir || (target ? (Math.sign(target.x + target.w / 2 - p.x) || 1) : 1);
+  const recoil = (p.atkTick || 0) > 0 ? 3 : 0;
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.lineWidth = 2.4;
+  ctx.strokeStyle = "#0b1220";
+  const stem = "#2f9e44";
+  const leaf = "#37b24d";
+
+  // Plant Food glow
+  if (!ghost && (p.foodTicks || 0) > 0) {
+    ctx.save();
+    ctx.globalAlpha = 0.35 + Math.sin(frame * 0.3) * 0.15;
+    ctx.fillStyle = "#84cc16";
+    ctx.beginPath();
+    ctx.ellipse(0, -spec.h / 2, spec.w * 0.85, spec.h * 0.75, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  const drawBaseLeaves = () => {
+    ctx.fillStyle = leaf;
+    ctx.beginPath();
+    ctx.ellipse(-10, -3, 9, 4, -0.4, 0, Math.PI * 2);
+    ctx.ellipse(10, -3, 9, 4, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  };
+
+  if (p.kind === "peashooter" || p.kind === "snowpea") {
+    const headCol = p.kind === "snowpea" ? "#74c0fc" : "#40c057";
+    drawBaseLeaves();
+    ctx.strokeStyle = "#0b1220";
+    ctx.fillStyle = stem;
+    ctx.fillRect(-3, -26, 6, 24);
+    ctx.strokeRect(-3, -26, 6, 24);
+    // head + snout aimed at the target
+    ctx.fillStyle = headCol;
+    ctx.beginPath();
+    ctx.arc(sway * 0.6, -34, 12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = headCol;
+    ctx.beginPath();
+    ctx.roundRect(face > 0 ? 6 - recoil : -22 + recoil, -40, 16, 10, 4);
+    ctx.fill();
+    ctx.stroke();
+    if (p.kind === "snowpea") {
+      // ice crystals
+      ctx.fillStyle = "#d0ebff";
+      ctx.beginPath();
+      ctx.moveTo(-4, -46); ctx.lineTo(-1, -52); ctx.lineTo(2, -46);
+      ctx.moveTo(4, -44); ctx.lineTo(7, -50); ctx.lineTo(10, -44);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+  } else if (p.kind === "sunflower") {
+    drawBaseLeaves();
+    ctx.strokeStyle = "#0b1220";
+    ctx.fillStyle = stem;
+    ctx.fillRect(-3, -28, 6, 26);
+    ctx.strokeRect(-3, -28, 6, 26);
+    const burst = (p.atkTick || 0) > 0 ? 2 : 0;
+    ctx.fillStyle = "#ffd43b";
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + sway * 0.03;
+      ctx.beginPath();
+      ctx.ellipse(Math.cos(a) * (13 + burst) + sway * 0.5, -36 + Math.sin(a) * (13 + burst), 6, 3.4, a, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.fillStyle = "#a05a2c";
+    ctx.beginPath();
+    ctx.arc(sway * 0.5, -36, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  } else if (p.kind === "wallnut") {
+    ctx.fillStyle = "#d9a066";
+    ctx.beginPath();
+    ctx.ellipse(0, -26, 20, 26, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "rgba(120, 72, 32, 0.5)";
+    ctx.beginPath();
+    ctx.ellipse(5, -26, 12, 22, 0, -Math.PI / 2, Math.PI / 2);
+    ctx.fill();
+    // cracks as it takes damage
+    if (p.hp < p.maxHp * 0.55) {
+      ctx.strokeStyle = "#6b4423";
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(-8, -44); ctx.lineTo(-3, -32); ctx.lineTo(-9, -22);
+      if (p.hp < p.maxHp * 0.25) { ctx.moveTo(8, -40); ctx.lineTo(4, -28); ctx.lineTo(10, -16); }
+      ctx.stroke();
+    }
+  } else if (p.kind === "cherrybomb") {
+    const blink = (p.fuse || 0) < 30 && Math.floor(frame / 4) % 2 === 0;
+    for (const off of [-9, 9]) {
+      ctx.fillStyle = blink ? "#ff8787" : "#e03131";
+      ctx.beginPath();
+      ctx.arc(off, -16, 13, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = "#2f9e44";
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      ctx.moveTo(off, -28);
+      ctx.quadraticCurveTo(off * 0.3, -40, 0, -42);
+      ctx.stroke();
+      ctx.strokeStyle = "#0b1220";
+      ctx.lineWidth = 2.4;
+    }
+    // fuse spark
+    ctx.fillStyle = "#ffd43b";
+    ctx.beginPath();
+    ctx.arc(0, -44, blink ? 4 : 2.6, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (p.kind === "potatomine") {
+    if ((p.armTicks || 0) > 0) {
+      // buried: dirt mound
+      ctx.fillStyle = "#7a5230";
+      ctx.beginPath();
+      ctx.ellipse(0, -6, 16, 8, 0, Math.PI, 0);
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = "#d9a066";
+      ctx.beginPath();
+      ctx.ellipse(0, -12, 16, 12, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      // armed light
+      const on = Math.floor(frame / 12) % 2 === 0;
+      ctx.strokeStyle = "#0b1220";
+      ctx.beginPath();
+      ctx.moveTo(0, -24); ctx.lineTo(0, -30);
+      ctx.stroke();
+      ctx.fillStyle = on ? "#ff6b6b" : "#862e2e";
+      ctx.beginPath();
+      ctx.arc(0, -33, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+  } else if (p.kind === "bonkchoy") {
+    drawBaseLeaves();
+    // leafy body
+    ctx.fillStyle = "#66a80f";
+    ctx.beginPath();
+    ctx.ellipse(sway * 0.4, -24, 13, 20, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#a9e34b";
+    ctx.beginPath();
+    ctx.ellipse(sway * 0.4, -20, 8, 13, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // two fist stalks; the active one extends on atkTick
+    for (const side of [-1, 1]) {
+      const punching = (p.atkTick || 0) > 0 && side === face;
+      const reach = punching ? 26 : 10;
+      ctx.strokeStyle = "#0b1220";
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(side * 10, -24);
+      ctx.lineTo(side * (12 + reach * 0.5), -26);
+      ctx.stroke();
+      ctx.lineWidth = 2.4;
+      ctx.fillStyle = "#66a80f";
+      ctx.beginPath();
+      ctx.arc(side * (14 + reach), -26, punching ? 7 : 5.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+  } else if (p.kind === "chomper") {
+    drawBaseLeaves();
+    ctx.strokeStyle = "#0b1220";
+    ctx.fillStyle = stem;
+    ctx.fillRect(-3.5, -26, 7, 24);
+    ctx.strokeRect(-3.5, -26, 7, 24);
+    const chewing = (p.chewTicks || 0) > 0;
+    const open = (p.atkTick || 0) > 0;
+    ctx.save();
+    ctx.translate(sway * 0.5, -38);
+    ctx.scale(face, 1);
+    // big purple head
+    ctx.fillStyle = "#9c36b5";
+    ctx.beginPath();
+    ctx.ellipse(2, chewing ? 2 : 0, 15, chewing ? 15 : 13, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    // jaw (opens for the bite)
+    ctx.fillStyle = "#6741d9";
+    ctx.beginPath();
+    if (open) {
+      ctx.moveTo(0, 2);
+      ctx.lineTo(20, -10);
+      ctx.lineTo(20, 6);
+      ctx.closePath();
+    } else {
+      ctx.roundRect(2, 2, 16, 7, 3);
+    }
+    ctx.fill();
+    ctx.stroke();
+    // teeth
+    ctx.fillStyle = "#f8f9fa";
+    if (open) {
+      ctx.beginPath();
+      ctx.moveTo(6, -1); ctx.lineTo(9, 3); ctx.lineTo(12, -2);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // head spikes
+    ctx.fillStyle = "#e64980";
+    ctx.beginPath();
+    ctx.moveTo(-8, -11); ctx.lineTo(-5, -18); ctx.lineTo(-2, -11);
+    ctx.moveTo(0, -12); ctx.lineTo(3, -19); ctx.lineTo(6, -12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // small HP bar once damaged
+  if (!ghost && p.hp < p.maxHp) {
+    const ratio = Math.max(0, p.hp / p.maxHp);
+    ctx.fillStyle = "rgba(2, 6, 23, 0.65)";
+    ctx.fillRect(-16, -spec.h - 12, 32, 5);
+    ctx.fillStyle = ratio > 0.5 ? "#51cf66" : ratio > 0.25 ? "#fcc419" : "#fa5252";
+    ctx.fillRect(-16, -spec.h - 12, 32 * ratio, 5);
+    ctx.strokeStyle = "#0b1220";
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(-16, -spec.h - 12, 32, 5);
+  }
+  ctx.restore();
+}
+
+function drawDavePlants() {
+  for (const p of davePlants) {
+    if (p.hp > 0 && p.life > 0) drawDavePlantSprite(p);
+  }
+}
+
+// The locally-controlled Dave (if any) for aim UI purposes.
+function getLocalDaveFighter() {
+  const mine = gameMode === "online" && onlineRole === "p2" ? enemy : player;
+  return isDave(mine) ? mine : null;
+}
+
+// Peas + placement ghost + manual-aim crosshair. Drawn over the fighters,
+// inside the camera transform.
+function drawDavePeasAndAim() {
+  for (const pea of davePeas) {
+    ctx.save();
+    ctx.fillStyle = pea.chill ? "#74c0fc" : "#69db7c";
+    ctx.strokeStyle = "#0b1220";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(pea.x, pea.y, pea.chill ? 6 : 5.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  const f = getLocalDaveFighter();
+  if (!f || gameState !== "playing") return;
+
+  // PLANT_GHOST_PATCH: transparent ghost of the plant while aiming/holding.
+  let ghostPlant = null;
+  if (f.chargingTechnique) ghostPlant = getTechniqueMoveKey(f, f.chargingTechnique);
+  else if (f.daveAimingSlot) ghostPlant = getDaveLoadout()[f.daveAimingSlot - 1];
+  if (ghostPlant && DAVE_PLANT_SPECS[ghostPlant]) {
+    const spot = getDavePlantSpot(f, f.techniqueAim || (f.daveManualAim ? mouseAimWorld : null));
+    const cds = f.davePlantCooldowns || {};
+    const ok = f.ce >= getTechniqueCost(f, ghostPlant) && (cds[ghostPlant] || 0) <= 0 && ownedDavePlants(f).length < davePlantLimit(f);
+    ctx.save();
+    ctx.globalAlpha = 0.45;
+    drawDavePlantSprite({ kind: ghostPlant, x: spot.x, y: spot.y, owner: getFighterOwner(f), hp: 1, maxHp: 1, sway: 0, atkTick: 0, foodTicks: 0, fuse: 99, armTicks: ghostPlant === "potatomine" ? 0 : 0 }, true);
+    ctx.restore();
+    ctx.save();
+    ctx.strokeStyle = ok ? "rgba(132, 204, 22, 0.9)" : "rgba(250, 82, 82, 0.9)";
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([6, 5]);
+    ctx.beginPath();
+    ctx.ellipse(spot.x, GROUND, 30, 8, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // SMART_GARDENING_PATCH: manual-aim crosshair at the mouse.
+  if (f.daveManualAim) {
+    const m = mouseAimWorld;
+    ctx.save();
+    ctx.strokeStyle = "rgba(132, 204, 22, 0.95)";
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.arc(m.x, m.y, 11, 0, Math.PI * 2);
+    ctx.moveTo(m.x - 17, m.y); ctx.lineTo(m.x - 6, m.y);
+    ctx.moveTo(m.x + 6, m.y); ctx.lineTo(m.x + 17, m.y);
+    ctx.moveTo(m.x, m.y - 17); ctx.lineTo(m.x, m.y - 6);
+    ctx.moveTo(m.x, m.y + 6); ctx.lineTo(m.x, m.y + 17);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(132, 204, 22, 0.9)";
+    ctx.beginPath();
+    ctx.arc(m.x, m.y, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// Screen-space Dave chatter: nonsense mutters mid-fight and the watering-can
+// "Tacoooos!" victory moment. Uses the same bubble look as the match intros.
+function drawDaveSpeech() {
+  const daves = [player, enemy].filter((f) => isDave(f) && !f.ko);
+  for (const f of daves) {
+    const winnerFighter = koWinner === "player" ? player : koWinner === "enemy" ? enemy : null;
+    const won = (roundEnding || gameState === "roundOver") && winnerFighter === f;
+    let text = null;
+    if (won) text = "Tacoooos!";
+    else if ((f.daveMutterShowTicks || 0) > 0 && gameState === "playing") text = f.daveMutterText;
+    if (!text) continue;
+
+    const headX = (f.x + f.w / 2 - cameraX) * cameraZoom;
+    const headY = f.y * cameraZoom + getCameraYOffset();
+    ctx.save();
+    ctx.font = "700 14px Arial";
+    const w = ctx.measureText(text).width + 24;
+    const h = 30;
+    const bx = Math.max(8, Math.min(W - w - 8, headX - w / 2));
+    let by = headY - h - 24;
+    if (by < 6) by = 6;
+    ctx.fillStyle = "#fffdf6";
+    ctx.strokeStyle = "#161a22";
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    ctx.roundRect(bx, by, w, h, 10);
+    ctx.fill();
+    ctx.stroke();
+    const tailX = Math.max(bx + 14, Math.min(bx + w - 14, headX));
+    ctx.beginPath();
+    ctx.moveTo(tailX - 7, by + h - 1);
+    ctx.lineTo(tailX + 7, by + h - 1);
+    ctx.lineTo(tailX, by + h + 12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#fffdf6";
+    ctx.fillRect(tailX - 6, by + h - 3, 12, 4);
+    ctx.fillStyle = "#161a22";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText(text, bx + 12, by + 20);
+    ctx.restore();
+
+    // victory: Dave waters a little sprout beside him
+    if (won) {
+      const wx = (f.x + f.w / 2 + f.dir * 52 - cameraX) * cameraZoom;
+      const wy = GROUND * cameraZoom + getCameraYOffset();
+      ctx.save();
+      ctx.translate(wx, wy);
+      ctx.scale(cameraZoom, cameraZoom);
+      ctx.strokeStyle = "#0b1220";
+      ctx.lineWidth = 2.2;
+      // sprout
+      ctx.strokeStyle = "#2f9e44";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.quadraticCurveTo(2, -10, 0, -16);
+      ctx.stroke();
+      ctx.fillStyle = "#37b24d";
+      ctx.strokeStyle = "#0b1220";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(-5, -18, 6, 3.4, -0.5, 0, Math.PI * 2);
+      ctx.ellipse(5, -20, 6, 3.4, 0.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      // watering can floating in from Dave's side
+      ctx.save();
+      ctx.translate(-f.dir * 30, -44 + Math.sin(frame * 0.1) * 2);
+      ctx.rotate(f.dir * 0.5);
+      ctx.fillStyle = "#4dabf7";
+      ctx.beginPath();
+      ctx.roundRect(-12, -9, 24, 18, 5);
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(12, -4);
+      ctx.lineTo(22, -10);
+      ctx.lineTo(22, -6);
+      ctx.lineTo(12, 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+      // falling drops
+      for (let i = 0; i < 3; i++) {
+        const dt = ((frame * 2 + i * 14) % 40) / 40;
+        ctx.fillStyle = "rgba(77, 171, 247, 0.85)";
+        ctx.beginPath();
+        ctx.arc(-f.dir * 12 + i * 4 - 4, -34 + dt * 30, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+}
+
 function drawVecnaMinions() {
   for (const m of vecnaMinions) {
     const flash = m.hitCooldown > 12;
@@ -24416,6 +25602,9 @@ function getAimPreviewDistance(move, spec, chargeRatio, aimVector, attacker = nu
 }
 
 function drawTechniqueAimPreview(f) {
+  // DAVE_PATCH: plant placement already shows its own ghost + soil ring, so
+  // skip the generic red aim line for him.
+  if (f.technique === "gardener") return;
   const move = getTechniqueMoveKey(f, f.chargingTechnique);
   const spec = techniqueMoves[move];
   if (!spec) return;
@@ -25324,7 +26513,8 @@ function drawHitboxHint(f) {
 const INTRO_SPEAKER_NAMES = {
   limitless: "Gojo", shrine: "Sukuna", deathnote: "Light", brawler: "Thragg",
   blackleg: "Sanji", hivemind: "Vecna", zealot: "Zealot", spider: "Spider-Man",
-  beast: "Inosuke", jiji: "Jiji", david: "David", akira: "Akira"
+  beast: "Inosuke", jiji: "Jiji", david: "David", akira: "Akira",
+  gardener: "Crazy Dave"
 };
 
 // [techA, techB, [[speakerTech, line], [speakerTech, line]]]
@@ -25418,7 +26608,21 @@ const MATCH_INTRO_DIALOGUES = [
   ["david", "david", [["david", "Guess I'm chromed twice."], ["david", "Guess so, choom."]]],
   ["david", "akira", [["akira", "You ever take a day off?"], ["david", "Not anymore."]]],
   // Akira
-  ["akira", "akira", [["akira", "Guess we're both crossing things off our bucket list."], ["akira", "Let's make this one unforgettable."]]]
+  ["akira", "akira", [["akira", "Guess we're both crossing things off our bucket list."], ["akira", "Let's make this one unforgettable."]]],
+  // Crazy Dave (DAVE_PATCH)
+  ["gardener", "gardener", [["gardener", "RABABABABA!"], ["gardener", "RABABA! ...What?"]]],
+  ["gardener", "limitless", [["limitless", "...Is that a pot on your head?"], ["gardener", "Best helmet on the block!"]]],
+  ["gardener", "shrine", [["shrine", "You reek of soil, madman."], ["gardener", "And you look like a zombie! PLANTS!"]]],
+  ["gardener", "deathnote", [["deathnote", "I can't judge what I can't understand."], ["gardener", "RABABABA to you too!"]]],
+  ["gardener", "brawler", [["brawler", "Earth sends a gardener?"], ["gardener", "Earth sends a GARDEN!"]]],
+  ["gardener", "blackleg", [["blackleg", "A pot isn't a hat."], ["gardener", "Yeah it is."]]],
+  ["gardener", "hivemind", [["gardener", "That guy needs a Sunflower!"], ["hivemind", "You mock what you cannot comprehend."]]],
+  ["gardener", "zealot", [["zealot", "Is this a warrior... or a farmer?"], ["gardener", "BOTH!"]]],
+  ["gardener", "spider", [["spider", "Cool pot. Very avant-garde."], ["gardener", "It keeps my brains fresh!"]]],
+  ["gardener", "beast", [["beast", "Old man! Fight me!"], ["gardener", "RABABABA! Bonk Choy, go!"]]],
+  ["gardener", "jiji", [["jiji", "Are... are you okay?"], ["gardener", "I'm Crazy Dave! Of course not!"]]],
+  ["gardener", "david", [["david", "This guy's insane."], ["gardener", "The zombies said that too!"]]],
+  ["gardener", "akira", [["akira", "I've had some experience with zombies too."], ["gardener", "Those buggers eat your plants too?!"]]]
 ];
 
 const MATCH_INTRO_LOOKUP = {};
@@ -25570,9 +26774,11 @@ function draw() {
 
   drawEffects();
   if (stageHazardsEnabled) drawStageHazards(); // STAGE_SELECT_PATCH (behind fighters)
+  drawDavePlants(); // DAVE_PATCH: plants behind the fighters
   drawFighter(player, getPlayerLabel(), getPlayerLabelColor());
   drawFighter(enemy, getEnemyLabel(), getEnemyLabelColor());
   drawVecnaMinions(); // VECNA_MINION_DRAW_PATCH: over fighters
+  drawDavePeasAndAim(); // DAVE_PATCH: peas + placement ghost + crosshair
   drawUpsideDownSpider(); // VECNA_PATCH
   drawTechniqueAimSizePreview();
   drawShieldBreakEffects();
@@ -25582,6 +26788,7 @@ function draw() {
   drawDavidGlitchOverlay(); // DAVID_PATCH
   drawAkiraNotebook(); // AKIRA_PATCH
   drawMatchIntroDialogue(); // MATCH_INTRO_PATCH
+  drawDaveSpeech(); // DAVE_PATCH: mutters + "Tacoooos!" victory
   drawBindingVowQuote();
   drawActionWarning();
 }
@@ -26013,6 +27220,7 @@ function fixedUpdate() {
     applyHit(enemy, player);
     updateProjectiles();
     updateVecnaMinions(); // VECNA_PATCH
+    updateDavePlants(); // DAVE_PATCH
     updateUpsideDown(); // VECNA_PATCH
     updateZealotUnits(); // ZEALOT_PATCH
     updateOrbitalBeams(); // ZEALOT_PATCH
@@ -26037,6 +27245,7 @@ function fixedUpdate() {
     if (!(gameMode === "online" && onlineRole === "p1")) applyHit(enemy, player);
     updateProjectiles();
     updateVecnaMinions(); // VECNA_PATCH
+    updateDavePlants(); // DAVE_PATCH
     updateUpsideDown(); // VECNA_PATCH
     updateZealotUnits(); // ZEALOT_PATCH
     updateOrbitalBeams(); // ZEALOT_PATCH
@@ -26139,6 +27348,21 @@ window.addEventListener("keydown", (event) => {
       if (startBeastWhirl(enemy)) sendOnlineInput("beast-whirl");
       return;
     }
+    // DAVE_PATCH: online p2 - F holds the 4th seed packet ghost, R is Plant
+    // Food, T toggles the aiming mode.
+    if ((key === "f" || code === "keyf") && !event.repeat && enemy?.technique === "gardener") {
+      enemy.daveAimingSlot = 4;
+      return;
+    }
+    if ((key === "r" || code === "keyr") && !event.repeat && enemy?.technique === "gardener") {
+      if (useDavePlantFood(enemy, mouseAimWorld)) sendOnlineInput("dave-food", mouseAimWorld);
+      return;
+    }
+    if ((key === "t" || code === "keyt") && !event.repeat && enemy?.technique === "gardener") {
+      toggleDaveAim(enemy);
+      sendOnlineInput("dave-aim");
+      return;
+    }
     const action = getOnlineAction(key, code, event.repeat);
     if (action === "light") startAttack(enemy, "light");
     if (action === "heavy") startAttack(enemy, "heavy");
@@ -26176,6 +27400,22 @@ window.addEventListener("keydown", (event) => {
       if (startSharkSuit(player) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("akira-shark");
       return;
     }
+    // DAVE_PATCH: F holds the 4th seed packet - ghost preview shows while
+    // held, the plant goes down on release.
+    else if (player.technique === "gardener") {
+      player.daveAimingSlot = 4;
+      return;
+    }
+  }
+  // DAVE_PATCH: R is Plant Food, T toggles Auto/Manual aim.
+  if ((key === "r" || code === "keyr") && !event.repeat && player.technique === "gardener") {
+    if (useDavePlantFood(player, mouseAimWorld) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("dave-food", mouseAimWorld);
+    return;
+  }
+  if ((key === "t" || code === "keyt") && !event.repeat && player.technique === "gardener") {
+    toggleDaveAim(player);
+    if (gameMode === "online" && onlineRole === "p2") sendOnlineInput("dave-aim");
+    return;
   }
   if ((key === "r" || code === "keyr") && !event.repeat && player.technique === "akira") {
     // AKIRA_PATCH: R drinks a Cold Beer.
@@ -26245,6 +27485,9 @@ window.addEventListener("keydown", (event) => {
     } else if (fighter?.technique === "akira") {
       // AKIRA_PATCH: S is Overtime.
       if (startOvertime(fighter) && gameMode === "online" && onlineRole === "p2") sendOnlineInput("akira-overtime");
+    } else if (fighter?.technique === "gardener") {
+      // DAVE_PATCH: S holds the 3rd seed packet ghost; planted on release.
+      fighter.daveAimingSlot = 3;
     }
   }
   if (isEventForAction("ultimate", key, code) && !event.repeat) beginUltimateAim(player, mouseAimWorld);
@@ -26273,6 +27516,17 @@ window.addEventListener("keyup", (event) => {
   }
   keys.delete(event.key);
   keys.delete(event.code);
+  // DAVE_PATCH: releasing F plants the 4th seed packet at the ghost spot.
+  if ((key === "f" || code === "keyf") && !homeOpen && !paused && gameState === "playing") {
+    const activeDave = gameMode === "online" && onlineRole === "p2" ? enemy : player;
+    if (activeDave?.technique === "gardener" && (activeDave.daveAimingSlot || 0) === 4) {
+      const point = activeDave.daveManualAim ? mouseAimWorld : null;
+      if (daveSlotPlant(activeDave, 3, point) && gameMode === "online" && onlineRole === "p2") {
+        sendOnlineInput("dave-plant", point, { daveSlot: 3 });
+      }
+      activeDave.daveAimingSlot = 0;
+    }
+  }
   if (isEventForAction("specialAim", key, code) && !homeOpen && !paused && gameState === "playing") {
     const active = gameMode === "online" && onlineRole === "p2" ? enemy : player;
     if (active?.fugaAiming) {
@@ -26299,6 +27553,14 @@ window.addEventListener("keyup", (event) => {
     if (active?.technique === "zealot") {
       releaseZealotWhirlwind(active);
       if (gameMode === "online" && onlineRole === "p2") sendOnlineInput("zealot-whirl-release");
+    }
+    // DAVE_PATCH: releasing S plants the 3rd seed packet at the ghost spot.
+    if (active?.technique === "gardener" && (active.daveAimingSlot || 0) === 3) {
+      const point = active.daveManualAim ? mouseAimWorld : null;
+      if (daveSlotPlant(active, 2, point) && gameMode === "online" && onlineRole === "p2") {
+        sendOnlineInput("dave-plant", point, { daveSlot: 2 });
+      }
+      active.daveAimingSlot = 0;
     }
     clearSpecialHoldState(active);
   }
@@ -27272,7 +28534,10 @@ function drawWorldSlashEffects() {
       "MUTTON SHOT": "MUTTON", "SKY WALK": "SKY", "SPATIAL RUP.": "SPATIAL",
       "SPATIAL RUPTURE": "SPATIAL", "SANDEVISTAN": "SANDE",
       "INVESTIGATE": "INVEST", "COLD BEER": "BEER",
-      "SHARK SUIT": "SHARK", "TRANSFORM": "SWAP", "UPSIDE-DOWN SLIP": "SLIP"
+      "SHARK SUIT": "SHARK", "TRANSFORM": "SWAP", "UPSIDE-DOWN SLIP": "SLIP",
+      "PEASHOOTER": "PEA", "SUNFLOWER": "SUNFLW", "WALL-NUT": "WALL",
+      "CHERRY BOMB": "CHERRY", "SNOW PEA": "SNOW", "BONK CHOY": "BONK",
+      "POTATO MINE": "TATER", "PLANT FOOD": "FOOD"
     };
     if (map[s]) return map[s];
     return s.length <= 8 ? s : s.slice(0, 7).trim() + ".";
@@ -27304,6 +28569,13 @@ function drawWorldSlashEffects() {
       util.push({ label: "BEER", act: () => drinkBeer(f) });
       util.push({ label: "SHARK", act: () => startSharkSuit(f) });
     }
+    // DAVE_PATCH: seed packets 3+4 and Plant Food (mobile stays on Auto Aim).
+    if (tech === "gardener") {
+      const lo = getDaveLoadout();
+      util.push({ label: abbr(getTechniqueDisplayName(lo[2])), act: () => daveSlotPlant(f, 2) });
+      util.push({ label: abbr(getTechniqueDisplayName(lo[3])), act: () => daveSlotPlant(f, 3) });
+      util.push({ label: "FOOD", act: () => useDavePlantFood(f) });
+    }
     return util;
   }
 
@@ -27312,7 +28584,7 @@ function drawWorldSlashEffects() {
       limitless: "HOLLOW", shrine: "SLASH", deathnote: "NOTE",
       brawler: "STOMP", blackleg: "IFRIT", hivemind: "UPSIDE",
       zealot: "WARP", spider: "FRIEND", beast: "BEAST",
-      jiji: "ACCEPT", david: "SKELE", akira: "BUCKET"
+      jiji: "ACCEPT", david: "SKELE", akira: "BUCKET", gardener: "GARDEN"
     };
     return map[tech] || "ULT";
   }
