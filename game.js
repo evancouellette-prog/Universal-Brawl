@@ -1805,7 +1805,7 @@ const STAGES = {
   protoss:    { id: "protoss",    name: "Aiur Nexus",      short: "Aiur",        draw: () => drawProtossBase(),     hazard: "pylonBeam", skyTop: "#0b1b26", groundCol: "#1a2b30" },
   village:    { id: "village",    name: "Slayer Village",  short: "Village",     draw: () => drawSlayerVillage(),   hazard: "embers",    skyTop: "#1b2340", groundCol: "#3a2c22" },
   rooftops:   { id: "rooftops",   name: "Rooftops",        short: "Roofs",       draw: () => drawRooftops(),        hazard: null,        skyTop: "#243049", groundCol: "#2c2f38" },
-  sunny:      { id: "sunny",      name: "Thousand Sunny",  short: "Sunny",       draw: () => drawThousandSunny(),   hazard: "wave",      skyTop: "#8fd6f2", groundCol: "#3fae52" },
+  sunny:      { id: "sunny",      name: "Thousand Sunny",  short: "Sunny",       draw: () => drawThousandSunny(),   hazard: "wave",      skyTop: "#8fd6f2", groundCol: "#1f6fb0" },
   upsideDown: { id: "upsideDown", name: "The Upside Down", short: "Upside Down", draw: () => drawUpsideDownStage(), hazard: "spores",    skyTop: "#0a0d12", groundCol: "#12151b" },
   space:      { id: "space",      name: "Deep Space",      short: "Space",       draw: () => drawSpaceStage(),      hazard: "meteor",    skyTop: "#05030f", groundCol: "#15131f" }
 };
@@ -16545,70 +16545,303 @@ function drawRooftops() {
 }
 
 function drawThousandSunny() {
+  // SUNNY_SHIP_PATCH: the whole arena IS the Sunny's lawn deck. The ocean
+  // fills everything below/around the hull, the hull side (tan planks +
+  // red gunwale + portholes) shows under the deck, the sun-lion figurehead
+  // rides the bow on the left, and the mast/sail/crow's nest + aft cabin
+  // sit behind the fighters. Pulling the camera back shows a ship at sea.
   stageSky([[0, "#8fd6f2"], [0.5, "#5db4e0"], [1, "#2b6ea0"]]);
-  ctx.fillStyle = "#fff4c2"; ctx.beginPath(); ctx.arc(1150, 120, 46, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#fff4c2"; ctx.beginPath(); ctx.arc(1150, 110, 46, 0, Math.PI * 2); ctx.fill();
   // clouds
   ctx.fillStyle = "rgba(255,255,255,0.85)";
-  [[240, 130, 40], [520, 90, 30], [900, 150, 44], [1360, 110, 34]].forEach(([x, y, r]) => {
+  [[240, 120, 40], [520, 84, 30], [900, 140, 44], [1360, 100, 34]].forEach(([x, y, r]) => {
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.arc(x + r, y + 6, r * 0.8, 0, Math.PI * 2); ctx.arc(x - r, y + 8, r * 0.7, 0, Math.PI * 2); ctx.fill();
   });
-  // sea
-  ctx.fillStyle = "#1f6fb0"; ctx.fillRect(0, 300, STAGE_W, GROUND - 300);
+  // open ocean - fills the horizon AND everything under the ship, far past
+  // the stage bounds so zoom-out shows the ship floating in the sea.
+  ctx.fillStyle = "#1f6fb0";
+  ctx.fillRect(-1200, 296, STAGE_W + 2400, H - 296 + 800);
   ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.lineWidth = 2;
-  for (let y = 320; y < GROUND; y += 20) { ctx.beginPath(); for (let x = 0; x <= STAGE_W; x += 24) ctx.lineTo(x, y + Math.sin(x * 0.05 + frame * 0.04) * 3); ctx.stroke(); }
-  // the lion figurehead on the left
-  ctx.fillStyle = "#e2b23a"; ctx.strokeStyle = "#7c4a12"; ctx.lineWidth = 3;
-  ctx.beginPath(); ctx.arc(90, GROUND - 40, 40, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = "#c0392b"; ctx.beginPath(); ctx.arc(90, GROUND - 40, 20, 0, Math.PI * 2); ctx.fill();
-  // mast + sail
-  ctx.strokeStyle = "#6b4a2f"; ctx.lineWidth = 10; ctx.lineCap = "round";
-  ctx.beginPath(); ctx.moveTo(800, GROUND); ctx.lineTo(800, 120); ctx.stroke();
-  ctx.fillStyle = "#f4f1e8"; ctx.strokeStyle = "#c9c2b0"; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.roundRect(720, 150, 160, 120, 8); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = "#c0392b"; ctx.beginPath(); ctx.arc(800, 200, 26, 0, Math.PI * 2); ctx.fill(); // jolly-roger-ish
-  ctx.fillStyle = "#f4f1e8"; ctx.beginPath(); ctx.arc(800, 196, 9, 0, Math.PI * 2); ctx.arc(792, 204, 5, 0, Math.PI*2); ctx.arc(808, 204, 5, 0, Math.PI*2); ctx.fill();
+  for (let y = 316; y < GROUND - 40; y += 22) {
+    ctx.beginPath();
+    for (let x = -60; x <= STAGE_W + 60; x += 24) ctx.lineTo(x, y + Math.sin(x * 0.05 + frame * 0.04) * 3);
+    ctx.stroke();
+  }
+
+  // ===== the ship (background structures first) =====
+  // aft cabin on the right - rounded cream cabin with a red roof + door
+  ctx.fillStyle = "#f0e2c0"; ctx.strokeStyle = "#8a6134"; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.roundRect(1330, GROUND - 128, 220, 128, 10); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = "#c0392b";
+  ctx.beginPath(); ctx.roundRect(1318, GROUND - 148, 244, 26, 8); ctx.fill(); ctx.stroke();
+  // round porthole window + door on the cabin
+  ctx.fillStyle = "#7fc3e8"; ctx.strokeStyle = "#8a6134"; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.arc(1380, GROUND - 84, 16, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = "#8a6134";
+  ctx.beginPath(); ctx.roundRect(1450, GROUND - 88, 52, 88, 6); ctx.fill();
+  ctx.fillStyle = "#e2b23a"; ctx.beginPath(); ctx.arc(1462, GROUND - 44, 3.4, 0, Math.PI * 2); ctx.fill();
+  // Nami's tangerine trees beside the cabin
+  for (const tx of [1270, 1305]) {
+    ctx.strokeStyle = "#6b4a2f"; ctx.lineWidth = 5; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(tx, GROUND); ctx.lineTo(tx, GROUND - 40); ctx.stroke();
+    ctx.fillStyle = "#3f9b4e";
+    ctx.beginPath(); ctx.arc(tx, GROUND - 54, 20, 0, Math.PI * 2); ctx.arc(tx - 14, GROUND - 44, 13, 0, Math.PI * 2); ctx.arc(tx + 14, GROUND - 44, 13, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#f5941e";
+    [[tx - 8, GROUND - 58], [tx + 7, GROUND - 50], [tx - 2, GROUND - 44]].forEach(([ox, oy]) => {
+      ctx.beginPath(); ctx.arc(ox, oy, 3.4, 0, Math.PI * 2); ctx.fill();
+    });
+  }
+  // main mast + yard + big square sail with the straw-hat mark
+  ctx.strokeStyle = "#8a6134"; ctx.lineWidth = 12; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(790, GROUND); ctx.lineTo(790, 64); ctx.stroke();
+  ctx.lineWidth = 7;
+  ctx.beginPath(); ctx.moveTo(640, 96); ctx.lineTo(940, 96); ctx.stroke();
+  // sail billowing slightly
+  const billow = Math.sin(frame * 0.03) * 6;
+  ctx.fillStyle = "#f7f3e8"; ctx.strokeStyle = "#c9c2b0"; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(648, 100);
+  ctx.quadraticCurveTo(790, 118 + billow, 932, 100);
+  ctx.lineTo(920, 252);
+  ctx.quadraticCurveTo(790, 282 + billow, 660, 252);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  // straw-hat jolly roger (crossbones + hat silhouette, no facial features)
+  ctx.strokeStyle = "#20242c"; ctx.lineWidth = 7; ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(756, 148); ctx.lineTo(824, 216);
+  ctx.moveTo(824, 148); ctx.lineTo(756, 216);
+  ctx.stroke();
+  ctx.fillStyle = "#20242c";
+  ctx.beginPath(); ctx.arc(790, 178, 22, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#e8c14a"; // straw hat cap + brim over the skull shape
+  ctx.beginPath(); ctx.ellipse(790, 162, 24, 7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(790, 158, 13, Math.PI, 0); ctx.fill();
+  ctx.fillStyle = "#c0392b"; ctx.fillRect(776, 154, 28, 5);
+  // round crow's nest at the masthead
+  ctx.fillStyle = "#e2b23a"; ctx.strokeStyle = "#8a6134"; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(790, 52, 22, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = "#8a6134"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(772, 44); ctx.lineTo(808, 44); ctx.moveTo(770, 56); ctx.lineTo(810, 56); ctx.stroke();
+
+  // back railing along the deck (behind the fighters)
+  ctx.strokeStyle = "#a9743c"; ctx.lineWidth = 5; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(-40, GROUND - 34); ctx.lineTo(STAGE_W + 40, GROUND - 34); ctx.stroke();
+  ctx.lineWidth = 4;
+  for (let x = 20; x < STAGE_W; x += 88) {
+    ctx.beginPath(); ctx.moveTo(x, GROUND - 32); ctx.lineTo(x, GROUND); ctx.stroke();
+  }
+
+  // ===== bow: the sun-lion figurehead riding the front-left =====
+  const lx = 74, ly = GROUND - 64;
+  // petaled sun mane - alternating long/short rays
+  ctx.fillStyle = "#e8b83a"; ctx.strokeStyle = "#a9743c"; ctx.lineWidth = 2;
+  for (let i = 0; i < 12; i += 1) {
+    const a = (i / 12) * Math.PI * 2 + 0.26;
+    const R = i % 2 === 0 ? 62 : 48;
+    ctx.beginPath();
+    ctx.moveTo(lx + Math.cos(a - 0.16) * 34, ly + Math.sin(a - 0.16) * 34);
+    ctx.lineTo(lx + Math.cos(a) * R, ly + Math.sin(a) * R);
+    ctx.lineTo(lx + Math.cos(a + 0.16) * 34, ly + Math.sin(a + 0.16) * 34);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+  }
+  // mane disc + inner muzzle disc (no facial features)
+  ctx.fillStyle = "#f0c94a"; ctx.strokeStyle = "#a9743c"; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(lx, ly, 36, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = "#f7e6b8";
+  ctx.beginPath(); ctx.arc(lx, ly + 6, 20, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = "#c9974f"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(lx, ly + 6, 20, 0, Math.PI * 2); ctx.stroke();
+
   drawPlatforms();
-  // grassy lawn deck
-  ctx.fillStyle = "#3fae52"; ctx.fillRect(-1200, GROUND, STAGE_W + 2400, H - GROUND + 800);
-  ctx.fillStyle = "#2f8f43"; ctx.fillRect(0, GROUND, STAGE_W, 12);
-  ctx.strokeStyle = "rgba(20,90,40,0.5)"; ctx.lineWidth = 2;
-  for (let x = 0; x < STAGE_W; x += 60) { ctx.beginPath(); ctx.moveTo(x, GROUND + 12); ctx.lineTo(x, H); ctx.stroke(); }
-  // wooden rail
-  ctx.strokeStyle = "#7c4a12"; ctx.lineWidth = 5;
-  ctx.beginPath(); ctx.moveTo(0, GROUND + 4); ctx.lineTo(STAGE_W, GROUND + 4); ctx.stroke();
+
+  // ===== the deck + hull (the ship body itself) =====
+  // grass lawn deck - only as wide as the ship
+  ctx.fillStyle = "#3fae52"; ctx.fillRect(-40, GROUND, STAGE_W + 80, 20);
+  ctx.fillStyle = "#2f8f43"; ctx.fillRect(-40, GROUND, STAGE_W + 80, 6);
+  // white deck trim under the lawn
+  ctx.fillStyle = "#f0e6d0"; ctx.fillRect(-46, GROUND + 20, STAGE_W + 92, 10);
+  // tan hull planks
+  ctx.fillStyle = "#c9974f"; ctx.fillRect(-52, GROUND + 30, STAGE_W + 104, 44);
+  ctx.strokeStyle = "rgba(122, 74, 18, 0.55)"; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(-52, GROUND + 46); ctx.lineTo(STAGE_W + 52, GROUND + 46);
+  ctx.moveTo(-52, GROUND + 62); ctx.lineTo(STAGE_W + 52, GROUND + 62);
+  ctx.stroke();
+  // plank seams
+  for (let x = -20; x < STAGE_W + 40; x += 110) {
+    ctx.beginPath(); ctx.moveTo(x, GROUND + 30); ctx.lineTo(x, GROUND + 74); ctx.stroke();
+  }
+  // red gunwale stripe at the top of the hull
+  ctx.fillStyle = "#c0392b"; ctx.fillRect(-48, GROUND + 26, STAGE_W + 96, 6);
+  // portholes along the hull
+  for (let x = 90; x < STAGE_W - 40; x += 190) {
+    ctx.fillStyle = "#7fc3e8"; ctx.strokeStyle = "#7a4a12"; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(x, GROUND + 52, 9, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  }
+  // foam where the hull meets the water
+  ctx.strokeStyle = "rgba(255,255,255,0.75)"; ctx.lineWidth = 4; ctx.lineCap = "round";
+  ctx.beginPath();
+  for (let x = -60; x <= STAGE_W + 60; x += 26) {
+    ctx.lineTo(x, GROUND + 76 + Math.sin(x * 0.09 + frame * 0.08) * 3);
+  }
+  ctx.stroke();
 }
 
 function drawUpsideDownStage() {
-  stageSky([[0, "#0a0d12"], [0.5, "#161022"], [1, "#05070a"]]);
-  // drifting spore motes
-  ctx.fillStyle = "rgba(200,210,220,0.5)";
-  for (let i = 0; i < 40; i++) {
-    const x = (i * 211 + frame * 0.4) % STAGE_W;
-    const y = (i * 137 + Math.sin(frame * 0.02 + i) * 20) % GROUND;
-    ctx.globalAlpha = 0.2 + ((i * 7) % 5) / 10;
-    ctx.beginPath(); ctx.arc(x, y, 1.8, 0, Math.PI * 2); ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-  // dead trees + vine arches
-  ctx.strokeStyle = "#0d1116"; ctx.lineWidth = 5; ctx.lineCap = "round";
-  for (let i = 0; i < 6; i++) {
-    const x = 80 + i * 270;
+  // UPSIDE_DOWN_WASTELAND_PATCH: the ST wasteland proper - slate-black sky
+  // with the towering red Mind-Flayer storm and flickering red lightning on
+  // the horizon, the decayed silhouettes of Hawkins houses, dead trees,
+  // thick vines snaking over the ground, drifting spores and low fog.
+  stageSky([[0, "#04060b"], [0.5, "#0a111e"], [1, "#05070a"]]);
+
+  // the red storm on the horizon - a huge pulsing blood glow
+  const stormPulse = 0.75 + Math.sin(frame * 0.04) * 0.15;
+  const storm = ctx.createRadialGradient(860, 320, 30, 860, 320, 460);
+  storm.addColorStop(0, `rgba(190, 30, 30, ${0.34 * stormPulse})`);
+  storm.addColorStop(0.45, `rgba(120, 12, 20, ${0.22 * stormPulse})`);
+  storm.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = storm;
+  ctx.fillRect(300, 40, 1120, 420);
+  // towering storm-cloud mass silhouette inside the glow
+  ctx.fillStyle = "rgba(20, 6, 10, 0.8)";
+  ctx.beginPath();
+  ctx.moveTo(650, 330);
+  ctx.quadraticCurveTo(700, 190, 800, 170);
+  ctx.quadraticCurveTo(830, 90, 900, 110);
+  ctx.quadraticCurveTo(980, 70, 1010, 150);
+  ctx.quadraticCurveTo(1090, 160, 1070, 250);
+  ctx.quadraticCurveTo(1110, 320, 1040, 340);
+  ctx.closePath();
+  ctx.fill();
+  // flickering red lightning under the storm (about twice per 3 seconds)
+  const boltPhase = frame % 95;
+  if (boltPhase < 7) {
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.strokeStyle = `rgba(255, 70, 70, ${0.9 - boltPhase * 0.11})`;
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    const bx = 780 + (frame % 190 > 94 ? 150 : 0);
     ctx.beginPath();
-    ctx.moveTo(x, GROUND); ctx.quadraticCurveTo(x + 20, 300, x + 6, 200); ctx.moveTo(x + 6, 260); ctx.lineTo(x - 26, 220); ctx.moveTo(x + 6, 240); ctx.lineTo(x + 40, 196);
+    ctx.moveTo(bx, 210);
+    ctx.lineTo(bx - 24, 262);
+    ctx.lineTo(bx + 8, 288);
+    ctx.lineTo(bx - 18, 348);
+    ctx.moveTo(bx - 24, 262);
+    ctx.lineTo(bx - 60, 300);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // decayed Hawkins house silhouettes - broken pitched roofs, dead windows
+  ctx.fillStyle = "#0a0f16";
+  ctx.strokeStyle = "#05080d";
+  ctx.lineWidth = 2;
+  const houses = [
+    { x: 70,  w: 190, h: 90,  tilt: 0 },
+    { x: 330, w: 150, h: 74,  tilt: -8 },
+    { x: 560, w: 210, h: 100, tilt: 0 },
+    { x: 1090, w: 170, h: 82, tilt: 6 },
+    { x: 1330, w: 200, h: 96, tilt: 0 }
+  ];
+  for (const hs of houses) {
+    const baseY = GROUND;
+    ctx.beginPath();
+    ctx.rect(hs.x, baseY - hs.h, hs.w, hs.h);
+    ctx.fill(); ctx.stroke();
+    // broken pitched roof - one side sagging by `tilt`
+    ctx.beginPath();
+    ctx.moveTo(hs.x - 12, baseY - hs.h);
+    ctx.lineTo(hs.x + hs.w / 2, baseY - hs.h - 34 + hs.tilt);
+    ctx.lineTo(hs.x + hs.w + 12, baseY - hs.h + (hs.tilt < 0 ? 8 : 0));
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // dead window holes - darker, no light in the Upside Down
+    ctx.fillStyle = "#03050a";
+    for (let wx = hs.x + 22; wx < hs.x + hs.w - 24; wx += 46) {
+      ctx.fillRect(wx, baseY - hs.h + 22, 18, 24);
+    }
+    ctx.fillStyle = "#0a0f16";
+  }
+
+  // dead trees - thicker gnarled trunks between the houses
+  ctx.strokeStyle = "#0d1116"; ctx.lineWidth = 7; ctx.lineCap = "round";
+  for (let i = 0; i < 5; i++) {
+    const x = 250 + i * 300;
+    ctx.beginPath();
+    ctx.moveTo(x, GROUND);
+    ctx.quadraticCurveTo(x + 16, 320, x + 4, 230);
+    ctx.moveTo(x + 4, 290); ctx.lineTo(x - 30, 244);
+    ctx.moveTo(x + 4, 262); ctx.lineTo(x + 42, 220);
+    ctx.moveTo(x - 12, 258); ctx.lineTo(x - 34, 218);
     ctx.stroke();
   }
-  // vine tendrils hanging from top
-  ctx.strokeStyle = "rgba(60,20,30,0.8)"; ctx.lineWidth = 3;
+
+  // vine tendrils hanging from above
+  ctx.strokeStyle = "rgba(56, 22, 30, 0.85)"; ctx.lineWidth = 4;
   for (let i = 0; i < 12; i++) {
     const x = 60 + i * 130, sway = Math.sin(frame * 0.03 + i) * 12;
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.quadraticCurveTo(x + sway, 120, x + sway * 0.6, 220); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, -200); ctx.quadraticCurveTo(x + sway, 120, x + sway * 0.6, 230); ctx.stroke();
   }
+
+  // drifting spores - bigger and slower, the signature ash of the place
+  ctx.fillStyle = "rgba(205, 212, 222, 0.6)";
+  for (let i = 0; i < 46; i++) {
+    const x = (i * 211 + frame * 0.25) % (STAGE_W + 200) - 100;
+    const y = (i * 137 + frame * 0.12 + Math.sin(frame * 0.015 + i) * 24) % (GROUND + 60);
+    ctx.globalAlpha = 0.14 + ((i * 7) % 5) / 11;
+    ctx.beginPath(); ctx.arc(x, y, 1.6 + (i % 3), 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
   drawPlatforms();
-  // ashen ground with glowing spore cracks
+
+  // ashen ground
   ctx.fillStyle = "#12151b"; ctx.fillRect(-1200, GROUND, STAGE_W + 2400, H - GROUND + 800);
-  ctx.fillStyle = "#1c2028"; ctx.fillRect(0, GROUND, STAGE_W, 12);
-  ctx.strokeStyle = "rgba(190,60,90,0.5)"; ctx.lineWidth = 2;
-  for (let x = 40; x < STAGE_W; x += 120) { ctx.beginPath(); ctx.moveTo(x, GROUND + 6); ctx.lineTo(x + 24, H); ctx.moveTo(x + 8, GROUND + 20); ctx.lineTo(x - 14, H); ctx.stroke(); }
+  ctx.fillStyle = "#1c2028"; ctx.fillRect(-1200, GROUND, STAGE_W + 2400, 12);
+
+  // THICK vines snaking along the ground - fat tubes with knuckle bumps,
+  // crawling over the ground line and up the house bases
+  for (let i = 0; i < 6; i++) {
+    const vx = -60 + i * 300;
+    const wob = Math.sin(i * 2.1) * 10;
+    ctx.strokeStyle = "#241318";
+    ctx.lineWidth = 13 - (i % 3) * 2;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(vx, GROUND + 26);
+    ctx.quadraticCurveTo(vx + 90, GROUND - 4 + wob, vx + 190, GROUND + 14);
+    ctx.quadraticCurveTo(vx + 260, GROUND + 26, vx + 340, GROUND + 4);
+    ctx.stroke();
+    // dull sheen along the top of the vine
+    ctx.strokeStyle = "rgba(120, 52, 66, 0.4)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(vx + 20, GROUND + 18);
+    ctx.quadraticCurveTo(vx + 100, GROUND - 8 + wob, vx + 180, GROUND + 8);
+    ctx.stroke();
+    // a curling offshoot rising off the ground
+    ctx.strokeStyle = "#241318";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(vx + 150, GROUND + 6);
+    ctx.quadraticCurveTo(vx + 168, GROUND - 30, vx + 150 + Math.sin(frame * 0.02 + i) * 6, GROUND - 52);
+    ctx.stroke();
+  }
+
+  // low rolling fog bands over the ground
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  for (let i = 0; i < 4; i++) {
+    const fx = ((frame * (0.2 + i * 0.06)) + i * 420) % (STAGE_W + 700) - 350;
+    ctx.fillStyle = `rgba(70, 86, 110, ${0.05 + (i % 2) * 0.03})`;
+    ctx.beginPath();
+    ctx.ellipse(fx, GROUND - 8, 260, 34, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
 }
 
 function drawSpaceStage() {
