@@ -1796,15 +1796,18 @@ const STAGE_LAYOUTS = {
     { x: 1150, y: 240, w: 200, h: 22, mover: { ax: 70, ay: 22, sx: 0.012, sy: 0.015, phase: 4 } }
   ]
 };
+// STAGE_BACKDROP_COLOR_PATCH: skyTop/groundCol feed drawViewportBackdrop so
+// the area revealed when the camera pulls back matches each stage instead of
+// always showing the City's colors.
 const STAGES = {
-  city:       { id: "city",       name: "City",            short: "City",        draw: () => drawCity(),            hazard: "traffic" },
-  zen:        { id: "zen",        name: "Zen Garden",      short: "Zen",         draw: () => drawZenGarden(),       hazard: null },
-  protoss:    { id: "protoss",    name: "Aiur Nexus",      short: "Aiur",        draw: () => drawProtossBase(),     hazard: "pylonBeam" },
-  village:    { id: "village",    name: "Slayer Village",  short: "Village",     draw: () => drawSlayerVillage(),   hazard: "embers" },
-  rooftops:   { id: "rooftops",   name: "Rooftops",        short: "Roofs",       draw: () => drawRooftops(),        hazard: null },
-  sunny:      { id: "sunny",      name: "Thousand Sunny",  short: "Sunny",       draw: () => drawThousandSunny(),   hazard: "wave" },
-  upsideDown: { id: "upsideDown", name: "The Upside Down", short: "Upside Down", draw: () => drawUpsideDownStage(), hazard: "spores" },
-  space:      { id: "space",      name: "Deep Space",      short: "Space",       draw: () => drawSpaceStage(),      hazard: "meteor" }
+  city:       { id: "city",       name: "City",            short: "City",        draw: () => drawCity(),            hazard: "traffic",   skyTop: "#202b48", groundCol: "#27202a" },
+  zen:        { id: "zen",        name: "Zen Garden",      short: "Zen",         draw: () => drawZenGarden(),       hazard: null,        skyTop: "#f6d9a8", groundCol: "#e9dcc0" },
+  protoss:    { id: "protoss",    name: "Aiur Nexus",      short: "Aiur",        draw: () => drawProtossBase(),     hazard: "pylonBeam", skyTop: "#0b1b26", groundCol: "#1a2b30" },
+  village:    { id: "village",    name: "Slayer Village",  short: "Village",     draw: () => drawSlayerVillage(),   hazard: "embers",    skyTop: "#1b2340", groundCol: "#3a2c22" },
+  rooftops:   { id: "rooftops",   name: "Rooftops",        short: "Roofs",       draw: () => drawRooftops(),        hazard: null,        skyTop: "#243049", groundCol: "#2c2f38" },
+  sunny:      { id: "sunny",      name: "Thousand Sunny",  short: "Sunny",       draw: () => drawThousandSunny(),   hazard: "wave",      skyTop: "#8fd6f2", groundCol: "#3fae52" },
+  upsideDown: { id: "upsideDown", name: "The Upside Down", short: "Upside Down", draw: () => drawUpsideDownStage(), hazard: "spores",    skyTop: "#0a0d12", groundCol: "#12151b" },
+  space:      { id: "space",      name: "Deep Space",      short: "Space",       draw: () => drawSpaceStage(),      hazard: "meteor",    skyTop: "#05030f", groundCol: "#15131f" }
 };
 const STAGE_ORDER = ["city", "zen", "protoss", "village", "rooftops", "sunny", "upsideDown", "space"];
 let currentStageId = "city";
@@ -16407,7 +16410,10 @@ function stageSky(stops) {
   const sky = ctx.createLinearGradient(0, 0, 0, H);
   for (const [pos, col] of stops) sky.addColorStop(pos, col);
   ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, STAGE_W, H);
+  // STAGE_BACKDROP_COLOR_PATCH: fill far past the stage bounds - canvas
+  // gradients clamp at their edges, so the top color extends upward and the
+  // bottom color downward. A zoomed-out camera never reveals a wrong color.
+  ctx.fillRect(-1200, -1600, STAGE_W + 2400, H + 2400);
 }
 
 function drawZenGarden() {
@@ -16427,7 +16433,7 @@ function drawZenGarden() {
   ctx.beginPath(); ctx.arc(158, 312, 26, 0, Math.PI * 2); ctx.arc(206, 306, 24, 0, Math.PI * 2); ctx.arc(184, 292, 22, 0, Math.PI * 2); ctx.fill();
   drawPlatforms();
   // raked sand ground
-  ctx.fillStyle = "#e9dcc0"; ctx.fillRect(0, GROUND, STAGE_W, H - GROUND);
+  ctx.fillStyle = "#e9dcc0"; ctx.fillRect(-1200, GROUND, STAGE_W + 2400, H - GROUND + 800);
   ctx.strokeStyle = "rgba(180,165,132,0.7)"; ctx.lineWidth = 2;
   for (let y = GROUND + 14; y < H; y += 16) {
     ctx.beginPath();
@@ -16476,7 +16482,7 @@ function drawProtossBase() {
   crystal(120, 150, 22); crystal(1500, 170, 26); crystal(560, 90, 16); crystal(1040, 110, 18);
   drawPlatforms();
   // metallic protoss ground with teal seams
-  ctx.fillStyle = "#1a2b30"; ctx.fillRect(0, GROUND, STAGE_W, H - GROUND);
+  ctx.fillStyle = "#1a2b30"; ctx.fillRect(-1200, GROUND, STAGE_W + 2400, H - GROUND + 800);
   ctx.fillStyle = "#233b41"; ctx.fillRect(0, GROUND, STAGE_W, 12);
   ctx.strokeStyle = "rgba(45,212,191,0.5)"; ctx.lineWidth = 2;
   for (let x = 0; x < STAGE_W; x += 90) { ctx.beginPath(); ctx.moveTo(x, GROUND + 4); ctx.lineTo(x + 30, H); ctx.stroke(); }
@@ -16509,7 +16515,7 @@ function drawSlayerVillage() {
   }
   drawPlatforms();
   // dirt path ground
-  ctx.fillStyle = "#3a2c22"; ctx.fillRect(0, GROUND, STAGE_W, H - GROUND);
+  ctx.fillStyle = "#3a2c22"; ctx.fillRect(-1200, GROUND, STAGE_W + 2400, H - GROUND + 800);
   ctx.fillStyle = "#4d3a2c"; ctx.fillRect(0, GROUND, STAGE_W, 12);
   ctx.fillStyle = "rgba(120,90,66,0.5)";
   for (let x = -20; x < STAGE_W; x += 70) ctx.fillRect(x, GROUND + 30, 40, 6);
@@ -16522,7 +16528,7 @@ function drawRooftops() {
   drawBuildings(60, 300, "#141b28");
   // foreground rooftop that forms the ground line, with AC units + ledge
   drawPlatforms();
-  ctx.fillStyle = "#2c2f38"; ctx.fillRect(0, GROUND, STAGE_W, H - GROUND);
+  ctx.fillStyle = "#2c2f38"; ctx.fillRect(-1200, GROUND, STAGE_W + 2400, H - GROUND + 800);
   ctx.fillStyle = "#3b3f4b"; ctx.fillRect(0, GROUND, STAGE_W, 14);
   ctx.fillStyle = "#20232b"; ctx.fillRect(0, GROUND + 14, STAGE_W, 4);
   // rooftop clutter
@@ -16563,7 +16569,7 @@ function drawThousandSunny() {
   ctx.fillStyle = "#f4f1e8"; ctx.beginPath(); ctx.arc(800, 196, 9, 0, Math.PI * 2); ctx.arc(792, 204, 5, 0, Math.PI*2); ctx.arc(808, 204, 5, 0, Math.PI*2); ctx.fill();
   drawPlatforms();
   // grassy lawn deck
-  ctx.fillStyle = "#3fae52"; ctx.fillRect(0, GROUND, STAGE_W, H - GROUND);
+  ctx.fillStyle = "#3fae52"; ctx.fillRect(-1200, GROUND, STAGE_W + 2400, H - GROUND + 800);
   ctx.fillStyle = "#2f8f43"; ctx.fillRect(0, GROUND, STAGE_W, 12);
   ctx.strokeStyle = "rgba(20,90,40,0.5)"; ctx.lineWidth = 2;
   for (let x = 0; x < STAGE_W; x += 60) { ctx.beginPath(); ctx.moveTo(x, GROUND + 12); ctx.lineTo(x, H); ctx.stroke(); }
@@ -16599,7 +16605,7 @@ function drawUpsideDownStage() {
   }
   drawPlatforms();
   // ashen ground with glowing spore cracks
-  ctx.fillStyle = "#12151b"; ctx.fillRect(0, GROUND, STAGE_W, H - GROUND);
+  ctx.fillStyle = "#12151b"; ctx.fillRect(-1200, GROUND, STAGE_W + 2400, H - GROUND + 800);
   ctx.fillStyle = "#1c2028"; ctx.fillRect(0, GROUND, STAGE_W, 12);
   ctx.strokeStyle = "rgba(190,60,90,0.5)"; ctx.lineWidth = 2;
   for (let x = 40; x < STAGE_W; x += 120) { ctx.beginPath(); ctx.moveTo(x, GROUND + 6); ctx.lineTo(x + 24, H); ctx.moveTo(x + 8, GROUND + 20); ctx.lineTo(x - 14, H); ctx.stroke(); }
@@ -16629,7 +16635,7 @@ function drawSpaceStage() {
   ctx.globalCompositeOperation = "source-over";
   drawPlatforms();
   // no solid floor - a thin debris band at the bottom so the ground reads
-  ctx.fillStyle = "#15131f"; ctx.fillRect(0, GROUND, STAGE_W, H - GROUND);
+  ctx.fillStyle = "#15131f"; ctx.fillRect(-1200, GROUND, STAGE_W + 2400, H - GROUND + 800);
   ctx.fillStyle = "#221d33"; ctx.fillRect(0, GROUND, STAGE_W, 12);
   ctx.fillStyle = "#3a3350";
   for (let x = -10; x < STAGE_W; x += 46) ctx.fillRect(x, GROUND + 16 + ((x * 7) % 10), 30, 8);
@@ -16641,7 +16647,9 @@ function drawCity() {
   sky.addColorStop(0.52, "#7e5060");
   sky.addColorStop(1, "#191622");
   ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, STAGE_W, H);
+  // STAGE_BACKDROP_COLOR_PATCH: oversized fill (gradient clamps at edges)
+  // so a pulled-back camera keeps seeing the city sky, not a wrong flat color.
+  ctx.fillRect(-1200, -1600, STAGE_W + 2400, H + 2400);
 
   ctx.fillStyle = "#ffd56d";
   ctx.beginPath();
@@ -16654,7 +16662,7 @@ function drawCity() {
   drawPlatforms();
 
   ctx.fillStyle = "#27202a";
-  ctx.fillRect(0, GROUND, STAGE_W, H - GROUND);
+  ctx.fillRect(-1200, GROUND, STAGE_W + 2400, H - GROUND + 800);
   ctx.fillStyle = "#333545";
   ctx.fillRect(0, GROUND, STAGE_W, 12);
   ctx.fillStyle = "#f4c95d";
@@ -17083,7 +17091,7 @@ function drawActiveDomainBackdrop() {
     }
 
     ctx.fillStyle = "rgba(0,0,0,0.22)";
-    ctx.fillRect(0, GROUND, STAGE_W, H - GROUND);
+    ctx.fillRect(-1200, GROUND, STAGE_W + 2400, H - GROUND + 800);
 
     ctx.strokeStyle = `rgba(35,0,0,${0.26 + pulse * 0.18})`;
     ctx.lineWidth = 3;
@@ -17240,9 +17248,13 @@ function drawViewportBackdrop() {
     }
   }
 
-  ctx.fillStyle = "#202b48";
+  // STAGE_BACKDROP_COLOR_PATCH: the fallback backdrop (what shows above /
+  // around the stage art when the camera pulls back) now uses the ACTIVE
+  // stage's own sky + ground colors instead of always the City's.
+  const stage = getStage();
+  ctx.fillStyle = stage.skyTop || "#202b48";
   ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = "#27202a";
+  ctx.fillStyle = stage.groundCol || "#27202a";
   ctx.fillRect(0, GROUND, W, H - GROUND);
 }
 
@@ -21117,10 +21129,69 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.moveTo(28.5, 34.6);
     ctx.lineTo(30, 36.2);
     ctx.stroke();
+    // SANJI_SKIN_CANON_PATCH: Wano yukata canon has the hair tied back in a
+    // small topknot; the Onigashima Raid Suit adds the black hood/cowl
+    // framing the head with the collar clasp.
+    if (sanjiSkin(f, "wano")) {
+      ctx.fillStyle = skin.hair;
+      ctx.strokeStyle = "rgba(146, 104, 26, 0.7)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(30, 5, 4.4, 3.4, 0.3, 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
+      // tie band under the knot
+      ctx.strokeStyle = "#4a2f18"; ctx.lineWidth = 1.8;
+      ctx.beginPath(); ctx.moveTo(27, 8); ctx.lineTo(32, 9.5); ctx.stroke();
+    } else if (sanjiSkin(f, "raidSuit")) {
+      // black cowl hugging the back + top of the head, hair poking out front
+      ctx.fillStyle = "#0f0f14";
+      ctx.strokeStyle = "#020204";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(13, 30);
+      ctx.quadraticCurveTo(9, 12, 22, 6);
+      ctx.quadraticCurveTo(15, 14, 15.5, 22);
+      ctx.quadraticCurveTo(14, 27, 16, 32);
+      ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(39.5, 26);
+      ctx.quadraticCurveTo(44, 10, 30, 5);
+      ctx.quadraticCurveTo(39, 11, 38.2, 20);
+      ctx.quadraticCurveTo(39.6, 24, 38.8, 28);
+      ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      // collar clasp under the chin
+      ctx.fillStyle = "#c92a24";
+      ctx.beginPath(); ctx.arc(26.5, 38.5, 1.8, 0, Math.PI * 2); ctx.fill();
+    }
+  } else if (f.technique === "hivemind" && isCreel(f)) {
+    // SKINS_CANON_PATCH: Henry Creel is fully human pre-transformation -
+    // a clean face with neatly combed brown hair, none of the vine-skull
+    // carving. Hair silhouette only, no facial features.
+    ctx.fillStyle = skin.hair;
+    ctx.beginPath();
+    ctx.moveTo(13, 22);
+    ctx.quadraticCurveTo(11, 7, 26, 6);
+    ctx.quadraticCurveTo(41, 7, 39, 22);
+    ctx.quadraticCurveTo(38, 14, 33, 13);
+    ctx.quadraticCurveTo(28, 11.5, 21, 13.5);
+    ctx.quadraticCurveTo(15, 15, 13, 22);
+    ctx.closePath();
+    ctx.fill();
+    // a neat side part line
+    ctx.strokeStyle = "rgba(60, 38, 20, 0.6)";
+    ctx.lineWidth = 1.2;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(22, 8); ctx.quadraticCurveTo(18, 11, 16, 16);
+    ctx.stroke();
   } else if (f.technique === "hivemind") {
     // VECNA_PATCH + LIKENESS_PATCH: a gaunt, skull-like head - sunken
     // temples and cheeks, a heavy brow ridge, and vine ridges running back
     // over the scalp. No eyes/mouth/nose, just carved bone-and-sinew.
+    // SKINS_CANON_PATCH: the season4 skin keeps the gaunt carving but the
+    // palette already shifts it beige, so nothing extra needed here.
     // sunken temple + cheek hollows
     ctx.fillStyle = "rgba(38, 16, 14, 0.5)";
     ctx.beginPath();
