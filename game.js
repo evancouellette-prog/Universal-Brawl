@@ -6546,6 +6546,9 @@ function startRound(nextState = "playing") {
   resetReadyPhase(`start round ${nextState}`);
   lastRoundWinner = null;
   frame = 0;
+  // MATCH_INTRO_PATCH: matchup dialogue plays only on the first round
+  matchIntro = null;
+  if (nextState === "playing" && currentRound === 1) setupMatchIntro();
   fixedAccumulator = 0;
   lastFrameTime = performance.now();
   lastOnlineStateSent = 0;
@@ -25315,6 +25318,214 @@ function drawHitboxHint(f) {
   ctx.strokeRect(box.x, box.y, box.w, box.h);
 }
 
+// MATCH_INTRO_PATCH: unique pre-fight dialogue for specific matchups.
+// Plays as sequential speech bubbles over the speakers during the opening
+// seconds of round 1. Purely visual (no input freeze) so online stays in sync.
+const INTRO_SPEAKER_NAMES = {
+  limitless: "Gojo", shrine: "Sukuna", deathnote: "Light", brawler: "Thragg",
+  blackleg: "Sanji", hivemind: "Vecna", zealot: "Zealot", spider: "Spider-Man",
+  beast: "Inosuke", jiji: "Jiji", david: "David", akira: "Akira"
+};
+
+// [techA, techB, [[speakerTech, line], [speakerTech, line]]]
+const MATCH_INTRO_DIALOGUES = [
+  // Gojo
+  ["limitless", "limitless", [["limitless", "Wow, you're a beauty."], ["limitless", "Right back at ya."]]],
+  ["limitless", "shrine", [["shrine", "Know your place, fool."], ["limitless", "Nah, I'd win."]]],
+  ["limitless", "deathnote", [["deathnote", "All power must be judged."], ["limitless", "Then judge the strongest. Good luck."]]],
+  ["limitless", "brawler", [["brawler", "Your arrogance will bury you."], ["limitless", "It's not arrogance if it's true."]]],
+  ["limitless", "blackleg", [["blackleg", "A blindfold? You underestimate me."], ["limitless", "I don't need eyes to win this."]]],
+  ["limitless", "hivemind", [["hivemind", "Every mind breaks eventually."], ["limitless", "Mine comes with Infinity. Try it."]]],
+  ["limitless", "zealot", [["zealot", "My blades have felled countless foes."], ["limitless", "They won't even touch me."]]],
+  ["limitless", "spider", [["spider", "So you're 'the strongest,' huh?"], ["limitless", "Glad word reached your universe."]]],
+  ["limitless", "beast", [["beast", "You look strong! FIGHT ME!"], ["limitless", "Ha! I like you already."]]],
+  ["limitless", "jiji", [["jiji", "Something about you feels... infinite."], ["limitless", "Sharp kid. That's exactly right."]]],
+  ["limitless", "david", [["david", "Sandevistan beats reflexes every time."], ["limitless", "Speed means nothing against Infinity."]]],
+  ["limitless", "akira", [["akira", "Number 87: survive the strongest sorcerer."], ["limitless", "I'll sign your list after I win."]]],
+  // Sukuna
+  ["shrine", "shrine", [["shrine", "There can only be one King of Curses."], ["shrine", "And that's me."]]],
+  ["shrine", "deathnote", [["deathnote", "You play god."], ["shrine", "I am god."]]],
+  ["shrine", "brawler", [["shrine", "You'd make a decent servant."], ["brawler", "I kneel to no one."]]],
+  ["shrine", "blackleg", [["blackleg", "I've cooked monsters before."], ["shrine", "You're the one who will be cooked."]]],
+  ["shrine", "hivemind", [["hivemind", "I've seen horrors beyond you."], ["shrine", "I'll be the last one you see."]]],
+  ["shrine", "zealot", [["zealot", "Your reign ends here."], ["shrine", "My reign is forever."]]],
+  ["shrine", "spider", [["spider", "You're definitely not friendly neighborhood material."], ["shrine", "I'll decorate the neighborhood with your blood."]]],
+  ["shrine", "beast", [["beast", "King of beasts!"], ["shrine", "Wild animal."]]],
+  ["shrine", "jiji", [["shrine", "A powerful vessel, I see."], ["jiji", "You're not the only monster anymore."]]],
+  ["shrine", "david", [["shrine", "Machines bore me."], ["david", "Machines bore you? Let's test that."]]],
+  ["shrine", "akira", [["shrine", "Your life has no purpose."], ["akira", "I have many purposes."]]],
+  // Light
+  ["deathnote", "deathnote", [["deathnote", "Only one of us can create the perfect world."], ["deathnote", "Then prove you're worthy of it."]]],
+  ["deathnote", "brawler", [["deathnote", "Even gods can be judged."], ["brawler", "You mistake words for strength."]]],
+  ["deathnote", "blackleg", [["deathnote", "You're just a cook."], ["blackleg", "That's enough."]]],
+  ["deathnote", "hivemind", [["hivemind", "Your mind belongs to me."], ["deathnote", "You'll find nothing but resolve."]]],
+  ["deathnote", "zealot", [["deathnote", "Blind faith creates weak men."], ["zealot", "Faith gives me strength."]]],
+  ["deathnote", "spider", [["deathnote", "Heroes are naive."], ["spider", "Better than becoming the villain."]]],
+  ["deathnote", "beast", [["deathnote", "You're uncivilized."], ["beast", "What's that mean?"]]],
+  ["deathnote", "jiji", [["deathnote", "You're unstable."], ["jiji", "Tell me something I don't know."]]],
+  ["deathnote", "david", [["deathnote", "Technology changes nothing."], ["david", "Neither does talking."]]],
+  ["deathnote", "akira", [["deathnote", "Power corrupts."], ["akira", "Sounds like a boring way to live."]]],
+  // Thragg
+  ["brawler", "brawler", [["brawler", "Weak imitation."], ["brawler", "Prove it."]]],
+  ["brawler", "blackleg", [["brawler", "A chef stands before me?"], ["blackleg", "A chef who'll knock your teeth out."]]],
+  ["brawler", "hivemind", [["brawler", "Hide behind your magic."], ["hivemind", "And you behind your strength."]]],
+  ["brawler", "zealot", [["brawler", "Another warrior seeks glory?"], ["zealot", "I seek victory."]]],
+  ["brawler", "spider", [["spider", "You look like anger issues with muscles."], ["brawler", "Your jokes won't save you."]]],
+  ["brawler", "beast", [["brawler", "You fight like a beast."], ["beast", "That's because I am one!"]]],
+  ["brawler", "jiji", [["brawler", "You're afraid."], ["jiji", "Not of you."]]],
+  ["brawler", "david", [["brawler", "Your metal body won't save you."], ["david", "Good thing I brought more than metal."]]],
+  ["brawler", "akira", [["brawler", "You don't belong on a battlefield."], ["akira", "Maybe not... but I'm not running away."]]],
+  // Sanji
+  ["blackleg", "blackleg", [["blackleg", "Nobody cooks like me."], ["blackleg", "We'll see about that."]]],
+  ["blackleg", "hivemind", [["blackleg", "You smell rotten."], ["hivemind", "Death has a scent."]]],
+  ["blackleg", "beast", [["beast", "Quit talking!"], ["blackleg", "Pig."]]],
+  ["blackleg", "jiji", [["jiji", "You seem pretty confident."], ["blackleg", "Confidence comes with experience."]]],
+  ["blackleg", "david", [["david", "Hope you can keep up."], ["blackleg", "I was about to say the same."]]],
+  ["blackleg", "akira", [["akira", "You cook?"], ["blackleg", "The best you'll ever taste."]]],
+  // Vecna
+  ["hivemind", "hivemind", [["hivemind", "Only one shall ascend."], ["hivemind", "Then let eternity decide."]]],
+  ["hivemind", "beast", [["hivemind", "Primitive creature."], ["beast", "Monster!"]]],
+  ["hivemind", "jiji", [["hivemind", "Your fear feeds me."], ["jiji", "Then starve."]]],
+  ["hivemind", "david", [["david", "You're uglier than cyberpsychos."], ["hivemind", "Soon you'll beg to look away."]]],
+  ["hivemind", "akira", [["akira", "Man... zombies were enough."], ["hivemind", "I am far worse."]]],
+  // Zealot
+  ["zealot", "zealot", [["zealot", "Only one shall earn Aiur's favor."], ["zealot", "Then let our power decide."]]],
+  ["zealot", "blackleg", [["blackleg", "Those blades won't help if you can't hit me."], ["zealot", "I have utmost precision."]]],
+  ["zealot", "hivemind", [["hivemind", "Faith is fragile."], ["zealot", "Mine has endured worse than you."]]],
+  ["zealot", "beast", [["beast", "Cool swords! Fight me already!"], ["zealot", "Your recklessness will be your downfall."]]],
+  ["zealot", "jiji", [["jiji", "You never smile, do you?"], ["zealot", "Battle is no place for laughter."]]],
+  ["zealot", "david", [["david", "Nice glowsticks."], ["zealot", "They are psi-blades. Remember that."]]],
+  ["zealot", "akira", [["akira", "You're taking this way too seriously."], ["zealot", "Discipline is never excessive."]]],
+  // Spider-Man
+  ["spider", "spider", [["spider", "!?!? *points at the other Spider-Man*"], ["spider", "!?!? *points at the other Spider-Man*"]]],
+  ["spider", "blackleg", [["spider", "Nice kicks. You ever think about webs?"], ["blackleg", "I don't need tricks to win."]]],
+  ["spider", "hivemind", [["spider", "You know, smiling isn't illegal."], ["hivemind", "Neither is your suffering."]]],
+  ["spider", "zealot", [["spider", "You look like you escaped a sci-fi convention."], ["zealot", "You mock what you cannot comprehend."]]],
+  ["spider", "beast", [["spider", "Does the mask ever come off?"], ["beast", "NEVER!"]]],
+  ["spider", "jiji", [["spider", "You okay? You look stressed."], ["jiji", "That's... actually pretty accurate."]]],
+  ["spider", "david", [["spider", "So, robot arm? Midlife crisis?"], ["david", "Cyberware. Get it right."]]],
+  ["spider", "akira", [["spider", "You don't seem like the fighting type."], ["akira", "Neither did the zombies."]]],
+  // Inosuke
+  ["beast", "beast", [["beast", "I'M THE REAL ONE!"], ["beast", "NO, I AM!"]]],
+  ["beast", "jiji", [["beast", "Fight me already!"], ["jiji", "Fine."]]],
+  ["beast", "david", [["beast", "What's with all the metal?"], ["david", "Makes me stronger."]]],
+  ["beast", "akira", [["akira", "You ever calm down?"], ["beast", "NO!"]]],
+  // Jiji
+  ["jiji", "jiji", [["jiji", "This is weird."], ["jiji", "Very weird."]]],
+  ["jiji", "david", [["david", "You don't look like much."], ["jiji", "Looks can be deceiving."]]],
+  ["jiji", "akira", [["akira", "You need a vacation."], ["jiji", "You're probably right."]]],
+  // David
+  ["david", "david", [["david", "Guess I'm chromed twice."], ["david", "Guess so, choom."]]],
+  ["david", "akira", [["akira", "You ever take a day off?"], ["david", "Not anymore."]]],
+  // Akira
+  ["akira", "akira", [["akira", "Guess we're both crossing things off our bucket list."], ["akira", "Let's make this one unforgettable."]]]
+];
+
+const MATCH_INTRO_LOOKUP = {};
+for (const [a, b, lines] of MATCH_INTRO_DIALOGUES) {
+  MATCH_INTRO_LOOKUP[[a, b].sort().join("|")] = { lines, mirror: a === b };
+}
+
+const MATCH_INTRO_LINE_TICKS = 165; // ~2.75s per line
+let matchIntro = null;
+
+function setupMatchIntro() {
+  matchIntro = null;
+  const a = player && player.technique;
+  const b = enemy && enemy.technique;
+  if (!a || !b) return;
+  matchIntro = MATCH_INTRO_LOOKUP[[a, b].sort().join("|")] || null;
+}
+
+function wrapIntroText(text, maxWidth) {
+  const words = text.split(" ");
+  const out = [];
+  let line = "";
+  for (const word of words) {
+    const test = line ? line + " " + word : word;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      out.push(line);
+      line = word;
+    } else {
+      line = test;
+    }
+  }
+  if (line) out.push(line);
+  return out;
+}
+
+function drawMatchIntroDialogue() {
+  if (!matchIntro || gameState !== "playing") return;
+  const total = matchIntro.lines.length * MATCH_INTRO_LINE_TICKS;
+  if (frame >= total) { matchIntro = null; return; }
+  const idx = Math.floor(frame / MATCH_INTRO_LINE_TICKS);
+  const line = matchIntro.lines[idx];
+  if (!line) return;
+
+  // Mirror matches can't tell speakers apart by technique, so line 1 always
+  // belongs to player and line 2 to enemy (identical on both online clients).
+  const f = matchIntro.mirror
+    ? (idx === 0 ? player : enemy)
+    : (player.technique === line[0] ? player : enemy);
+  if (!f) return;
+
+  const t = frame - idx * MATCH_INTRO_LINE_TICKS;
+  let alpha = 1;
+  if (t < 12) alpha = t / 12;
+  else if (t > MATCH_INTRO_LINE_TICKS - 16) alpha = (MATCH_INTRO_LINE_TICKS - t) / 16;
+
+  const headX = (f.x + f.w / 2 - cameraX) * cameraZoom;
+  const headY = f.y * cameraZoom + getCameraYOffset();
+
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+  ctx.font = "700 15px Arial";
+  const textLines = wrapIntroText(line[1], 250);
+  const name = INTRO_SPEAKER_NAMES[line[0]] || "";
+  const lineH = 19;
+  const padX = 14;
+  let bubbleW = ctx.measureText(name).width;
+  for (const tl of textLines) bubbleW = Math.max(bubbleW, ctx.measureText(tl).width);
+  bubbleW += padX * 2;
+  const bubbleH = 12 + 16 + textLines.length * lineH + 10;
+  const bx = Math.max(10, Math.min(W - bubbleW - 10, headX - bubbleW / 2));
+  let by = headY - bubbleH - 30;
+  if (by < 8) by = 8;
+  by += (1 - alpha) * 6;
+
+  // bubble + tail toward the speaker's head
+  ctx.fillStyle = "#fffdf6";
+  ctx.strokeStyle = "#161a22";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.roundRect(bx, by, bubbleW, bubbleH, 12);
+  ctx.fill();
+  ctx.stroke();
+  const tailX = Math.max(bx + 18, Math.min(bx + bubbleW - 18, headX));
+  ctx.beginPath();
+  ctx.moveTo(tailX - 9, by + bubbleH - 1);
+  ctx.lineTo(tailX + 9, by + bubbleH - 1);
+  ctx.lineTo(tailX, Math.min(by + bubbleH + 16, headY - 8));
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#fffdf6";
+  ctx.fillRect(tailX - 8, by + bubbleH - 3, 16, 4);
+
+  // speaker name in their side color, then the line itself
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  ctx.font = "900 12px Arial";
+  ctx.fillStyle = f === player ? "#d92626" : "#2563eb";
+  ctx.fillText(name.toUpperCase(), bx + padX, by + 20);
+  ctx.font = "700 15px Arial";
+  ctx.fillStyle = "#161a22";
+  textLines.forEach((tl, i) => {
+    ctx.fillText(tl, bx + padX, by + 38 + i * lineH);
+  });
+  ctx.restore();
+}
+
 function draw() {
   updateCamera();
   drawViewportBackdrop();
@@ -25370,6 +25581,7 @@ function draw() {
   drawUltCutscene(); // ULT_CUTSCENES_PATCH
   drawDavidGlitchOverlay(); // DAVID_PATCH
   drawAkiraNotebook(); // AKIRA_PATCH
+  drawMatchIntroDialogue(); // MATCH_INTRO_PATCH
   drawBindingVowQuote();
   drawActionWarning();
 }
