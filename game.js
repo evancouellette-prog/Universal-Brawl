@@ -12812,8 +12812,8 @@ function startTechnique(f, slot, chargeRatio = 0, aimPoint = null, releasingChar
   const domainRadiusBoost = (voidBoost && move === "red" ? 1.45 : voidBoost && move === "blue" ? 1.18 : shrineBoost && move === "cleave" ? 1.2 : 1) * bindingRadiusBoost;
   const radiusScale = (chargedLimitless ? 1 + finalCharge * (move === "red" ? 0.95 : 0.85) : 1) * domainRadiusBoost;
   const finalRadius = spec.radius * radiusScale;
-  const previewDistance = getAimPreviewDistance(move, spec, finalCharge, aimVector, f, finalRadius);
-  const spawnOffset = move === "cleave" ? previewDistance : Math.min(36, Math.max(0, previewDistance - 6));
+  const previewDistance = getTechniqueRangeDistance(move, spec, finalCharge, aimVector, f, finalRadius);
+  const spawnOffset = move === "cleave" ? previewDistance : 0;
   const travelDistance = Math.max(0, previewDistance - spawnOffset);
   const bindingDamageBoost = move === "slash" && hasBindingVow(f, "dismantle") ? 1.32 : 1;
   const damageScale = (chargedLimitless ? 1 + finalCharge * (move === "red" ? 1.45 : 1.25) : 1) * (voidBoost ? 1.28 : shrineBoost ? 1.12 : 1) * bindingDamageBoost;
@@ -15590,8 +15590,26 @@ function updateProjectiles() {
     }
     if (p.infinitySlowTicks > 0) p.infinitySlowTicks -= 1;
     applyInfinitySlowToProjectile(p);
-    const stepX = p.vx || 0;
-    const stepY = p.vy || 0;
+    const remaining = Number.isFinite(p.maxTravel) ? Math.max(0,p.maxTravel-(p.traveled||0)) : Infinity;
+    const speed = Math.hypot(p.vx||0,p.vy||0);
+    let step = Math.min(speed,remaining);
+    const ray = {origin:{x:p.x,y:p.y},x:speed?(p.vx||0)/speed:0,y:speed?(p.vy||0)/speed:0};
+    let terrainContact = false;
+    let fighterContact = false;
+    const targetNow = p.owner === "player" ? enemy : player;
+    if (!['fuga','cleave','jijiSoccer'].includes(p.move)) {
+      const terrainDistance = Math.min(Infinity,...getActivePlatforms().map(rect=>getProjectileContactDistance(p,ray,step,rect)));
+      const fighterDistance = (p.startup||0)<=1 && shouldResolveProjectileHit(p,targetNow)
+        ? getProjectileContactDistance(p,ray,step,targetNow) : Infinity;
+      const contact = Math.min(terrainDistance,fighterDistance);
+      if (contact<=step) {
+        step=contact;
+        terrainContact=terrainDistance<=fighterDistance;
+        fighterContact=!terrainContact;
+      }
+    }
+    const stepX = ray.x * step;
+    const stepY = ray.y * step;
     p.x += stepX;
     p.y += stepY;
     // JIJI_PATCH: soccer ball expires after several bounces.
@@ -15606,8 +15624,13 @@ function updateProjectiles() {
     if (Number.isFinite(p.maxTravel)) p.traveled = (p.traveled || 0) + Math.hypot(stepX, stepY);
     p.life -= 1;
     const target = p.owner === "player" ? enemy : player;
-    if ((p.startup || 0) <= 0 && !p.hit && damageLightSummonByProjectile(p, target)) continue;
-    if ((p.startup || 0) <= 0 && shouldResolveProjectileHit(p, target) && !p.hit && projectileOverlapsTarget(p, target)) applyProjectileHit(p, target);
+    if (terrainContact) {
+      spawnProjectileDisperse(p);
+      continue;
+    }
+    // Fuga is a placed explosion: intervening fighters do not consume its arrow.
+    if (p.move !== "fuga" && (p.startup || 0) <= 0 && !p.hit && damageLightSummonByProjectile(p, target)) continue;
+    if ((p.startup || 0) <= 0 && shouldResolveProjectileHit(p, target) && !p.hit && p.move !== "fuga" && (fighterContact || projectileOverlapsTarget(p, target))) applyProjectileHit(p, target);
     if (p.hit) continue;
 
     if (p.move !== "cleave" && Number.isFinite(p.maxTravel) && (p.traveled || 0) >= p.maxTravel) {
@@ -15621,7 +15644,7 @@ function updateProjectiles() {
       continue;
     }
 
-    if (projectileHitsTerrain(p)) {
+    if (p.move !== "fuga" && projectileHitsTerrain(p)) {
       if (p.move === "fuga") spawnFugaExplosion(p, true);
       else {
         if (p.move === "purple") spawnGroundErase(p.x, 96);
@@ -15631,7 +15654,7 @@ function updateProjectiles() {
     }
 
     const tooFar = p.x <= -80 || p.x >= STAGE_W + 80 || p.y <= -100 || p.y >= H + 100;
-    const expired = p.life <= 0;
+    const expired = p.life <= 0 && !(p.move === "fuga" && Number.isFinite(p.maxTravel));
     if (tooFar || expired) {
       if (p.move === "fuga") spawnFugaExplosion(p, true);
       else {
@@ -17173,7 +17196,7 @@ function spawnStageHazard(kind) {
     stageHazards.push({ kind, x, y: GROUND - 40, warn: 50, life: 260, r: 0, hit: {} });
   } else if (kind === "meteor") {
     const tx = 200 + Math.random() * (STAGE_W - 400);
-    stageHazards.push({ kind, tx, x: tx - 280, y: -260, warn: 60, life: 160, struck: 0, hit: {} });
+    stageHazards.push({ kind, tx, x: tx - 280, y: -260, warn: 60, life: 60 + Math.ceil((GROUND + 250) / 5.5) + 22, struck: 0, hit: {} });
   }
 }
 
@@ -17226,7 +17249,7 @@ function updateStageHazards() {
       if (h.life % 40 === 0) h.hit = {};
       hazardHitFighters({ x0: h.x - h.r, x1: h.x + h.r, y0: GROUND - h.r - 10, y1: GROUND + 6 }, 8, (Math.random() - 0.5) * 6, -3, h);
     } else if (h.kind === "meteor") {
-      h.x += 3.5; h.y += 5.5;
+      h.x += 280 / ((GROUND + 250) / 5.5); h.y += 5.5;
       if (h.y >= GROUND - 10 && !h.struck) {
         h.struck = 1; h.x = h.tx; h.y = GROUND - 10; shake = Math.max(shake, 16);
         hazardHitFighters({ x0: h.tx - 70, x1: h.tx + 70, y0: GROUND - 80, y1: GROUND + 6 }, 22, (player.x < h.tx ? -18 : 18), -10, h);
@@ -17239,6 +17262,7 @@ function updateStageHazards() {
 
 function drawStageHazards() {
   for (const h of stageHazards) {
+    drawHazardWarning(h);
     ctx.save();
     if (h.kind === "traffic") {
       if (h.warn > 0) {
@@ -19341,9 +19365,9 @@ function applySkinPalette(f, pal) {
     // SKINS_PATCH: Jiji school - navy sailor uniform.
     pal.body = "#20304a"; pal.accent = "#e6e8ee"; pal.pants = "#141a26"; pal.shoe = "#0a0f18";
   } else if (f.technique === "spider" && skin === "symbiote") {
-    pal.body = "#0d0d10"; pal.accent = "#f4f6fb"; pal.pants = "#0d0d10"; pal.shoe = "#0d0d10";
+    pal.skin = "#161923"; pal.body = "#0d0d10"; pal.accent = "#f4f6fb"; pal.pants = "#0d0d10"; pal.shoe = "#0d0d10";
   } else if (f.technique === "spider" && skin === "miles") {
-    pal.body = "#141416"; pal.accent = "#c1121f"; pal.pants = "#141416"; pal.shoe = "#141416";
+    pal.skin = "#191b25"; pal.body = "#141416"; pal.accent = "#c1121f"; pal.pants = "#141416"; pal.shoe = "#141416";
   } else if (f.technique === "spider" && skin === "iron") {
     pal.body = "#c1121f"; pal.accent = "#f0c94a"; pal.pants = "#c1121f"; pal.shoe = "#f0c94a";
   } else if (f.technique === "zealot" && skin === "purifier") {
@@ -19776,39 +19800,11 @@ function drawFugaAimPreview(f) {
   ctx.setLineDash([]);
 
   ctx.translate(endX, endY);
-  ctx.rotate(aimVector.angle);
-  ctx.fillStyle = "rgba(2, 6, 23, 0.78)";
-  ctx.beginPath();
-  ctx.moveTo(-34, -7);
-  ctx.lineTo(22, -7);
-  ctx.lineTo(36, 0);
-  ctx.lineTo(22, 7);
-  ctx.lineTo(-34, 7);
-  ctx.lineTo(-22, 0);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = "rgba(254, 240, 138, 0.86)";
-  ctx.beginPath();
-  ctx.moveTo(-22, -3);
-  ctx.lineTo(20, -3);
-  ctx.lineTo(30, 0);
-  ctx.lineTo(20, 3);
-  ctx.lineTo(-22, 3);
-  ctx.closePath();
-  ctx.fill();
-  ctx.strokeStyle = "rgba(249, 115, 22, 0.88)";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(-36, -15);
-  ctx.lineTo(-18, 0);
-  ctx.lineTo(-36, 15);
-  ctx.stroke();
-
-  ctx.rotate(-aimVector.angle);
+  drawSorcererProjectile({move, radius:spec.radius*getDomainProjectileSizeMultiplier(f,move),angle:aimVector.angle,life:20});
   ctx.strokeStyle = chargeRatio >= 1 ? "rgba(254, 240, 138, 0.74)" : "rgba(251, 146, 60, 0.36)";
   ctx.lineWidth = 3 + chargeRatio * 3;
   ctx.beginPath();
-  ctx.arc(0, 0, spec.explosionRadius * pulse, 0, Math.PI * 2);
+  ctx.arc(0, 0, spec.explosionRadius * (hasBindingVow(f,"fuga") ? 1.35 : 1) * pulse, 0, Math.PI * 2);
   ctx.stroke();
   ctx.fillStyle = chargeRatio >= 1 ? "rgba(254, 240, 138, 0.12)" : "rgba(249, 115, 22, 0.06)";
   ctx.beginPath();
@@ -19837,7 +19833,12 @@ function drawUltimateAimPreview(f) {
   ctx.save();ctx.globalAlpha=.45;ctx.lineWidth=2;ctx.setLineDash([10,12]);
   ctx.strokeStyle=f.technique === "shrine" ? "#f5a398" : "#c4a1ff";
   ctx.beginPath();ctx.moveTo(aim.origin.x,aim.origin.y);
-  ctx.lineTo(aim.origin.x+aim.x*STAGE_W,aim.origin.y+aim.y*STAGE_W);ctx.stroke();ctx.restore();
+  const move=f.technique === "shrine" ? "worldSlash" : "purple";
+  const radius=move === "purple" ? 52 : 50;
+  const distance=getAimPreviewDistance(move,{speed:STAGE_W*1.18,life:1,radius},0,aim,f,radius);
+  const x=aim.origin.x+aim.x*distance,y=aim.origin.y+aim.y*distance;
+  ctx.lineTo(x,y);ctx.stroke();ctx.setLineDash([]);ctx.translate(x,y);
+  drawSorcererProjectile({move,radius,angle:aim.angle,life:20});ctx.restore();
 }
 
 
@@ -22183,6 +22184,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   // SKINS_PATCH: alternate outfits drawn over the default torso.
   if (f && !f.ko) drawSkinOutfitOverlay(f, skinColor);
   drawOutfitFinishing(f, skin);
+  drawSkinPolish(f, skin);
   // HEAD_OUTLINE_PATCH: every head gets the same black outline the limbs
   // and torso already have - previously bare on the dummy and Light, whose
   // hair doesn't wrap the whole head.
@@ -23072,7 +23074,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   // SKINS_PATCH: Shibuya Sukuna's sleeve navy; base Sukuna's arms stay bare skin.
   const shrineArmColor = shibuyaSleeve ? "#1b2742" : skinColor;
   const drawArmRig = (shoulder, elbow, hand, color = f.technique === "shrine" ? shrineArmColor : bodyColor, handColor = skinColor) => {
-    if (isZealot(f)) zealotHands.push({ elbow: { x: elbow.x, y: elbow.y }, hand: { x: hand.x, y: hand.y } });
+    if (isZealot(f) || f.technique === "beast") zealotHands.push({ elbow: { x: elbow.x, y: elbow.y }, hand: { x: hand.x, y: hand.y } });
     // SKINS_PATCH: Shibuya Sukuna's arms get a black outline (they're sleeved,
     // not bare) and skip the bare-arm tattoo bands.
     const useOutline = f.technique !== "shrine" || shibuyaSleeve;
@@ -23094,7 +23096,13 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     const outlineW = shibuyaSleeve && f.technique === "shrine" ? 15 : 13;
     const fillW    = shibuyaSleeve && f.technique === "shrine" ? 11 : 9.5;
     if (useOutline) strokeArm("#020617", outlineW);
-    strokeArm(materialGradient(color, shoulder.x - 8, shoulder.y, hand.x + 8, hand.y), fillW);
+    const shortSleeve = f.technique === "limitless" && skinOf(f) === "finalfight";
+    strokeArm(materialGradient(shortSleeve ? skinColor : color, shoulder.x - 8, shoulder.y, hand.x + 8, hand.y), fillW);
+    if (shortSleeve) {
+      ctx.strokeStyle = bodyColor; ctx.lineWidth = fillW + 1;
+      ctx.beginPath();ctx.moveTo(shoulder.x,shoulder.y);
+      ctx.lineTo(lerp(shoulder.x,elbow.x,.35),lerp(shoulder.y,elbow.y,.35));ctx.stroke();
+    }
     ctx.save(); ctx.translate(-1.5, -1.5);
     strokeArm("rgba(241,245,255,0.13)", 1.2); ctx.restore();
     if (isShrineArm) {
@@ -23514,6 +23522,8 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       );
     }
   }
+
+  if (f.technique === "beast") drawBeastSwords(f, zealotHands);
 
   // ZEALOT_PATCH + ARTANIS_DETAIL_PATCH: the psi blades are ALWAYS out now
   // - twin curved blue energy swords projecting from the forearm emitters,
@@ -25844,8 +25854,8 @@ function drawShrineTechniqueShape(move, radius) {
   ctx.restore();
 }
 
-function getAimPreviewDistance(move, spec, chargeRatio, aimVector, attacker = null, radius = spec.radius) {
-  const aimLimit = Number.isFinite(aimVector?.distance) ? Math.max(8, aimVector.distance) : Infinity;
+function getTechniqueRangeDistance(move, spec, chargeRatio, aimVector, attacker = null, radius = spec.radius) {
+  const aimLimit = Number.isFinite(aimVector?.distance) ? Math.max(0, aimVector.distance) : Infinity;
   const usesExactMouseEnd = move === "cleave" || move === "fuga";
   const domainSlashBoost = attacker && isDomainOwner(attacker, "malevolentShrine");
 
@@ -25855,6 +25865,7 @@ function getAimPreviewDistance(move, spec, chargeRatio, aimVector, attacker = nu
 
   const target = attacker === player ? enemy : attacker === enemy ? player : null;
 
+  if (move === "fuga") return Math.min(maxDistance, aimLimit);
   if (usesExactMouseEnd) {
     const distances = [Math.min(maxDistance, aimLimit)];
     if (target && !target.ko) {
@@ -25880,6 +25891,36 @@ function getAimPreviewDistance(move, spec, chargeRatio, aimVector, attacker = nu
   return Math.max(8, Math.min(...distances.filter((distance) => Number.isFinite(distance) && distance > 0)));
 }
 
+// Swept separating-axis collision uses the same boxes as projectileOverlapsTarget.
+// Recomputed every tick; a preview contact never becomes a projectile range limit.
+function getProjectileContactDistance(p, aim, limit, rect) {
+  const shape = getShrineArtHitbox({...p, x: aim.origin.x, y: aim.origin.y});
+  const a = shape?.angle || 0, c = Math.cos(a), sn = Math.sin(a);
+  const hw = shape?.halfW ?? p.radius, hh = shape?.halfH ?? p.radius;
+  const cx = shape?.cx ?? aim.origin.x, cy = shape?.cy ?? aim.origin.y;
+  const dx = rect.x + rect.w / 2 - cx, dy = rect.y + rect.h / 2 - cy;
+  let enter = 0, leave = limit;
+  for (const [ax, ay] of [[1,0],[0,1],[c,sn],[-sn,c]]) {
+    const extent = hw*Math.abs(c*ax+sn*ay) + hh*Math.abs(-sn*ax+c*ay) + rect.w/2*Math.abs(ax) + rect.h/2*Math.abs(ay);
+    const offset = dx*ax + dy*ay, velocity = aim.x*ax + aim.y*ay;
+    if (Math.abs(velocity)<1e-9) { if (Math.abs(offset)>extent) return Infinity; continue; }
+    const t1=(offset-extent)/velocity, t2=(offset+extent)/velocity;
+    enter=Math.max(enter,Math.min(t1,t2)); leave=Math.min(leave,Math.max(t1,t2));
+    if (enter>leave) return Infinity;
+  }
+  return enter;
+}
+
+function getAimPreviewDistance(move, spec, chargeRatio, aim, attacker = null, radius = spec.radius) {
+  const range = getTechniqueRangeDistance(move,spec,chargeRatio,aim,attacker,radius);
+  if (['fuga','cleave','ryukStrike','nameInvestigation'].includes(move)) return range;
+  const target=attacker===player?enemy:attacker===enemy?player:null;
+  const obstacles=getActivePlatforms().slice();
+  if (target && !target.ko && !isUntargetable(target)) obstacles.push(target);
+  const p={move,radius,angle:aim.angle};
+  return Math.min(range,...obstacles.map(rect=>getProjectileContactDistance(p,aim,range,rect)));
+}
+
 function drawTechniqueAimPreview(f) {
   // DAVE_PATCH: plant placement already shows its own ghost + soil ring, so
   // skip the generic red aim line for him.
@@ -25891,7 +25932,8 @@ function drawTechniqueAimPreview(f) {
   const showOnlyChargeOrb = f !== getActiveMouseTechniqueFighter();
   const aimVector = getTechniqueAimVector(f, move, f.techniqueAim);
   const radiusScale = f.technique === "limitless" ? 1 + chargeRatio * (move === "red" ? 0.95 : 0.85) : 1;
-  const radius = move === "ryukStrike" ? 18 + Math.round(getLightInfoRatio(f) * 6) : spec.radius * radiusScale;
+  const radius = move === "ryukStrike" ? 18 + Math.round(getLightInfoRatio(f) * 6) : spec.radius * radiusScale *
+    (isDomainOwner(f,"unlimitedVoid") && move === "red" ? 1.45 : isDomainOwner(f,"unlimitedVoid") && move === "blue" ? 1.18 : isDomainOwner(f,"malevolentShrine") && move === "cleave" ? 1.2 : 1) * (move === "cleave" && hasBindingVow(f,"cleave") ? 1.45 : 1);
 
   // Charging energy is attached to the arm rig; only the endpoint is previewed here.
 
@@ -26024,20 +26066,20 @@ function drawTechniqueAimPreview(f) {
     ctx.beginPath(); ctx.ellipse(0, 0, 21, 7, 0, 0, Math.PI * 2); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(0, -9); ctx.lineTo(0, 9); ctx.moveTo(-9, 0); ctx.lineTo(9, 0); ctx.stroke();
     drawDeathNoteCharacterModel(f.lightSummonStage <= 1 && f.lightSummonType !== "misa" ? "misa" : "soichiro", 0, 0, 0.97, { alpha: 0.42, dir: aimVector.dir });
-  } else if (move === "blue" || move === "red") {
-    drawLimitlessOrb(move, radius, aimVector.dir);
   } else {
-    ctx.rotate(aimVector.angle);
-    drawShrineTechniqueShape(move, radius);
+    drawProjectileBody({move,radius,angle:aimVector.angle,dir:aimVector.dir,life:spec.life,owner:f===player?'player':'enemy'});
   }
   ctx.restore();
 }
 
 function drawProjectiles() {
   for (const p of projectiles) {
-    ctx.save();
-    ctx.translate(p.x, p.y);
-    drawProjectileTrail(p);
+    ctx.save();ctx.translate(p.x,p.y);drawProjectileTrail(p);drawProjectileBody(p);ctx.restore();
+  }
+}
+
+function drawProjectileBody(p) {
+  ctx.save();
     const projectileAngle = Number(p.angle);
     const hasProjectileAngle = Number.isFinite(projectileAngle);
     if (drawSorcererProjectile(p)) {
@@ -26341,9 +26383,9 @@ function drawProjectiles() {
       ctx.lineTo(p.radius * 1.28, p.radius * 0.58);
       ctx.stroke();
     }
-    ctx.restore();
-  }
+  ctx.restore();
 }
+
 
 function drawHitboxHint(f) {
   const attack = getAttackSpec(f);
@@ -26623,7 +26665,7 @@ function draw() {
   ctx.scale(cameraZoom, cameraZoom);
   ctx.translate(-cameraX, 0);
   getStage().draw(); // STAGE_SELECT_PATCH
-  if (!activeDomain && !pendingDomain && !domainClash) { drawArenaFinish(); drawStageAtmosphere(); } // STAGE_ATMOSPHERE_PATCH
+  if (!activeDomain && !pendingDomain && !domainClash) { drawSceneryPolish(); drawPlatforms(); drawArenaFinish(); drawStageAtmosphere(); } // STAGE_ATMOSPHERE_PATCH
   drawUpsideDownBackdrop(); // VECNA_PATCH
   drawActiveDomainBackdrop();
 
@@ -26755,95 +26797,7 @@ function drawDavidGlitchOverlay() {
 
 
 function drawTechniqueAimSizePreview() {
-  if (homeOpen || paused || gameState !== "playing") return;
-
-  const active = getActiveMouseTechniqueFighter();
-  if (!active || active.ko) return;
-
-  let move = null;
-  if (active.technique === "shrine") {
-    if (mouseTechniqueHeld.ct2) move = "cleave";
-    else if (mouseTechniqueHeld.fuga) move = "fuga";
-    else if (mouseTechniqueHeld.ct1) move = "slash";
-  } else if (active.technique === "limitless") {
-    if (mouseTechniqueHeld.ct1) move = "blue";
-    else if (mouseTechniqueHeld.ct2) move = "red";
-  }
-
-  if (!move || !techniqueMoves[move]) return;
-
-  const spec = techniqueMoves[move];
-
-  // CLEAVE_PREVIEW_CE_FIX
-  // Do not show the Cleave/Dismantle aim art if the move cannot actually be used,
-  // especially when the player does not have enough CE.
-  const moveCost = getTechniqueCost(active, move);
-  if (active.ce < moveCost) return;
-  if ((active.techniqueCooldown || 0) > 0 && (move === "cleave" || move === "slash")) return;
-
-  const aimPoint = sanitizeAimPoint(active.techniqueAim || mouseAimWorld);
-  const origin = getTechniqueOrigin(active, move);
-  const aimVector = getTechniqueAimVector(active, move, aimPoint);
-  const vowBoost = move === "cleave" && hasBindingVow(active, "cleave");
-  const finalRadius =
-    spec.radius *
-    getDomainProjectileSizeMultiplier(active, move) *
-    (vowBoost ? 1.45 : 1);
-  const previewDistance = getAimPreviewDistance(move, spec, 0, aimVector, active, finalRadius);
-  const endX = origin.x + aimVector.x * previewDistance;
-  const endY = origin.y + aimVector.y * previewDistance;
-
-  ctx.save();
-
-  // Draw the aim line.
-  ctx.globalAlpha = 0.65;
-  ctx.lineWidth = move === "cleave" ? 3 : 2.5;
-  ctx.setLineDash(move === "cleave" ? [12, 9] : [10, 8]);
-  ctx.strokeStyle = active.technique === "shrine" ? "rgba(255, 233, 233, 0.85)" : "rgba(173, 216, 255, 0.85)";
-  ctx.beginPath();
-  ctx.moveTo(origin.x, origin.y);
-  ctx.lineTo(endX, endY);
-  ctx.stroke();
-  ctx.setLineDash([]);
-
-  // CLEAVE_AIM_ART_PREVIEW_FIX:
-  // For Cleave, show the actual Cleave art ghost, not a circle.
-  if (move === "cleave") {
-    ctx.translate(endX, endY);
-    ctx.rotate(aimVector.angle);
-    ctx.globalAlpha = vowBoost ? 0.68 : 0.48;
-    ctx.globalCompositeOperation = "lighter";
-    drawShrineTechniqueShape("cleave", finalRadius);
-
-    // Thin outline matching the art hitbox, so the player sees the real size.
-    ctx.globalCompositeOperation = "source-over";
-    ctx.globalAlpha = vowBoost ? 0.75 : 0.5;
-    ctx.strokeStyle = vowBoost ? "rgba(255, 230, 230, 0.92)" : "rgba(248, 113, 113, 0.75)";
-    ctx.lineWidth = 2;
-    ctx.setLineDash([8, 7]);
-    ctx.rotate(-0.18);
-    ctx.strokeRect(-finalRadius * 0.75, -finalRadius * 1.25, finalRadius * 2.2, finalRadius * 2.35);
-    ctx.setLineDash([]);
-    ctx.restore();
-    return;
-  }
-
-  // Other moves keep a simple ghost preview.
-  ctx.globalAlpha = 0.5;
-  ctx.translate(endX, endY);
-  if (move === "blue" || move === "red") {
-    drawLimitlessOrb(move, finalRadius, aimVector.dir);
-  } else if (move === "slash") {
-    ctx.rotate(aimVector.angle);
-    drawShrineTechniqueShape("slash", finalRadius);
-  } else {
-    ctx.fillStyle = "rgba(255,255,255,0.75)";
-    ctx.beginPath();
-    ctx.arc(0, 0, 4.5, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  ctx.restore();
+  // The main charge preview already draws the exact scaled projectile once.
 }
 
 
