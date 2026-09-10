@@ -32,7 +32,7 @@ function safeFilePath(urlPath) {
 const server = http.createServer((req, res) => {
   if (req.url === "/health") {
     res.writeHead(200, {"Content-Type":"application/json", "Cache-Control":"no-store"});
-    res.end(JSON.stringify({status:"ok",release:"aim-art-20260907"}));
+    res.end(JSON.stringify({status:"ok",release:"intros-punches-20260910"}));
     return;
   }
   const filePath = safeFilePath(req.url);

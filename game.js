@@ -3339,20 +3339,12 @@ function getAttackSpec(f, type = f.attacking) {
     attack.recovery = type === "heavy" ? Math.max(18, attack.recovery - 6) : Math.max(6, attack.recovery - 2);
   } else if (f.technique === "shrine") {
     if (type === "light") {
-      attack.windup = 2;
-      attack.active = 6;
-      attack.recovery = 6;
+      // 17 ticks versus the normal 18: a small advantage, with readable recovery.
+      attack.windup = 3; attack.active = 5; attack.recovery = 9;
       attack.knockback += 1;
     } else if (type === "heavy") {
-      attack.damage += 3;
-      attack.knockback += 3;
-      attack.windup = 13;
-      attack.recovery = 23;
-    }
-    if (isHeianSukuna(f)) {
-      // Four arms let Heian recover between strikes faster than the two-arm cast.
-      if (type === "light") Object.assign(attack, {windup:1, active:4, recovery:4});
-      if (type === "heavy") Object.assign(attack, {windup:4, active:5, recovery:6});
+      attack.damage += 3; attack.knockback += 3;
+      attack.windup = 14; attack.recovery = 25;
     }
   }
   if (f.technique === "deathnote" && type !== "backThrow") {
@@ -8001,7 +7993,7 @@ function queuePunchCooldown(f) {
 
 function beginPunchCooldown(f) {
   f.pendingPunchCooldown = false;
-  f.punchCooldown = Math.max(f.punchCooldown || 0, isHeianSukuna(f) ? 20 : PUNCH_COOLDOWN_TICKS);
+  f.punchCooldown = Math.max(f.punchCooldown || 0, f.technique === "shrine" ? 30 : PUNCH_COOLDOWN_TICKS);
   resetCombo(f);
 }
 
@@ -8221,7 +8213,7 @@ function advancePunchArm(f) {
   return f.punchArm;
 }
 
-function getSukunaBarrageInterval(f) { return isHeianSukuna(f) ? 3 : SUKUNA_BARRAGE_HIT_INTERVAL; }
+function getSukunaBarrageInterval(f) { return SUKUNA_BARRAGE_HIT_INTERVAL; }
 
 function beginAttack(f, type) {
   if (type === "light" || type === "heavy") advancePunchArm(f);
@@ -14504,7 +14496,7 @@ function startSukunaBarrage(attacker, defender, damage, knockback) {
   attacker.attackFrame = 0;
   attacker.hasHit = true;
   attacker.queuedAttack = null;
-  attacker.barrageDuration = isHeianSukuna(attacker) ? 24 : SUKUNA_BARRAGE_DURATION_TICKS;
+  attacker.barrageDuration = SUKUNA_BARRAGE_DURATION_TICKS;
   attacker.barrageTimer = attacker.barrageDuration;
   attacker.barrageHitsDone = 0;
   attacker.barrageDamageRemaining = Math.max(SUKUNA_BARRAGE_HITS, Math.ceil(damage * 3.4));
@@ -23156,7 +23148,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     drawArmRig({ x: 41, y: 48 }, { x: 54, y: 49 }, { x: 57, y: 61 });
     drawArmRig({ x: 12, y: 50 }, { x: 23, y: 58 }, { x: 30, y: 52 });
   }
-  if (f.technique === "shrine" && !shibuyaSleeve && !f.attacking && !jumpPose && !f.blocking && motion.blend < 0.02 && !getSorcererCast(f)) {
+  if (f.technique === "shrine" && !shibuyaSleeve && !f.attacking && !jumpPose && !f.blocking && motion.blend < 0.02 && !getSorcererCast(f) && !shouldDrawMatchIntroArms(f)) {
     const lowerBreath = running ? runCenterLift * 0.12 : idle * 2;
     const lowerSwing = running ? armSwing * (backpedal ? 1.1 : 8) : idle * 1.2; // EQUAL_ARM_PATCH: same backpedal sway as the upper pair
     drawArmRig(
@@ -23172,7 +23164,9 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       skinColor
     );
   }
-  if (drawSorcererCastArms(f, drawArmRig, skin)) {
+  if (drawMatchIntroArms(f, drawArmRig)) {
+    // Presentation poses yield immediately to movement, attacks and hit reactions.
+  } else if (drawSorcererCastArms(f, drawArmRig, skin)) {
     // Cast poses own the arms through charging and follow-through.
   } else if (isLight(f) && (f.attacking || f.potatoEatingTicks > 0 || f.ultimateMove === "deathNote")) {
     drawLightHandAction(f, drawArmRig, skin);
@@ -26411,8 +26405,8 @@ function drawHitboxHint(f) {
 }
 
 // MATCH_INTRO_PATCH: unique pre-fight dialogue for specific matchups.
-// Plays as sequential speech bubbles over the speakers during the opening
-// seconds of round 1. Purely visual (no input freeze) so online stays in sync.
+// Plays as captioned, matchup-specific exchanges with speaking poses in round one.
+// Presentation yields to combat immediately; it never blocks online input.
 const INTRO_SPEAKER_NAMES = {
   limitless: "Gojo", shrine: "Sukuna", deathnote: "Light", brawler: "Thragg",
   blackleg: "Sanji", hivemind: "Vecna", zealot: "Zealot", spider: "Spider-Man",
@@ -26442,7 +26436,7 @@ const MATCH_INTRO_DIALOGUES = [
   ["shrine", "blackleg", [["blackleg", "I've cooked monsters before."], ["shrine", "You're the one who will be cooked."]]],
   ["shrine", "hivemind", [["hivemind", "I've seen horrors beyond you."], ["shrine", "I'll be the last one you see."]]],
   ["shrine", "zealot", [["zealot", "Your reign ends here."], ["shrine", "My reign is forever."]]],
-  ["shrine", "spider", [["spider", "You're definitely not friendly neighborhood material."], ["shrine", "I'll decorate the neighborhood with your blood."]]],
+  ["shrine", "spider", [["spider", "You're definitely not friendly neighborhood material."], ["shrine", "Your neighborhood has never faced a curse like me."]]],
   ["shrine", "beast", [["beast", "King of beasts!"], ["shrine", "Wild animal."]]],
   ["shrine", "jiji", [["shrine", "A powerful vessel, I see."], ["jiji", "You're not the only monster anymore."]]],
   ["shrine", "david", [["shrine", "Machines bore me."], ["david", "Machines bore you? Let's test that."]]],
@@ -26541,7 +26535,10 @@ function setupMatchIntro() {
   const a = player && player.technique;
   const b = enemy && enemy.technique;
   if (!a || !b) return;
-  matchIntro = MATCH_INTRO_LOOKUP[[a, b].sort().join("|")] || null;
+  if (pacifistBot || currentRound !== 1) return;
+  const key=[a,b].sort().join("|");
+  const script=MATCH_INTRO_LOOKUP[key];
+  if(script) matchIntro={...script,key,startFrame:frame};
 }
 
 function wrapIntroText(text, maxWidth) {
@@ -26561,75 +26558,70 @@ function wrapIntroText(text, maxWidth) {
   return out;
 }
 
+function getMatchIntroBeat() {
+  if(!matchIntro || gameState!=="playing") return null;
+  const age=Math.max(0,frame-matchIntro.startFrame);
+  const index=Math.floor(age/MATCH_INTRO_LINE_TICKS);
+  const line=matchIntro.lines[index];
+  if(!line) return null;
+  const speaker=matchIntro.mirror?(index%2===0?player:enemy):(player.technique===line[0]?player:enemy);
+  const time=age%MATCH_INTRO_LINE_TICKS;
+  return {index,line,speaker,time,alpha:Math.min(1,time/12,(MATCH_INTRO_LINE_TICKS-time)/16)};
+}
+
+function shouldDrawMatchIntroArms(f) {
+  return getMatchIntroBeat()?.speaker===f && !f.attacking && !f.blocking && f.stun<=0 && !f.ko && f.grounded && Math.abs(f.vx)<=.4 && !getSorcererCast(f) && !isLight(f);
+}
+
+function drawMatchIntroArms(f,drawArm) {
+  if(!shouldDrawMatchIntroArms(f)) return false;
+  const beat=getMatchIntroBeat();
+  const other=f===player?enemy:player;
+  const roster=Object.keys(INTRO_SPEAKER_NAMES);
+  const own=roster.indexOf(f.technique),opponent=roster.indexOf(other.technique);
+  const t=motionEase(Math.min(1,beat.time/22))*motionEase(Math.min(1,(MATCH_INTRO_LINE_TICKS-beat.time)/24));
+  // The opponent changes the delivery: open challenge, raised guard, or measured gesture.
+  const gesture=(own+opponent)%3;
+  const hands=gesture===0?[[56,42],[9,76]]:gesture===1?[[48,40],[23,53]]:[[50,57],[8,79]];
+  for(let i=0;i<getPunchArmCount(f);i++) {
+    const lower=i>=2,rear=i%2===1;
+    const shoulder={x:rear?11:42,y:lower?73:49};
+    const rest={x:rear?7:46,y:lower?91:81};
+    const goal=lower?[rear?14:47,79]:hands[i];
+    const target={x:lerp(rest.x,goal[0],t),y:lerp(rest.y,goal[1],t)};
+    const rig=solvePunchArm(shoulder,target,23,25,rear?-1:1);
+    drawArm(rig.shoulder,rig.elbow,rig.fist);
+  }
+  return true;
+}
+
 function drawMatchIntroDialogue() {
-  if (!matchIntro || gameState !== "playing") return;
-  const total = matchIntro.lines.length * MATCH_INTRO_LINE_TICKS;
-  if (frame >= total) { matchIntro = null; return; }
-  const idx = Math.floor(frame / MATCH_INTRO_LINE_TICKS);
-  const line = matchIntro.lines[idx];
-  if (!line) return;
-
-  // Mirror matches can't tell speakers apart by technique, so line 1 always
-  // belongs to player and line 2 to enemy (identical on both online clients).
-  const f = matchIntro.mirror
-    ? (idx === 0 ? player : enemy)
-    : (player.technique === line[0] ? player : enemy);
-  if (!f) return;
-
-  const t = frame - idx * MATCH_INTRO_LINE_TICKS;
-  let alpha = 1;
-  if (t < 12) alpha = t / 12;
-  else if (t > MATCH_INTRO_LINE_TICKS - 16) alpha = (MATCH_INTRO_LINE_TICKS - t) / 16;
-
-  const headX = (f.x + f.w / 2 - cameraX) * cameraZoom;
-  const headY = f.y * cameraZoom + getCameraYOffset();
-
-  ctx.save();
-  ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
-  ctx.font = "700 15px Arial";
-  const textLines = wrapIntroText(line[1], 250);
-  const name = INTRO_SPEAKER_NAMES[line[0]] || "";
-  const lineH = 19;
-  const padX = 14;
-  let bubbleW = ctx.measureText(name).width;
-  for (const tl of textLines) bubbleW = Math.max(bubbleW, ctx.measureText(tl).width);
-  bubbleW += padX * 2;
-  const bubbleH = 12 + 16 + textLines.length * lineH + 10;
-  const bx = Math.max(10, Math.min(W - bubbleW - 10, headX - bubbleW / 2));
-  let by = headY - bubbleH - 30;
-  if (by < 8) by = 8;
-  by += (1 - alpha) * 6;
-
-  // bubble + tail toward the speaker's head
-  ctx.fillStyle = "#fffdf6";
-  ctx.strokeStyle = "#161a22";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.roundRect(bx, by, bubbleW, bubbleH, 12);
-  ctx.fill();
-  ctx.stroke();
-  const tailX = Math.max(bx + 18, Math.min(bx + bubbleW - 18, headX));
-  ctx.beginPath();
-  ctx.moveTo(tailX - 9, by + bubbleH - 1);
-  ctx.lineTo(tailX + 9, by + bubbleH - 1);
-  ctx.lineTo(tailX, Math.min(by + bubbleH + 16, headY - 8));
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = "#fffdf6";
-  ctx.fillRect(tailX - 8, by + bubbleH - 3, 16, 4);
-
-  // speaker name in their side color, then the line itself
-  ctx.textAlign = "left";
-  ctx.textBaseline = "alphabetic";
-  ctx.font = "900 12px Arial";
-  ctx.fillStyle = f === player ? "#d92626" : "#2563eb";
-  ctx.fillText(name.toUpperCase(), bx + padX, by + 20);
-  ctx.font = "700 15px Arial";
-  ctx.fillStyle = "#161a22";
-  textLines.forEach((tl, i) => {
-    ctx.fillText(tl, bx + padX, by + 38 + i * lineH);
-  });
+  const beat=getMatchIntroBeat();
+  if(!beat) {if(matchIntro && gameState==="playing")matchIntro=null;return;}
+  const {line,speaker,alpha}=beat;
+  ctx.save();ctx.globalAlpha=clamp01(alpha);
+  const fontSize=Math.max(15,Math.min(23,W/38));
+  ctx.font=`600 ${fontSize}px Arial`;
+  const lines=wrapIntroText(line[1],W-Math.max(48,W*.16));
+  const lineH=fontSize*1.3,captionH=lines.length*lineH+46;
+  const top=H-captionH-12;
+  const shade=ctx.createLinearGradient(0,top-20,0,H);
+  shade.addColorStop(0,'rgba(5,9,17,0)');shade.addColorStop(.25,'rgba(5,9,17,.84)');shade.addColorStop(1,'rgba(5,9,17,.94)');
+  ctx.fillStyle=shade;ctx.fillRect(0,top-20,W,H-top+20);
+  ctx.textAlign='center';ctx.textBaseline='alphabetic';
+  ctx.font='bold 12px Arial';ctx.fillStyle=speaker===player?'#ffb7aa':'#acd7ff';
+  const side=matchIntro.mirror?(speaker===player?' · PLAYER 1':' · PLAYER 2'):'';
+  ctx.fillText(INTRO_SPEAKER_NAMES[line[0]].toUpperCase()+side,W/2,top+18);
+  ctx.font=`600 ${fontSize}px Arial`;ctx.fillStyle='#fff8ec';
+  ctx.shadowColor='#000';ctx.shadowBlur=3;
+  lines.forEach((text,i)=>ctx.fillText(text,W/2,top+43+i*lineH));
+  ctx.shadowBlur=0;
+  // A compact matchup title and speaker underline replace floating dialogue bubbles.
+  ctx.fillStyle='rgba(5,9,17,.76)';ctx.fillRect(0,0,W,37);
+  ctx.font='bold 13px Arial';ctx.fillStyle='#eddbb5';
+  ctx.fillText(INTRO_SPEAKER_NAMES[player.technique]+'  /  '+INTRO_SPEAKER_NAMES[enemy.technique],W/2,24);
+  ctx.fillStyle=speaker===player?'#ffb7aa':'#acd7ff';
+  ctx.fillRect(speaker===player?W*.25:W*.5,34,W*.25,2);
   ctx.restore();
 }
 

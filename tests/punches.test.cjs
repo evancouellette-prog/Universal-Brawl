@@ -32,7 +32,7 @@ test('one fist reaches out while guards stay tucked and arm bones keep their len
  for(const [upper,forearm]of results){assert.ok(Math.abs(upper-23)<1e-8);assert.ok(Math.abs(forearm-25)<1e-8);}
 });
 
-test('Heian has the fastest base punches and his barrage cycles once per actual hit',t=>{
+test('Sukuna has a small base speed advantage and his barrage cycles once per actual hit',t=>{
  const g=setup(t);const r=g.run(`(()=>{
  player.technique='shrine';player.skinId='default';const fast=['light','heavy'].map(type=>{const a=getAttackSpec(player,type);return a.windup+a.active+a.recovery;});
  const others=[];for(const [tech,skins]of Object.entries(CHARACTER_SKINS))for(const skin of skins){player.technique=tech;player.skinId=skin.id;if(isHeianSukuna(player))continue;others.push(['light','heavy'].map(type=>{const a=getAttackSpec(player,type);return a.windup+a.active+a.recovery;}));}
@@ -40,8 +40,8 @@ test('Heian has the fastest base punches and his barrage cycles once per actual 
  startSukunaBarrage(player,enemy,10,10);const duration=player.barrageDuration,arms=[];let count=0;
  while(player.barrageTimer>0){updateSukunaBarrage(player,enemy);if(player.barrageHitsDone>count){arms.push(player.punchArm);count=player.barrageHitsDone;if(getPunchMotion(player).drive!==1)throw Error('barrage fist missed damage frame');}}
  return {fast,others,arms,duration};})()`);
- for(const speeds of r.others) for(let i=0;i<2;i++)assert.ok(r.fast[i]<speeds[i]);
- assert.deepEqual(Array.from(r.arms),[0,1,2,3,0,1]);assert.equal(r.duration,24);
+ assert.equal(r.fast[0],17);assert.equal(r.fast[1],47);assert.ok(18/r.fast[0]<1.1);assert.ok(51/r.fast[1]<1.1);
+ assert.deepEqual(Array.from(r.arms),[0,1,2,3,0,1]);assert.equal(r.duration,38);
 });
 
 test('Ryuk alternates attached fists and punch-arm state survives multiplayer packets',t=>{
