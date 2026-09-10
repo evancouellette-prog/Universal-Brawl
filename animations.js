@@ -46,7 +46,7 @@ function getFighterMotion(f) {
 }
 
 // Two fixed-length bones, one elbow bend: never stretch an arm to reach a pose.
-function solvePunchArm(shoulder, target, upper = 23, forearm = 25) {
+function solvePunchArm(shoulder, target, upper = 23, forearm = 25, bendSide = 1) {
   const coincident = target.x === shoulder.x && target.y === shoulder.y;
   const dx = coincident ? 1 : target.x - shoulder.x, dy = target.y - shoulder.y;
   const distance = Math.hypot(dx, dy) || 1;
@@ -55,7 +55,7 @@ function solvePunchArm(shoulder, target, upper = 23, forearm = 25) {
   const along = (upper * upper - forearm * forearm + reach * reach) / (2 * reach);
   const bend = Math.sqrt(Math.max(0, upper * upper - along * along));
   // Keep one bend direction throughout the strike; changing IK branches snaps elbows.
-  const side = 1;
+  const side = bendSide;
   return { shoulder, elbow: {x: shoulder.x + ux * along - uy * bend * side, y: shoulder.y + uy * along + ux * bend * side},
     fist: {x: shoulder.x + ux * reach, y: shoulder.y + uy * reach} };
 }
@@ -64,21 +64,26 @@ function getPunchRig(f, load, drive, heavy = false) {
   const count = getPunchArmCount(f);
   const activeArm = (f.punchArm || 0) % count;
   const cross = activeArm % 2 === 1;
-  const turn = cross ? drive * 0.78 : -drive * 0.08;
-  const ready = Math.max(load, drive);
-  const rests = [{x:46,y:81},{x:7,y:81},{x:45,y:88},{x:8,y:89}];
+  // Shoulders stay on their own side: a cross turns the chest a little,
+  // rather than exchanging the two shoulder sockets mid-punch.
+  const turn = cross ? drive : 0;
+  const rests = [{x:46,y:81},{x:7,y:81},{x:45,y:91},{x:8,y:91}];
+  const spec=getAttackSpec(f);
+  const end=spec ? spec.windup+spec.active+spec.recovery : 1;
+  const settle=f.attacking==='barrage'?1:Math.min(motionEase((f.attackFrame+1)/3),motionEase((end-f.attackFrame)/4));
   const arms = rests.slice(0, count).map((rest, index) => {
     const rear = index % 2 === 1, lower = index >= 2;
-    const shoulder = {x: (rear ? 11 : 42) + (rear ? 29 : -22) * turn, y: (lower ? 65 : 51) - drive * 2};
-    const guard = {x: shoulder.x + (rear ? 5 : 3), y: shoulder.y - (lower ? 1 : 6)};
-    let target = {x: lerp(rest.x, guard.x, ready), y: lerp(rest.y, guard.y, ready)};
-    if (index === activeArm) {
-      const cock = {x: shoulder.x + (heavy ? -5 : 5), y: shoulder.y + (heavy ? 5 : -3)};
-      const contact = {x: shoulder.x + (heavy ? 44 : 42), y: shoulder.y - (lower ? 10 : heavy ? 7 : 2)};
-      target = {x: rest.x + (cock.x-rest.x)*load + (contact.x-rest.x)*drive,
-        y: rest.y + (cock.y-rest.y)*load + (contact.y-rest.y)*drive};
+    const shoulder = {x:(rear?11:42)+(rear?10:-3)*turn, y:(lower?73:48)-drive};
+    const guard = {x:shoulder.x+(rear?6:4),y:shoulder.y-(lower?0:7)};
+    let target={x:lerp(rest.x,guard.x,settle),y:lerp(rest.y,guard.y,settle)};
+    if(index===activeArm) {
+      const cock={x:shoulder.x+(heavy?-4:4),y:shoulder.y+(heavy?5:-4)};
+      const contact={x:shoulder.x+(heavy?44:42),y:shoulder.y-(lower?5:heavy?6:2)};
+      // One smooth outward arc followed by recovery to the same guard.
+      target={x:target.x+(cock.x-target.x)*load+(contact.x-target.x)*drive,
+        y:target.y+(cock.y-target.y)*load+(contact.y-target.y)*drive};
     }
-    return {...solvePunchArm(shoulder, target), index, striking: index === activeArm};
+    return {...solvePunchArm(shoulder,target,23,25,rear&&index!==activeArm?-1:1),index,striking:index===activeArm};
   });
   const active = arms[activeArm];
   return {load, drive, activeArm, arms, ...active,
