@@ -441,8 +441,8 @@ function drawBeastSwords(f, hands) {
   for (const [i,rig] of hands.slice(-2).entries()) {
     const {hand,elbow}=rig;
     const moving=f.attacking || f.beastPierceTicks>0;
-    const angle=moving?Math.atan2(hand.y-elbow.y,hand.x-elbow.x)-.25:
-      (i===0?-.65:-2.45)+Math.sin(frame*.045+i)*.035;
+    const angle=moving?Math.max(-.6,Math.min(.6,Math.atan2(hand.y-elbow.y,hand.x-elbow.x)-.25)):
+      (i===0?-.28:.08)+Math.sin(frame*.045+i)*.025;
     ctx.save();ctx.translate(hand.x,hand.y);ctx.rotate(angle);
     ctx.fillStyle=materialGradient('#c6d4da',6,-5,6,5);ctx.strokeStyle='#14212c';ctx.lineWidth=1.3;
     ctx.beginPath();ctx.moveTo(5,-3);ctx.lineTo(47,-2);ctx.lineTo(54,-5);ctx.lineTo(50,3);

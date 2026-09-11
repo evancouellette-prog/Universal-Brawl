@@ -3461,7 +3461,7 @@ const techniqueMoves = {
   red: { cost: 28, damage: 12, speed: 12, radius: 20, knockback: 23, life: 70 },
   slash: { cost: 18, damage: 13, speed: 13, radius: 20, knockback: 12, life: 66 },
   cleave: { cost: 32, damage: 24, speed: 0, radius: 42, knockback: 22, life: 14 },
-  fuga: { cost: 70, damage: 76, speed: 9.2, radius: 20, knockback: 38, life: 100, explosionRadius: 174, cooldown: FUGA_COOLDOWN_TICKS },
+  fuga: { cost: 70, damage: 76, speed: 9.2, radius: 20, knockback: 38, life: 50, explosionRadius: 174, cooldown: FUGA_COOLDOWN_TICKS },
   ryukStrike: { cost: 30, damage: 34, speed: 0, radius: 66, knockback: 34, life: 24 },
   nameInvestigation: { cost: 26, damage: 0, speed: 0, radius: 1, knockback: 0, life: 1 },
   // THRAGG_BRAWLER_PATCH: his only ranged tool - a slow, weak chunk of
@@ -3727,9 +3727,11 @@ function getCameraTargetZoom() {
   if (!player || !enemy) return 1;
   const minX = Math.min(player.x, enemy.x);
   const maxX = Math.max(player.x + player.w, enemy.x + enemy.w);
-  const desiredWorldWidth = Math.min(STAGE_W, Math.max(W, maxX - minX + 260));
+  const mobile=document.body.classList.contains("mobile-controls-on");
+  const desiredWorldWidth = Math.min(STAGE_W, Math.max(mobile?W/1.4:W, maxX-minX+(mobile?210:260)));
   const minZoom = W / STAGE_W;
-  const baseZoom = Math.max(minZoom, Math.min(1, W / desiredWorldWidth));
+  const verticalFit=mobile?H/Math.max(1,GROUND-Math.min(player.y,enemy.y)+70):1;
+  const baseZoom = Math.max(minZoom, Math.min(mobile?Math.min(1.4,verticalFit):1, W / desiredWorldWidth));
   if ([player,enemy].some(f => f?.ultimateFinalCharge > 0) || (cinematicZoomTicks > 0 && ultimateFocusOwner)) return Math.max(minZoom, Math.min(1.2, baseZoom * 1.18));
   return baseZoom;
 }
@@ -5652,6 +5654,7 @@ function broadcastFullBattleRestart() {
 }
 
 function restartWholeBattle(broadcast = true) {
+  matchIntro = null; matchIntroCompleted = false; updateIntroSkipControls();
   paused = false;
   gameOver = true;
   roundEnding = false;
@@ -5720,6 +5723,7 @@ function resetGame() {
 }
 
 function resetBattleSession(mode = "cpu", practice = false) {
+  matchIntro = null; matchIntroCompleted = false; updateIntroSkipControls();
   const previousSocket = onlineSocket;
   onlineSocket = null; // Invalidate callbacks before close can fire.
   if (previousSocket) previousSocket.close();
@@ -6208,6 +6212,11 @@ if (data.type === "role") {
       return;
     }
 
+    if (data.type === "intro-skip") {
+      if (onlineRole === "p1" && data.role === "p2") voteIntroSkip("p2", data.id);
+      return;
+    }
+
     if (data.type === "ready") {
       if (!isReadyPhase(gameState) || (data.phase && !isReadyPhase(data.phase))) return;
       if (data.round && data.round !== currentRound) return;
@@ -6289,11 +6298,13 @@ if (data.type === "role") {
     }
 
     if (onlineRole === "p1" && data.type === "fighter") {
+      if (gameState !== "playing") return;
       applyJoinerFighterStateOnHost(data.fighter);
       return;
     }
 
     if (onlineRole === "p1" && data.type === "damage") {
+      if (gameState !== "playing") return;
       applyOnlineDamageToPlayer(data);
       return;
     }
@@ -6343,6 +6354,7 @@ if (data.type === "role") {
       roundEnding = data.roundEnding;
       roundResolved = data.roundResolved;
       if (data.gameState) setGameState(data.gameState, "host state");
+      syncIntroNetworkState(data.intro);
       if (data.gameState === "playing") {
         gameOver = false;
         roundResolved = false;
@@ -6797,6 +6809,7 @@ function sendOnlineState() {
     player1Ready,
     player2Ready,
     readyCountdownValue,
+    intro: getIntroNetworkState(),
     lastRoundWinner,
     activeDomain,
     pendingDomain,
@@ -6893,7 +6906,7 @@ function startRound(nextState = "playing") {
   frame = 0;
   // MATCH_INTRO_PATCH: matchup dialogue plays only on the first round
   matchIntro = null;
-  if (nextState === "playing" && currentRound === 1) setupMatchIntro();
+  updateIntroSkipControls();
   fixedAccumulator = 0;
   lastFrameTime = performance.now();
   lastOnlineStateSent = 0;
@@ -7696,6 +7709,7 @@ function finishRound(winner) {
 }
 
 function updateReadyMessage() {
+  if (gameState === "intro") { message.classList.add("hidden"); updateReadyPromptVisibility(false,false); return; }
   if (playerRounds >= WINS_TO_MATCH || enemyRounds >= WINS_TO_MATCH) {
     const matchTitle = playerRounds > enemyRounds ? `${getPlayerLabel()} Wins Match` : `${getEnemyLabel()} Wins Match`;
     messageTitle.textContent = matchTitle;
@@ -7735,6 +7749,7 @@ function startReadyCountdown() {
   if (gameMode === "online" && onlineRole !== "p1") return;
   if (gameMode === "online" && (!player1Ready || !player2Ready)) return;
   if (readyCountdownValue > 0) return;
+  if (currentRound === 1 && !pacifistBot && !matchIntroCompleted) { startPreFightIntro(); return; }
   console.log("[ready countdown start]", { gameState, round: currentRound, player1Ready, player2Ready });
   let count = 3;
   readyCountdownValue = count;
@@ -15966,10 +15981,11 @@ function updateCpuTechniqueCharge(cpu) {
   setFighterTechniqueAim(enemy, aim);
   enemy.aiGoal = "technique";
   enemy.vx *= 0.72;
-  if ((enemy.cpuTechniqueReleaseTicks || 0) > 0 && enemy.chargeTicks >= enemy.cpuTechniqueReleaseTicks) {
+  const releaseTicks = Math.max(1, Math.min(LIMITLESS_CHARGE_MAX_TICKS, enemy.cpuTechniqueReleaseTicks || (enemy.technique === "limitless" ? LIMITLESS_CHARGE_MAX_TICKS : 12)));
+  if (enemy.chargeTicks >= releaseTicks) {
     const slot = enemy.chargingTechnique;
     releaseTechniqueCharge(enemy, slot, aim);
-    if (enemy.chargingTechnique === slot && enemy.chargeTicks > LIMITLESS_CHARGE_MAX_TICKS + 45) {
+    if (enemy.chargingTechnique === slot) {
       resetCpuBrokenState("failed technique release");
       return false;
     }
@@ -16213,6 +16229,8 @@ function resetCpuBrokenState(reason = "stuck") {
   enemy.attackFrame = 0;
   enemy.hasHit = false;
   enemy.queuedAttack = null;
+  enemy.pendingPunchCooldown = false;
+  enemy.punchCooldown = Math.min(enemy.punchCooldown || 0, PUNCH_COOLDOWN_TICKS);
   enemy.attackType = null;
 
   enemy.chargingTechnique = 0;
@@ -16291,6 +16309,11 @@ function updateCpuStuckRecovery() {
   if (!Number.isFinite(enemy.ultimateMeter)) enemy.ultimateMeter = 0;
 
   const cpu = cpuSettings[cpuDifficulty] || cpuSettings.medium;
+  const attack=getAttackSpec(enemy);
+  if (enemy.attacking && (!attack || (['light','heavy','backThrow'].includes(enemy.attacking) && enemy.attackFrame>attack.windup+attack.active+attack.recovery+12))) {
+    resetCpuBrokenState("expired attack");return;
+  }
+  if (enemy.pendingPunchCooldown && !enemy.attacking) enemy.pendingPunchCooldown=false;
 
   // If Fuga aim becomes impossible, cancel it instead of letting CPU stay frozen.
   if (enemy.fugaAiming) {
@@ -16341,14 +16364,14 @@ function updateCpuStuckRecovery() {
   const lastY = cpuStuckWatchdog.y;
   const moved = lastX === null || lastY === null
     ? true
-    : Math.hypot(enemy.x - lastX, enemy.y - lastY) > 0.35 || Math.abs(enemy.vx || 0) > 0.08 || Math.abs(enemy.vy || 0) > 0.08;
+    : Math.hypot(enemy.x - lastX, enemy.y - lastY) > 0.35;
 
   const distance = Math.abs((player.x + player.w / 2) - (enemy.x + enemy.w / 2));
   const lightAttack = getAttackSpec(enemy, "light");
   const lightHitDistance = lightAttack.range + (player.w + enemy.w) / 2 - 10;
-  const shouldBeDoingSomething = distance > lightHitDistance + 18 && !enemy.attacking && !enemy.rctHealing && enemy.stun <= 0 && !enemy.knockdown && !enemy.ko;
+  const shouldBeDoingSomething = !enemy.attacking && !enemy.rctHealing && !enemy.chargingTechnique && !enemy.fugaAiming && !isSpecialLocked(enemy) && enemy.stun <= 0 && !enemy.knockdown && !enemy.ko;
 
-  if (moved || enemy.aiGoal !== cpuStuckWatchdog.goal) {
+  if (moved) {
     cpuStuckWatchdog.stillFrames = 0;
     cpuStuckWatchdog.x = enemy.x;
     cpuStuckWatchdog.y = enemy.y;
@@ -16363,7 +16386,7 @@ function updateCpuStuckRecovery() {
   }
 
   // Four seconds of doing nothing is treated as broken AI.
-  if (cpuStuckWatchdog.stillFrames > 240) {
+  if (cpuStuckWatchdog.stillFrames > 180) {
     resetCpuBrokenState("idle watchdog");
   }
 }
@@ -21107,6 +21130,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     return;
   }
   const motion = getFighterMotion(f);
+  const flightPose = getThraggFlightPose(f);
   const punchMotion = !isLight(f) && !isSanji(f) && !isZealot(f) ? getPunchMotion(f) : null;
   const flash = f.hurt > 0 && Math.floor(frame / 3) % 2 === 0;
   const dodgeAlpha = f.dodging > 0 ? 0.48 : 1;
@@ -21182,6 +21206,11 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     ctx.rotate(f.koFallDir * f.koRotation);
     ctx.scale(f.dir * bulkX, bulkY);
     ctx.translate(-f.w / 2, -f.h);
+  } else if (flightPose) {
+    ctx.translate(f.x+f.w/2,f.y+f.h*.55);
+    ctx.scale(f.dir*bulkX,bulkY);
+    ctx.rotate(flightPose.angle);
+    ctx.translate(-26,-70);
   } else if (whirling) {
     // anchor the spin around the fighter's TORSO center so his feet don't
     // arc wildly across the ground.
@@ -21206,17 +21235,9 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
   const fallingJump = jumpPose && !risingJump;
   const leftKnee = { ...motion.leftKnee }, rightKnee = { ...motion.rightKnee };
   const leftFoot = { ...motion.leftFoot }, rightFoot = { ...motion.rightFoot };
-  if ((f.thraggFlightTicks || 0) > 0 && jumpPose) {
-    // THRAGG_FLIGHT_POSE_PATCH: superman carriage - both legs sweep back
-    // and trail behind him instead of the generic jump tuck.
-    leftKnee.x = 10;
-    leftKnee.y = 96 + jumpCycle * 1.5;
-    leftFoot.x = -8;
-    leftFoot.y = 110 + jumpCycle * 2;
-    rightKnee.x = 24;
-    rightKnee.y = 99 - jumpCycle * 1.5;
-    rightFoot.x = 8;
-    rightFoot.y = 114 - jumpCycle * 2;
+  if (flightPose) {
+    Object.assign(leftKnee,flightPose.leftKnee);Object.assign(leftFoot,flightPose.leftFoot);
+    Object.assign(rightKnee,flightPose.rightKnee);Object.assign(rightFoot,flightPose.rightFoot);
   }
   if (!jumpPose && !running) {
     leftFoot.x -= f.technique === "shrine" ? 5 : 3;
@@ -23148,7 +23169,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     drawArmRig({ x: 41, y: 48 }, { x: 54, y: 49 }, { x: 57, y: 61 });
     drawArmRig({ x: 12, y: 50 }, { x: 23, y: 58 }, { x: 30, y: 52 });
   }
-  if (f.technique === "shrine" && !shibuyaSleeve && !f.attacking && !jumpPose && !f.blocking && motion.blend < 0.02 && !getSorcererCast(f) && !shouldDrawMatchIntroArms(f)) {
+  if (f.technique === "shrine" && !shibuyaSleeve && !f.attacking && !jumpPose && !f.blocking && motion.blend < 0.02 && !getSorcererCast(f) && !shouldDrawMatchIntroArms(f) && !(f.introActor && f.introSpeaking && f.introTime>=52)) {
     const lowerBreath = running ? runCenterLift * 0.12 : idle * 2;
     const lowerSwing = running ? armSwing * (backpedal ? 1.1 : 8) : idle * 1.2; // EQUAL_ARM_PATCH: same backpedal sway as the upper pair
     drawArmRig(
@@ -23164,7 +23185,7 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
       skinColor
     );
   }
-  if (drawMatchIntroArms(f, drawArmRig)) {
+  if (drawCinematicIntroArms(f, drawArmRig) || drawMatchIntroArms(f, drawArmRig)) {
     // Presentation poses yield immediately to movement, attacks and hit reactions.
   } else if (drawSorcererCastArms(f, drawArmRig, skin)) {
     // Cast poses own the arms through charging and follow-through.
@@ -23380,19 +23401,8 @@ function drawFighter(f, label, labelColor = "rgba(244, 247, 251, 0.9)") {
     const guardBob = Math.sin(frame * 0.55) * 1.6;
     drawArmRig({ x: 40, y: 48 }, { x: 50, y: 58 }, { x: 44, y: 45 + guardBob });
     drawArmRig({ x: 12, y: 50 }, { x: 21, y: 60 }, { x: 27, y: 48 - guardBob });
-  } else if ((f.thraggFlightTicks || 0) > 0 && jumpPose) {
-    // THRAGG_FLIGHT_POSE_PATCH: lead fist punched out ahead, rear arm
-    // tucked back along the flank.
-    drawArmRig(
-      { x: 42, y: 50 },
-      { x: 58, y: 46 + jumpCycle },
-      { x: 74, y: 44 + jumpCycle * 1.5 }
-    );
-    drawArmRig(
-      { x: 12, y: 52 },
-      { x: 2, y: 62 },
-      { x: -8, y: 72 - jumpCycle }
-    );
+  } else if (flightPose) {
+    for(const arm of flightPose.arms) drawArmRig(arm.shoulder,arm.elbow,arm.fist);
   } else if (jumpPose || motion.blend >= 0.02) {
     drawMovingArms(f, drawArmRig, skin, motion);
   } else if (f.thraggGrabState && f.thraggGrabState !== "idle") {
@@ -26529,6 +26539,8 @@ for (const [a, b, lines] of MATCH_INTRO_DIALOGUES) {
 
 const MATCH_INTRO_LINE_TICKS = 165; // ~2.75s per line
 let matchIntro = null;
+let matchIntroCompleted = false;
+let introSequence = 0;
 
 function setupMatchIntro() {
   matchIntro = null;
@@ -26539,6 +26551,77 @@ function setupMatchIntro() {
   const key=[a,b].sort().join("|");
   const script=MATCH_INTRO_LOOKUP[key];
   if(script) matchIntro={...script,key,startFrame:frame};
+}
+
+function startPreFightIntro() {
+  if(gameMode==='online' && onlineRole!=='p1') return;
+  setupMatchIntro();
+  if(!matchIntro) {matchIntroCompleted=true;startReadyCountdown();return;}
+  matchIntro.id=String(Date.now())+':'+(++introSequence);
+  matchIntro.votes={p1:false,p2:gameMode==='cpu'};
+  setGameState('intro','pre-fight cinematic');
+  gameOver=true;readyCountdownValue=0;setCountdownOverlay(0);
+  keys.clear();player.vx=player.vy=enemy.vx=enemy.vy=0;
+  message.classList.add('hidden');updateReadyPromptVisibility(false,false);
+  updateIntroSkipControls();lastOnlineStateSent=0;sendOnlineState();
+}
+
+function getIntroNetworkState() {
+  if(gameState!=='intro' || !matchIntro) return null;
+  return {id:matchIntro.id,key:matchIntro.key,elapsed:frame-matchIntro.startFrame,votes:matchIntro.votes};
+}
+
+function syncIntroNetworkState(state) {
+  if(gameState!=='intro') {matchIntro=null;updateIntroSkipControls();return;}
+  const script=state && MATCH_INTRO_LOOKUP[state.key];
+  if(!script || typeof state.id!=='string') return;
+  matchIntro={...script,key:state.key,id:state.id,startFrame:frame-Math.max(0,Math.min(MATCH_INTRO_LINE_TICKS*script.lines.length,Number(state.elapsed)||0)),
+    votes:{p1:!!state.votes?.p1,p2:!!state.votes?.p2}};
+  updateIntroSkipControls();
+}
+
+function finishPreFightIntro() {
+  if(gameState!=='intro' || (gameMode==='online' && onlineRole!=='p1')) return;
+  matchIntro=null;matchIntroCompleted=true;keys.clear();
+  setGameState('lobby','intro complete');updateIntroSkipControls();startReadyCountdown();
+}
+
+function tickPreFightIntro() {
+  if(!matchIntro) return;
+  if(gameMode==='online' && onlineRole!=='p1') return;
+  if(frame-matchIntro.startFrame>=matchIntro.lines.length*MATCH_INTRO_LINE_TICKS || (matchIntro.votes.p1&&matchIntro.votes.p2)) finishPreFightIntro();
+}
+
+function voteIntroSkip(role,id=matchIntro?.id) {
+  if(gameState!=='intro' || !matchIntro || id!==matchIntro.id || !['p1','p2'].includes(role)) return;
+  if(gameMode==='online' && onlineRole==='p2') {
+    if(role!=='p2' || !canSendOnlinePacket(true)) return;
+    onlineSocket.send(JSON.stringify({type:'intro-skip',role:'p2',id}));
+    return;
+  }
+  matchIntro.votes[role]=true;updateIntroSkipControls();tickPreFightIntro();
+  lastOnlineStateSent=0;sendOnlineState();
+}
+
+function updateIntroSkipControls() {
+  let panel=document.getElementById('introSkipControls');
+  if(!panel) {
+    panel=document.createElement('div');panel.id='introSkipControls';panel.className='intro-skip-controls hidden';
+    for(const role of ['p1','p2']) {
+      const button=document.createElement('button');button.type='button';button.dataset.role=role;
+      button.addEventListener('click',()=>voteIntroSkip(role));panel.appendChild(button);
+    }
+    document.getElementById('game').insertAdjacentElement('afterend',panel);
+  }
+  const active=gameState==='intro' && !!matchIntro;
+  panel.classList.toggle('hidden',!active);
+  document.body.classList.toggle("intro-active",active);
+  for(const button of panel.children) {
+    const role=button.dataset.role;
+    button.hidden=gameMode==='online'?role!==onlineRole:gameMode==='cpu'&&role==='p2';
+    const voted=!!matchIntro?.votes?.[role];button.disabled=voted;
+    button.textContent=voted?'Skip requested — waiting for opponent':gameMode==='pvp'?(role==='p1'?'Player 1: Skip intro':'Player 2: Skip intro'):'Skip intro';
+  }
 }
 
 function wrapIntroText(text, maxWidth) {
@@ -26559,7 +26642,7 @@ function wrapIntroText(text, maxWidth) {
 }
 
 function getMatchIntroBeat() {
-  if(!matchIntro || gameState!=="playing") return null;
+  if(!matchIntro || gameState!=="intro") return null;
   const age=Math.max(0,frame-matchIntro.startFrame);
   const index=Math.floor(age/MATCH_INTRO_LINE_TICKS);
   const line=matchIntro.lines[index];
@@ -26597,7 +26680,7 @@ function drawMatchIntroArms(f,drawArm) {
 
 function drawMatchIntroDialogue() {
   const beat=getMatchIntroBeat();
-  if(!beat) {if(matchIntro && gameState==="playing")matchIntro=null;return;}
+  if(!beat) return;
   const {line,speaker,alpha}=beat;
   ctx.save();ctx.globalAlpha=clamp01(alpha);
   const fontSize=Math.max(15,Math.min(23,W/38));
@@ -26626,6 +26709,7 @@ function drawMatchIntroDialogue() {
 }
 
 function draw() {
+  if (gameState === "intro" && drawPreFightScene()) return;
   updateCamera();
   drawViewportBackdrop();
 
@@ -26938,6 +27022,7 @@ function fixedUpdate() {
   // Clear before input and hit-stop as well as after ability updates.
   applyPracticeSettingsTick();
   frame += 1;
+  if (gameState === "intro") { tickPreFightIntro(); updateHud(); return; }
   walkingSfxActiveThisFrame = false;
   if (actionWarning && actionWarning.ticks > 0) actionWarning.ticks -= 1;
 
@@ -28645,7 +28730,7 @@ function drawWorldSlashEffects() {
   }
   function updateRotate() {
     if (!rotateEl) return;
-    const need = mobileActive() && isPortrait();
+    const need = mobileActive() && isPortrait() && !homeOpen && ["playing","intro"].includes(gameState);
     rotateEl.classList.toggle("show", need);
   }
 

@@ -32,7 +32,7 @@ function safeFilePath(urlPath) {
 const server = http.createServer((req, res) => {
   if (req.url === "/health") {
     res.writeHead(200, {"Content-Type":"application/json", "Cache-Control":"no-store"});
-    res.end(JSON.stringify({status:"ok",release:"intros-punches-20260910"}));
+    res.end(JSON.stringify({status:"ok",release:"mobile-cinematics-20260911"}));
     return;
   }
   const filePath = safeFilePath(req.url);
@@ -231,6 +231,10 @@ wss.on("connection", (ws, req) => {
     if (data.type === "state" && ws !== activeRoom.p1) return;
     if (["fighter","input","damage"].includes(data.type) && ws !== activeRoom.p2) return;
     if (data.type === "stage" && ws !== activeRoom.p1) return;
+    if (data.type === "intro-skip") {
+      if (ws !== activeRoom.p2 || typeof data.id !== "string" || data.id.length > 100) return;
+      data.role = "p2";
+    }
     if ("role" in data) data.role = ws.role;
     if (["name","technique","stage"].includes(data.type)) activeRoom.metadata.set(ws.role+":"+data.type,data);
     // Serialize once, independent of how many clients receive the message.

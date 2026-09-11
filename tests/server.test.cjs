@@ -39,8 +39,12 @@ test('joiners can arrive before hosts; relay enforces room slots and host-only s
  join.send(JSON.stringify({type:'input',action:'stage-check'}));await host.next(p=>p.action==='stage-check');
  assert.equal(rooms.get('regression').metadata.has('p2:stage'),false);
  assert.equal(host.inbox.some(p=>p.type==='stage'),false);
+ join.send(JSON.stringify({type:'intro-skip',role:'p1',id:'intro-test'}));
+ const vote=await host.next(p=>p.type==='intro-skip');assert.equal(vote.role,'p2');assert.equal(vote.id,'intro-test');
+ host.send(JSON.stringify({type:'intro-skip',role:'p2',id:'spoof'}));
  host.send(JSON.stringify({type:'stage',role:'p1',stage:'zen',hazards:false}));
  assert.equal((await join.next(p=>p.type==='stage')).stage,'zen');
+ assert.equal(join.inbox.some(p=>p.type==='intro-skip'),false);
  assert.ok(host.extensions.includes('permessage-deflate'));assert.ok(join.extensions.includes('permessage-deflate'));
  const g=loadGame();const state=g.run(`({type:'state',player:getFighterNetworkState(player),enemy:getFighterNetworkState(enemy),projectiles:[]})`);g.close();
  const start=join._socket.bytesRead;let rawBytes=0;
