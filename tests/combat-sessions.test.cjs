@@ -121,7 +121,7 @@ test('movesets cover every character, leave undefined passives blank, and close 
     assert.ok(screen.querySelectorAll('tbody tr').length>=3,tech);
     assert.ok(screen.querySelector('#movesetName').textContent.length>0);
   }
-  g.run("showCharacterMoveset('limitless');");assert.equal(screen.querySelector('#movesetPassive').textContent,'');
+  g.run("showCharacterMoveset('limitless');");assert.match(screen.querySelector('#movesetPassive').textContent,/Six Eyes/);
   g.run("showCharacterMoveset('shrine');");assert.ok(screen.querySelector('#movesetPassive').textContent.includes('14%'));
   g.run('closeMovesetsScreen();');assert.equal(screen.classList.contains('hidden'),true);assert.equal(g.run('pacifistBot'),true);
   assert.deepEqual(g.messages,[]);

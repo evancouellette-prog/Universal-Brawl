@@ -3193,8 +3193,18 @@ function getTechniqueCharacterName(technique) {
   return "Gojo";
 }
 
+// Six Eyes reveals live targeting only to the Gojo player's view.
+// Local versus shares one display, so either human Gojo can reveal their opponent.
+function canSeeOpponentAim(f) {
+  if (gameState !== "playing" || !f || f.ko || (f !== player && f !== enemy)) return false;
+  const viewer = f === player ? enemy : player;
+  if (viewer.ko || viewer.technique !== "limitless") return false;
+  return gameMode === "pvp" || viewer === getActiveMouseTechniqueFighter();
+}
+
 function shouldShowChargePreview(f) {
   if (!f || !f.chargingTechnique) return false;
+  if (canSeeOpponentAim(f)) return true;
   if (gameMode === "online") return onlineRole === "p2" ? f === enemy : f === player;
   if (gameMode === "cpu" && f === enemy && f.technique === "limitless") return true;
   return f === player;
@@ -19728,6 +19738,7 @@ function drawRctEffect(f) {
 
 function shouldShowTeleportPreview(f) {
   if (!f || !f.teleportAiming || f.technique !== "limitless") return false;
+  if (canSeeOpponentAim(f)) return true;
   if (gameMode === "online") return onlineRole === "p2" ? f === enemy : f === player;
   return f === player;
 }
@@ -19783,6 +19794,7 @@ function drawTeleportPreview(f) {
 
 function shouldShowFugaPreview(f) {
   if (!f || !f.fugaAiming || f.technique !== "shrine") return false;
+  if (canSeeOpponentAim(f)) return true;
   if (gameMode === "online") return onlineRole === "p2" ? f === enemy : f === player;
   return f === player;
 }
@@ -19838,6 +19850,7 @@ function drawFugaAimPreview(f) {
 
 function shouldShowUltimateAimPreview(f) {
   if (!f || !f.ultimateAiming) return false;
+  if (canSeeOpponentAim(f)) return true;
   if (gameMode === "online") return onlineRole === "p2" ? f === enemy : f === player;
   return f === player;
 }
@@ -25933,7 +25946,7 @@ function drawTechniqueAimPreview(f) {
   const spec = techniqueMoves[move];
   if (!spec) return;
   const chargeRatio = getTechniqueChargeRatio(f);
-  const showOnlyChargeOrb = f !== getActiveMouseTechniqueFighter();
+  const showOnlyChargeOrb = f !== getActiveMouseTechniqueFighter() && !canSeeOpponentAim(f);
   const aimVector = getTechniqueAimVector(f, move, f.techniqueAim);
   const radiusScale = f.technique === "limitless" ? 1 + chargeRatio * (move === "red" ? 0.95 : 0.85) : 1;
   const radius = move === "ryukStrike" ? 18 + Math.round(getLightInfoRatio(f) * 6) : spec.radius * radiusScale *

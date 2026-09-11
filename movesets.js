@@ -1,6 +1,6 @@
 /* Character guide: describes existing mechanics without adding new passives. */
 const CHARACTER_PASSIVES = {
-  limitless: '', deathnote: '', brawler: '',
+  limitless: 'Six Eyes: see where the opponent is aiming their abilities, including targeting paths and destinations.', deathnote: '', brawler: '',
   shrine: 'Damage rises as health bars are lost: +14% with two bars left and +28% on the last bar. Heian Sukuna alternates all four arms and punches faster.',
   blackleg: 'Heat: build Heat through combat. At full Heat, the next fire attack deals extra damage and applies burn.',
   hivemind: 'Hive Mind: build Corruption through your creatures and abilities. At full Corruption, the next summon or ability is enhanced.',
