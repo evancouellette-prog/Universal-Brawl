@@ -3600,3 +3600,65 @@ body .ct-slot.unified-cooldown:is(.ready, .cooling, .charging, .blocked, .low-ce
     min-width: 0 !important;
   }
 }
+
+/* High-contrast lettering for the pastel menu controls. */
+body button { border-color: #000; }
+body :is(.home-panel,.pause-panel,.waiting-panel,.settings-panel,#skinsScreen,.start-actions) button,
+body #openSkinsHome, body #openSkinsSelect,
+body :is(.ready-button,.difficulty-button,.practice-setting-button,.keybind-set-button,.settings-button) {
+  color: #000 !important;
+  border-color: #000 !important;
+  text-shadow: none !important;
+  -webkit-text-stroke: 0;
+}
+body #skinsScreen .skin-card span { color: #000; }
+body #skinsScreen .skin-card.selected { outline: 3px solid #eebd38; outline-offset: 2px; }
+.intro-skip-controls { display:flex; gap:12px; justify-content:center; padding:8px; }
+.intro-skip-controls.hidden { display:none; }
+.intro-skip-controls button { background:#c4b5fd; color:#000; border:2px solid #000; }
+
+body #skinsScreen .skin-card { border-color: #000 !important; }
+
+/* Phone menus scroll independently of the locked fighting surface. */
+body.mobile-controls-on #homeScreen {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  align-items: flex-start;
+  touch-action: pan-y pinch-zoom;
+  overscroll-behavior-y: contain;
+  padding: max(12px,env(safe-area-inset-top)) 8px max(28px,env(safe-area-inset-bottom));
+}
+body.mobile-controls-on #homeScreen .home-panel {
+  max-height: none !important;
+  overflow: visible !important;
+  flex-shrink: 0;
+  margin: 0 auto 24px;
+  touch-action: pan-y pinch-zoom;
+}
+body.mobile-controls-on #homeScreen :is(.home-group,.home-actions,.online-group) { touch-action: pan-y pinch-zoom; }
+body.mobile-controls-on #homeScreen :is(button,input) { min-height:44px; }
+body.mobile-controls-on .shell { position:relative; padding:0; display:grid; place-items:center; }
+body.mobile-controls-on #game {
+  width:min(100vw,calc(100dvh * 16 / 9));
+  height:min(100dvh,calc(100vw * 9 / 16));
+  max-height:100dvh; max-width:100vw; border:0; margin:0;
+}
+body.mobile-controls-on .topbar {
+  position:absolute; z-index:20; top:max(3px,env(safe-area-inset-top)); left:0;
+  padding:0 max(48px,env(safe-area-inset-right)) 0 max(6px,env(safe-area-inset-left));
+  grid-template-columns:minmax(0,1fr) 46px minmax(0,1fr);
+  gap:6px !important; pointer-events:none;
+}
+body.mobile-controls-on .topbar .round-panel { gap:2px; }
+body.mobile-controls-on .topbar :is(#homeButton,#restartButton,#scoreInfo,.resource-bar-label) { display:none !important; }
+body.mobile-controls-on #pauseButton { min-height:32px; padding:4px; font-size:10px; pointer-events:auto; }
+body.mobile-controls-on #roundInfo { font-size:9px; }
+body.mobile-controls-on .ct-cooldowns { display:flex; flex-wrap:nowrap; overflow-x:auto; pointer-events:auto; touch-action:pan-x; }
+body.mobile-controls-on .ct-slot { flex:0 0 auto; min-height:16px !important; padding:1px 3px !important; }
+body.mobile-controls-on :is(.ct-label,.ct-status) { font-size:8px !important; padding:1px 2px !important; border-width:1px !important; }
+body.mobile-controls-on .intro-skip-controls { position:fixed; z-index:65; bottom:max(5px,env(safe-area-inset-bottom)); left:0; right:0; padding:0; }
+body.mobile-controls-on .intro-skip-controls button { min-height:36px; font-size:12px; padding:5px 12px; }
+body.mobile-controls-on.intro-active .topbar { display:none; }
+@media (orientation:portrait) {
+  body.mobile-controls-on #homeScreen .home-panel { grid-template-columns:1fr; width:100%; }
+}

@@ -332,3 +332,76 @@ function drawTeleportMotion(effect) {
   }
   ctx.restore();
 }
+
+function getThraggFlightPose(f) {
+  if(f.technique!=='brawler' || !(f.thraggFlightTicks>0) || f.grounded || f.ko || f.lying) return null;
+  const rise=Math.max(-.3,Math.min(.3,(f.vy||0)/18));
+  return {angle:Math.PI/2+rise,
+    leftKnee:{x:17,y:100},leftFoot:{x:14,y:126},rightKnee:{x:36,y:99},rightFoot:{x:40,y:124},
+    arms:[solvePunchArm({x:12,y:49},{x:9,y:85},23,25,-1),solvePunchArm({x:42,y:49},{x:38,y:2})]};
+}
+
+// Intro actors are render-only copies: entrances never move combat hitboxes.
+function getIntroSceneActor(source,beat) {
+  const speaking=source===beat.speaker,t=beat.time;
+  const approach=motionEase(Math.min(1,t/52));
+  const f={...source,x:source===player?440:690,y:GROUND-source.h,dir:source===player?1:-1,
+    vx:0,vy:0,grounded:true,attacking:null,blocking:false,stun:0,hurt:0,ko:false,lying:false,
+    motionAir:0,motionBlend:0,motionLanding:0,thraggFlightTicks:0,walkCycle:0,
+    introActor:true,introTime:t,introSpeaking:speaking};
+  if(speaking) {
+    f.x-=f.dir*(1-approach)*120;
+    f.vx=f.dir*(1-approach)*4;f.motionBlend=1-approach;f.walkCycle=t*.22;
+    const landing=Math.sin(Math.PI*clamp01((t-42)/22));
+    if(source.technique==='brawler' && t<52) {
+      f.thraggFlightTicks=200;f.grounded=false;f.y-=Math.sin((1-approach)*Math.PI/2)*95;
+    } else if(['spider','jiji','beast'].includes(source.technique) && t<64) {
+      f.y-=Math.sin(Math.PI*clamp01(t/52))*80;
+      f.grounded=t>=52;f.motionAir=t<52?1:0;f.vy=t<26?-5:5;f.motionLanding=landing;
+    }
+  }
+  return f;
+}
+
+function drawCinematicIntroArms(f,drawArm) {
+  if(!f.introActor || !f.introSpeaking || f.introTime<52) return false;
+  const t=f.introTime-52,raise=motionEase(Math.min(1,t/22));
+  const wave=Math.sin(t*.095)*4;
+  const poses={
+    deathnote:[[38,62],[18,64]],limitless:[[52+wave,24],[8,79]],shrine:[[56,39],[5,42]],brawler:[[44,48],[15,51]],
+    blackleg:[[43,75],[10,75]],spider:[[57,38+wave],[20,51]],beast:[[65,49],[30,60]],
+    zealot:[[55,51],[6,54]],hivemind:[[58,36+wave],[8,72]],jiji:[[52+wave,27],[14,60]],
+    david:[[45,46],[25,55]],akira:[[54+wave,30],[7,77]],gardener:[[53+wave,29],[15,68]]};
+  const hands=poses[f.technique]||poses.limitless;
+  for(let i=0;i<getPunchArmCount(f);i++) {
+    const rear=i%2===1,lower=i>=2;
+    const shoulder={x:rear?11:42,y:lower?73:49};
+    const goal=lower?[rear?-2:55,105]:hands[i];
+    const target={x:lerp(rear?7:46,goal[0],raise),y:lerp(lower?91:81,goal[1],raise)};
+    const a=solvePunchArm(shoulder,target,23,25,lower?(rear?1:-1):(rear?-1:1));drawArm(a.shoulder,a.elbow,a.fist);
+  }
+  if(f.technique==='deathnote') {
+    ctx.save();ctx.translate(27,67);ctx.rotate(-.12+Math.sin(t*.04)*.03);
+    ctx.fillStyle='#101017';ctx.strokeStyle='#d0c4a9';ctx.lineWidth=1;
+    ctx.fillRect(-11,-9,22,18);ctx.strokeRect(-11,-9,22,18);
+    ctx.fillStyle='#e9e1ca';ctx.font='bold 3px Arial';ctx.textAlign='center';ctx.fillText('DEATH NOTE',0,-1);ctx.restore();
+  }
+  return true;
+}
+
+function drawPreFightScene() {
+  const beat=getMatchIntroBeat();if(!beat)return false;
+  const actors=[getIntroSceneActor(player,beat),getIntroSceneActor(enemy,beat)];
+  const active=actors[beat.speaker===player?0:1];
+  const zoom=lerp(2.05,2.7,motionEase(beat.time/MATCH_INTRO_LINE_TICKS));
+  const focus=active.x+active.w/2+active.dir*26;
+  ctx.save();ctx.fillStyle='#090d17';ctx.fillRect(0,0,W,H);
+  ctx.translate(W/2,H*.58);ctx.scale(zoom,zoom);ctx.translate(-focus,-(GROUND-76));
+  getStage().draw();drawSceneryPolish();drawPlatforms();
+  for(const actor of actors) drawFighter(actor,'');
+  ctx.restore();
+  // Camera cut between speakers, with a brief dark dissolve.
+  const fade=1-Math.min(1,beat.time/9,(MATCH_INTRO_LINE_TICKS-beat.time)/9);
+  if(fade>0){ctx.fillStyle=`rgba(5,8,15,${fade*.8})`;ctx.fillRect(0,0,W,H);}
+  drawMatchIntroDialogue();return true;
+}

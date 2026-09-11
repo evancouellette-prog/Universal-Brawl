@@ -1,5 +1,5 @@
 const test=require('node:test');const assert=require('node:assert/strict');const {loadGame}=require('./harness.cjs');
-function setup(t){const g=loadGame();t.after(()=>g.close());g.run(`gameState='playing';currentRound=1;pacifistBot=false;`);return g;}
+function setup(t){const g=loadGame();t.after(()=>g.close());g.run(`gameState='intro';currentRound=1;pacifistBot=false;`);return g;}
 test('all 91 matchups have distinct captioned exchanges with correct speakers in either order',t=>{
  const g=setup(t);const result=g.run(`(()=>{
   const roster=Object.keys(INTRO_SPEAKER_NAMES),seen=new Set();let count=0;
@@ -16,7 +16,7 @@ test('all 91 matchups have distinct captioned exchanges with correct speakers in
      drawMatchIntroDialogue();ctx.fillText=old;
      if(!calls.some(c=>String(c[0]).includes(INTRO_SPEAKER_NAMES[beat.line[0]].toUpperCase())))throw Error('Missing speaker caption');
     }
-    frame=500+2*MATCH_INTRO_LINE_TICKS;drawMatchIntroDialogue();if(matchIntro)throw Error('Intro stuck');
+    frame=500+2*MATCH_INTRO_LINE_TICKS;drawMatchIntroDialogue();if(getMatchIntroBeat())throw Error('Intro stuck');
    }
    count++;
   }
