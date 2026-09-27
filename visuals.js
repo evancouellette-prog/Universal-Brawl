@@ -440,7 +440,7 @@ function drawSkinPolish(f, palette) {
 function drawBeastSwords(f, hands) {
   for (const [i,rig] of hands.slice(-2).entries()) {
     const {hand,elbow}=rig;
-    const moving=f.attacking || f.beastPierceTicks>0;
+    const moving=f.attacking || f.beastPierceTicks>0 || f.beastComboTicks>0;
     const angle=moving?Math.max(-.6,Math.min(.6,Math.atan2(hand.y-elbow.y,hand.x-elbow.x)-.25)):
       (i===0?-.28:.08)+Math.sin(frame*.045+i)*.025;
     ctx.save();ctx.translate(hand.x,hand.y);ctx.rotate(angle);

@@ -91,6 +91,9 @@ function getPunchRig(f, load, drive, heavy = false) {
 }
 
 function getPunchMotion(f) {
+  if (f.beastComboTicks > 0) {
+    return getPunchRig(f, f.beastComboTicks >= 18 ? 1 : 0, f.beastComboTicks < 18 ? 1 : 0, true);
+  }
   if (f.attacking === 'barrage') {
     const elapsed = Math.max(0, (f.barrageDuration || SUKUNA_BARRAGE_DURATION_TICKS) - f.barrageTimer - 1);
     const interval = getSukunaBarrageInterval(f);

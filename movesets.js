@@ -1,14 +1,14 @@
 /* Character guide: describes existing mechanics without adding new passives. */
 const CHARACTER_PASSIVES = {
-  limitless: 'Six Eyes: see where the opponent is aiming their abilities, including targeting paths and destinations.', deathnote: '', brawler: '',
+  limitless: 'Six Eyes: see where the opponent is aiming their abilities, including targeting paths and destinations.', deathnote: 'Three landed lights: Ryuk uppercuts the opponent into the air.', brawler: 'Two landed lights then heavy: a 1.1-second stun. Heavy punches have a long windup, high damage, and wide reach.',
   shrine: 'Damage rises as health bars are lost: +14% with two bars left and +28% on the last bar. Heian Sukuna alternates all four arms and punches faster.',
   blackleg: 'Heat: build Heat through combat. At full Heat, the next fire attack deals extra damage and applies burn.',
   hivemind: 'Hive Mind: build Corruption through your creatures and abilities. At full Corruption, the next summon or ability is enhanced.',
   zealot: 'Protoss Shields: a shield worth 25% of maximum HP absorbs damage and regenerates after five seconds without taking damage.',
   spider: 'Spider Sense: a perfect dodge grants a speed boost and refunds cooldowns. Marked opponents take extra combo damage.',
-  beast: 'Beast Instinct: reduced hitstun, resistance to damage over time, and a speed burst after a completed combo.',
+  beast: 'Beast Instinct: reduced hitstun, resistance to damage over time, and a speed burst after a completed combo. Three landed lights: back-hop into a piercing dash.',
   jiji: 'Shared Body: Jiji and Evil Eye share HP and Ultimate. Jiji recovers outside combat; Evil Eye builds Rage and can lose control at high Rage.',
-  david: 'Built Different: Cyberware Load increases speed and damage. At maximum Load, Cyberpsychosis grants stronger attacks at the cost of control and HP.',
+  david: 'Three landed lights: automatic 1.5-second Sandevistan burst that slows the opponent. Built Different: Cyberware Load increases speed and damage. At maximum Load, Cyberpsychosis grants stronger attacks at the cost of control and HP.',
   akira: 'Bucket List: complete the three active goals to earn buffs for the round. Open the notebook to see your current goals.',
   gardener: 'Sun Economy: Sun builds over time, and Sunflowers generate more. Spend Sun on your selected seed packets.'
 };
@@ -123,7 +123,7 @@ function showCharacterMoveset(technique) {
     for (const text of [move.input,move.name,move.description]) {const cell=document.createElement('td');cell.textContent=text;row.appendChild(cell);}
     body.appendChild(row);
   }
-  screen.querySelector('#movesetBasics').textContent = `${controlKeyLabel('moveLeft')} / ${controlKeyLabel('moveRight')}: move · ${controlKeyLabel('jump')}: jump · ${controlKeyLabel('light')}: light attack · ${controlKeyLabel('heavy')}: heavy attack · ${controlKeyLabel('block')}: block · ${controlKeyLabel('dodge')}: dodge · ${controlKeyLabel('throw')}: throw`;
+  screen.querySelector('#movesetBasics').textContent = `${controlKeyLabel('moveLeft')} / ${controlKeyLabel('moveRight')}: move · ${controlKeyLabel('jump')}: jump · ${controlKeyLabel('light')}: light attack · ${controlKeyLabel('heavy')}: heavy attack · ${controlKeyLabel('block')}: block · ${controlKeyLabel('dodge')}: dodge · ${controlKeyLabel('throw')}: throw · Combos: land Light → Light → Light or Light → Light → Heavy. Misses and blocks break the chain.`;
   drawTechniquePreview(screen.querySelector('canvas'),technique,getSelectedSkin(technique));
 }
 function openMovesetsScreen() {
