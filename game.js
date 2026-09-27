@@ -3421,16 +3421,18 @@ function getAttackSpec(f, type = f.attacking) {
   if (f.technique === "brawler" && type !== "backThrow") {
     if (type === "light") {
       attack.damage += 3;
-      attack.range += 6;
-      attack.width += 10;
+      attack.range += 18;
+      attack.width += 22;
+      attack.height += 10;
       attack.windup += 3;
       attack.recovery += 4;
       attack.knockback += 3;
     } else if (type === "heavy") {
-      attack.damage += 9;
-      attack.range += 10;
-      attack.width += 14;
-      attack.windup += 5;
+      attack.damage += 18;
+      attack.range += 28;
+      attack.width += 32;
+      attack.height += 18;
+      attack.windup += 13;
       attack.recovery += 6;
       attack.knockback += 8;
     }
@@ -3886,6 +3888,11 @@ function makeFighter(config) {
     nextPunchArm: 0,
     hasHit: false,
     queuedAttack: null,
+    punchFinisher: null,
+    beastComboTicks: 0,
+    beastComboHit: false,
+    comboSlowTicks: 0,
+    comboSlowPhase: 0,
     comboCount: 0,
     comboTimer: 0,
     comboChainTimer: 0,
@@ -4217,6 +4224,7 @@ function applyTechniqueStats(f, preserveMeters = false) {
   }
   // INOSUKE_PATCH: clear the Beast kit when switching off Inosuke.
   if (f.technique !== "beast") {
+    f.beastComboTicks = 0;
     f.beastPierceTicks = 0;
     f.beastDevourTicks = 0;
     f.beastCrazyTicks = 0;
@@ -4655,6 +4663,10 @@ function pinStationaryPracticeDummy(f = enemy) {
   f.spiderMarkTicks = 0;
   f.webbedTicks = 0;
   f.cocoonTicks = 0;
+  f.punchFinisher = null;
+  f.comboSlowTicks = 0;
+  f.comboSlowPhase = 0;
+  f.beastComboTicks = 0;
   // INOSUKE_PATCH: clear mid-move Beast state + bleed.
   f.beastPierceTicks = 0;
   f.beastDevourTicks = 0;
@@ -6028,6 +6040,8 @@ function syncRemoteDamageToLocalJoiner(remoteEnemy) {
   enemy.knockbackTakenMultiplier = Number.isFinite(Number(remoteEnemy.knockbackTakenMultiplier)) ? Number(remoteEnemy.knockbackTakenMultiplier) : enemy.knockbackTakenMultiplier;
   enemy.outgoingDamageMultiplier = Number.isFinite(Number(remoteEnemy.outgoingDamageMultiplier)) ? Number(remoteEnemy.outgoingDamageMultiplier) : enemy.outgoingDamageMultiplier;
 
+  if (Number.isFinite(remoteEnemy.comboSlowTicks)) enemy.comboSlowTicks = remoteEnemy.comboSlowTicks;
+
   // Health from the host matters, because host-side Player 1 can damage Player 2.
   if (Number.isFinite(Number(remoteEnemy.health))) {
     enemy.health = Math.max(0, Math.min(enemy.maxHealth, Number(remoteEnemy.health)));
@@ -6082,6 +6096,7 @@ function applyJoinerFighterStateOnHost(remoteFighter) {
   const fields = [
     "x", "y", "vx", "vy", "dir", "grounded", "jumpsUsed", "onPlatform", "walkCycle",
     "attacking", "attackFrame", "punchArm", "nextPunchArm", "hasHit", "queuedAttack", "pendingPunchCooldown", "punchCooldown",
+    "punchFinisher", "beastComboTicks", "beastComboHit",
     "comboCount", "comboTimer", "comboChainTimer", "comboLightsUsed", "comboHeavyUsed", "lastAttackType",
     "blocking", "rctHealing", "chargingTechnique", "chargeTicks", "techniqueAim",
     "barrageTimer", "barrageDuration", "barrageHitsDone", "barrageDamageRemaining", "barrageKnockback", "barrageDir", "barrageTarget", "barrageLockX", "barrageLockY",
@@ -6609,6 +6624,14 @@ function getFighterNetworkState(f) {
     grounded: f.grounded,
     attacking: f.attacking,
     attackFrame: f.attackFrame,
+    punchFinisher: f.punchFinisher,
+    beastComboTicks: f.beastComboTicks,
+    beastComboHit: f.beastComboHit,
+    comboSlowTicks: f.comboSlowTicks,
+    comboSlowPhase: f.comboSlowPhase,
+    davidSandevistanTicks: f.davidSandevistanTicks,
+    davidSandevistanCooldown: f.davidSandevistanCooldown,
+    davidSandeMeleeArmed: f.davidSandeMeleeArmed,
     punchArm: f.punchArm,
     nextPunchArm: f.nextPunchArm,
     hasHit: f.hasHit,
@@ -7988,6 +8011,7 @@ function resolvePlatformCollisions(f, prevX, prevY) {
 }
 
 function resetCombo(f) {
+  f.punchFinisher = null;
   f.comboCount = 0;
   f.comboTimer = 0;
   f.comboChainTimer = 0;
@@ -8002,7 +8026,6 @@ function getMaxComboLights(f) {
 }
 
 function getPunchHitLimit(f) {
-  if (f?.technique === "shrine" && isDomainOwner(f, "malevolentShrine")) return 2;
   return 3;
 }
 
@@ -8106,7 +8129,7 @@ function isSpecialLocked(f) {
 function isMovementLocked(f) {
   const owner = getFighterOwner(f);
   const clashing = Boolean(owner && domainClash?.attempts?.[owner]);
-  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || (f?.sanjiMuttonTicks || 0) > 0 || (f?.sanjiCookTicks || 0) > 0 || (f?.zealotFlurryTicks || 0) > 0 || (f?.zealotWhirlTicks || 0) > 0 || (f?.spiderRushTicks || 0) > 0 || (f?.cocoonTicks || 0) > 0 || (f?.beastCrazyTicks || 0) > 0 || (f?.beastWhirlTicks || 0) > 0 || (f?.beastDevourTicks || 0) > 0 || (f?.jijiTransformAnimTicks || 0) > 0 || (f?.jijiForcedActionTicks || 0) > 0 || (f?.davidGorillaTicks || 0) > 0 || (f?.davidForcedTicks || 0) > 0 || (f?.davidCollapseStun || 0) > 0 || (f?.akiraOvertimeTicks || 0) > 0 || (f?.akiraJoyrideTicks || 0) > 0 || (f?.akiraVoltTicks || 0) > 0 || clashing; // + INOSUKE roots + JIJI + DAVID + AKIRA
+  return isBarrageActive(f) || isGrabThrowActive(f) || isHeldBySpecial(f) || isUltimateLocked(f) || isThraggCommitted(f) || (f?.sanjiMuttonTicks || 0) > 0 || (f?.sanjiCookTicks || 0) > 0 || (f?.zealotFlurryTicks || 0) > 0 || (f?.zealotWhirlTicks || 0) > 0 || (f?.spiderRushTicks || 0) > 0 || (f?.cocoonTicks || 0) > 0 || (f?.beastComboTicks || 0) > 0 || (f?.beastCrazyTicks || 0) > 0 || (f?.beastWhirlTicks || 0) > 0 || (f?.beastDevourTicks || 0) > 0 || (f?.jijiTransformAnimTicks || 0) > 0 || (f?.jijiForcedActionTicks || 0) > 0 || (f?.davidGorillaTicks || 0) > 0 || (f?.davidForcedTicks || 0) > 0 || (f?.davidCollapseStun || 0) > 0 || (f?.akiraOvertimeTicks || 0) > 0 || (f?.akiraJoyrideTicks || 0) > 0 || (f?.akiraVoltTicks || 0) > 0 || clashing; // + INOSUKE roots + JIJI + DAVID + AKIRA
 }
 
 function getMoveInputForFighter(f) {
@@ -8241,6 +8264,8 @@ function advancePunchArm(f) {
 function getSukunaBarrageInterval(f) { return SUKUNA_BARRAGE_HIT_INTERVAL; }
 
 function beginAttack(f, type) {
+  // Latch the earned finisher through windup and its entire animation.
+  f.punchFinisher = f.comboLightsUsed === 2 && f.lastAttackType === "light" ? type : null;
   if (type === "light" || type === "heavy") advancePunchArm(f);
   f.attacking = type;
   f.attackFrame = 0;
@@ -10382,7 +10407,7 @@ function beastOutgoing(f) {
 }
 
 function isBeastCommitted(f) {
-  return Boolean(f && ((f.beastPierceTicks || 0) > 0 || (f.beastDevourTicks || 0) > 0 ||
+  return Boolean(f && ((f.beastComboTicks || 0) > 0 || (f.beastPierceTicks || 0) > 0 || (f.beastDevourTicks || 0) > 0 ||
     (f.beastCrazyTicks || 0) > 0 || (f.beastExplosiveTicks || 0) > 0 || (f.beastWhirlTicks || 0) > 0));
 }
 
@@ -10717,6 +10742,57 @@ function performPalisadeBite(f) {
   return true;
 }
 
+function updateBeastCombo(f, opponent) {
+  // The joiner owns its dash and sends discrete damage; never hit twice on the host.
+  if (gameMode === "online" && onlineRole === "p1" && f === enemy) return;
+  if (!(f.beastComboTicks > 0)) return;
+  if (f.ko || f.stun > 0 || f.knockdown || !opponent || opponent.ko || isHeldBySpecial(f)) {
+    f.beastComboTicks = 0;
+    f.vx = 0;
+    return;
+  }
+  f.beastComboTicks -= 1;
+  if (f.beastComboTicks >= 18) {
+    f.vx = -f.dir * 8;
+    return;
+  }
+  f.dir = getFighterCenter(opponent).x >= getFighterCenter(f).x ? 1 : -1;
+  f.vx = f.dir * 19;
+  f.vy = Math.max(-6, Math.min(6, (opponent.y - f.y) * 0.22));
+  if (frame % 2 === 0) spawnHitSpark(f.x + f.w / 2, f.y + 48, -f.dir, "heavy");
+  // Swept reach avoids skipping a target between two fast dash frames.
+  const reach = { x: f.dir > 0 ? f.x : f.x - 32, y: f.y + 16, w: f.w + 32, h: f.h - 16 };
+  if (!f.beastComboHit && opponent.dodging <= 0 && !isUntargetable(opponent) && rectsOverlap(reach, opponent)) {
+    f.beastComboHit = true;
+    const blocked = isBlockingAttack(opponent, f.dir);
+    const raw = Math.ceil(12 * getOutgoingDamageMultiplier(f));
+    const damage = blocked ? 0 : getTakenDamage(opponent, raw);
+    if (blocked) damageShield(opponent, raw);
+    else {
+      applyFighterDamage(opponent, damage);
+      gainUltimate(f, damage * ULT_DAMAGE_GAIN_SCALE);
+      cancelRct(opponent, false);
+      opponent.attacking = null;
+      resetCombo(opponent);
+    }
+    opponent.hurt = blocked ? 6 : 14;
+    opponent.stun = blocked ? 5 : 24;
+    opponent.vx = f.dir * (blocked ? 3 : 22);
+    opponent.vy = blocked ? 0 : -4;
+    opponent.grounded = false;
+    spawnHitSpark(opponent.x + opponent.w / 2, opponent.y + 44, f.dir, blocked ? "block" : "heavy");
+    hitStopTicks = Math.max(hitStopTicks, HITSTOP_HEAVY);
+    if (gameMode === "online" && onlineRole === "p2" && f === enemy) {
+      sendOnlineDamage({ damage, blocked, knockback: Math.abs(opponent.vx), stun: opponent.stun, vy: opponent.vy, dir: f.dir });
+    }
+    f.beastComboTicks = 0;
+    f.vx *= 0.25;
+    if (!pacifistBot && opponent.health <= 0) startKnockout(f, opponent);
+    updateHud();
+  }
+  if (f.beastComboTicks <= 0) f.vx *= 0.25;
+}
+
 function updateBeastSystems(f, opponent) {
   updateBleed(f);
   if (!isBeast(f)) return;
@@ -10746,6 +10822,7 @@ function updateBeastSystems(f, opponent) {
   if ((f.beastComboSpeedTicks || 0) > 0) mult *= 1.1;
   const baseSpeed = BASE_MOVE_SPEED * BEAST_MOVE_MULTIPLIER * (gameMode === "cpu" && f === enemy ? (cpuSettings[cpuDifficulty] || cpuSettings.medium).speedMultiplier : 1);
   f.speed = baseSpeed * mult;
+  updateBeastCombo(f, opponent);
   updateBeastPierce(f, opponent);
   updateBeastDevour(f, opponent);
   updateBeastCrazy(f, opponent);
@@ -13186,9 +13263,10 @@ function getComboHitstun(attacker, type, blocked) {
 function registerComboHit(attacker, type) {
   attacker.comboCount += 1;
   attacker.comboTimer = COMBO_RESET_TICKS;
-  attacker.comboChainTimer = type === "light"
-    ? COMBO_CHAIN_WINDOW + (attacker.technique === "shrine" ? 5 : attacker.technique === "limitless" ? 2 : 0)
-    : 0;
+  const spec = getAttackSpec(attacker, type);
+  const recoveryLeft = spec ? Math.max(0, spec.windup + spec.active + spec.recovery - attacker.attackFrame) : 0;
+  // Slow punches need the same input window AFTER recovery as fast punches.
+  attacker.comboChainTimer = type === "light" ? recoveryLeft + COMBO_CHAIN_WINDOW : 0;
   attacker.lastAttackType = type;
   if (type === "light") attacker.comboLightsUsed += 1;
   if (type === "heavy") attacker.comboHeavyUsed = true;
@@ -13734,6 +13812,7 @@ function applyWorldSlashHit(attacker, defender, slash) {
       knockdown: defender.knockdown,
       knockdownTimer: defender.knockdownTimer,
       ultimateHit: true,
+      comboSlowTicks: defender.comboSlowTicks || 0,
       playerHealth: defender.health
     });
   }
@@ -14608,7 +14687,8 @@ function updateSukunaBarrage(attacker, defender) {
         dir: attacker.barrageDir,
         aimX: 0,
         aimY: 0,
-        playerHealth: defender.health
+        comboSlowTicks: defender.comboSlowTicks || 0,
+      playerHealth: defender.health
       });
     }
   }
@@ -14648,6 +14728,7 @@ function updateSukunaBarrage(attacker, defender) {
       dir: attacker.barrageDir,
       aimX: attacker.barrageDir,
       aimY: -0.2,
+      comboSlowTicks: defender.comboSlowTicks || 0,
       playerHealth: defender.health
     });
   }
@@ -14755,6 +14836,7 @@ function startSukunaGrabThrow(attacker, defender, damage, knockback) {
       dir: attacker.grabThrowDir,
       aimX: 0,
       aimY: 0,
+      comboSlowTicks: defender.comboSlowTicks || 0,
       playerHealth: defender.health
     });
   }
@@ -14839,6 +14921,7 @@ function updateSukunaGrabThrow(attacker, defender) {
       dir: Math.sign(aimX) || attacker.grabThrowDir,
       aimX,
       aimY,
+      comboSlowTicks: defender.comboSlowTicks || 0,
       playerHealth: defender.health
     });
   }
@@ -14899,6 +14982,7 @@ function applyBackThrowHit(attacker, defender) {
       knockdownTimer: defender.knockdownTimer,
       throwX: defender.x,
       throwY: defender.y,
+      comboSlowTicks: defender.comboSlowTicks || 0,
       playerHealth: defender.health
     });
   }
@@ -14946,8 +15030,8 @@ function applyHit(attacker, defender) {
   const attackType = attacker.attacking;
   const comboHitsBefore = attacker.comboCount;
   const isHeavyHit = attackType === "heavy";
-  const heavyFinisher = isHeavyHit && comboHitsBefore > 0;
-  const finalLightHit = attackType === "light" && comboHitsBefore + 1 >= getPunchHitLimit(attacker);
+  const heavyFinisher = isHeavyHit && attacker.punchFinisher === "heavy";
+  const finalLightHit = attackType === "light" && attacker.punchFinisher === "light";
   const blocked = isBlockingAttack(defender, attacker.dir);
   const bluePunchActive = isBluePunchActive(attacker);
   const comboFinisher = heavyFinisher || finalLightHit;
@@ -14958,7 +15042,7 @@ function applyHit(attacker, defender) {
   const scaledAttackDamage = blocked ? rawAttackDamage : Math.ceil(rawAttackDamage * getComboDamageScale(attacker));
   const baseDamage = blocked ? 0 : scaledAttackDamage;
   const damage = getTakenDamage(defender, baseDamage);
-  if (blocked) damageShield(defender, rawAttackDamage);
+  if (blocked) { damageShield(defender, rawAttackDamage); resetCombo(attacker); }
   const sukunaBarrageFinisher = attacker.technique === "shrine" && finalLightHit && !blocked;
   if (sukunaBarrageFinisher) {
     const barrageKnockbackScale = 1 + comboHitsBefore * 0.14;
@@ -15054,6 +15138,40 @@ function applyHit(attacker, defender) {
       attacker.comboChainTimer = 0;
       attacker.queuedAttack = null;
     }
+    if (heavyFinisher && attacker.technique === "brawler") {
+      defender.knockdown = false;
+      defender.knockdownTimer = 0;
+      defender.vx = attacker.dir * 3;
+      defender.vy = 0;
+      defender.stun = Math.max(defender.stun, 66);
+    }
+    if (finalLightHit && isLight(attacker)) {
+      defender.vx = attacker.dir * 5;
+      defender.vy = -15;
+      defender.grounded = false;
+      defender.onPlatform = false;
+      defender.stun = Math.max(defender.stun, 32);
+    }
+    if (finalLightHit && isDavid(attacker)) {
+      // A short earned Sande burst works even while the manual skill is cooling down.
+      attacker.davidSandevistanTicks = Math.max(attacker.davidSandevistanTicks || 0, 90);
+      attacker.davidSandeMeleeArmed = true;
+      defender.comboSlowTicks = Math.max(defender.comboSlowTicks || 0, 90);
+      defender.vx = attacker.dir * 8;
+      showActionWarning("SANDEVISTAN COMBO");
+    }
+    if (finalLightHit && isBeast(attacker) && defender.health > 0) {
+      attacker.beastComboTicks = 28;
+      attacker.beastComboHit = false;
+      attacker.attacking = null;
+      attacker.vx = -attacker.dir * 8;
+      attacker.vy = -5;
+      attacker.grounded = false;
+      attacker.onPlatform = false;
+      defender.vx = attacker.dir * 2;
+      defender.vy = 0;
+      defender.stun = Math.max(defender.stun, 30);
+    }
     if (attackType === "heavy" || attacker.comboCount >= getPunchHitLimit(attacker)) {
       queuePunchCooldown(attacker);
     }
@@ -15101,6 +15219,7 @@ function applyHit(attacker, defender) {
       attackerBluePunchActiveTicks: didBlueChase ? attacker.bluePunchActiveTicks : null,
       gojoRedHeavy: gojoRedHeavyFinisher,
       gojoPushPull: gojoPushPullFinisher,
+      comboSlowTicks: defender.comboSlowTicks || 0,
       playerHealth: defender.health
     });
   }
@@ -15111,6 +15230,7 @@ function applyOnlineDamageToPlayer(hit) {
   if (Number.isFinite(hit.deathNoteSlowTicks)) player.deathNoteSlowTicks = Math.max(player.deathNoteSlowTicks || 0, Math.min(360, hit.deathNoteSlowTicks));
   if (Number.isFinite(hit.deathNoteFearTicks)) player.deathNoteFearTicks = Math.max(player.deathNoteFearTicks || 0, Math.min(360, hit.deathNoteFearTicks));
   enemy.hasHit = true;
+  if (Number.isFinite(hit.comboSlowTicks)) player.comboSlowTicks = Math.max(player.comboSlowTicks || 0, Math.min(90, hit.comboSlowTicks));
 
   // ONLINE_P2_HIT_MOVEMENT_FIX
   // Trust the joiner's immediate hit prediction for Player 1's movement.
@@ -15326,6 +15446,7 @@ function applyProjectileHit(projectile, defender) {
       stun: defender.stun,
       vy: defender.vy,
       ultimateHit: projectile.move === "purple",
+      comboSlowTicks: defender.comboSlowTicks || 0,
       playerHealth: defender.health
     });
   }
@@ -15383,6 +15504,7 @@ function applyFugaExplosionDamage(projectile, defender) {
       aimY: pushY - 0.25,
       stun: defender.stun,
       vy: defender.vy,
+      comboSlowTicks: defender.comboSlowTicks || 0,
       playerHealth: defender.health
     });
   }
@@ -16912,6 +17034,12 @@ function updateEnemyAi() {
 }
 
 function updateFighter(f, opponent) {
+  // Real-time duration, half-speed movement and combat while caught in David's burst.
+  if ((f.comboSlowTicks || 0) > 0 && !f.ko) {
+    f.comboSlowTicks -= 1;
+    f.comboSlowPhase = ((f.comboSlowPhase || 0) + 1) % 2;
+    if (f.comboSlowPhase) return;
+  }
   f.rctCooldown = Math.max(0, (f.rctCooldown || 0) - 1);
   updateSimpleDomain(f);
   updateBindingVow(f);
@@ -17045,7 +17173,7 @@ function updateFighter(f, opponent) {
   if (f.fugaCooldown > 0) f.fugaCooldown -= 1;
   if (f.knockdownTimer > 0) f.knockdownTimer -= 1;
   if (f.comboChainTimer > 0) f.comboChainTimer -= 1;
-  if (f.comboTimer > 0) {
+  if (f.comboTimer > 0 && !f.attacking) {
     f.comboTimer -= 1;
     if (f.comboTimer <= 0) resetCombo(f);
   }
@@ -17104,6 +17232,7 @@ function updateFighter(f, opponent) {
       if (endedAttack === "backThrow" && !didHit) f.punchCooldown = Math.max(f.punchCooldown || 0, Math.round(BACK_THROW_COOLDOWN_TICKS * 0.65));
       else if (f.pendingPunchCooldown) beginPunchCooldown(f);
       else if (canStartQueued) beginAttack(f, nextAttack);
+      else if (!didHit) resetCombo(f);
     }
   }
   if (!f.attacking && f.pendingPunchCooldown) beginPunchCooldown(f);
@@ -20419,6 +20548,10 @@ function getLightMeleeRyukPose(f) {
   const x = lerp(home.x, contact.x - dir * LIGHT_RYUK_REACH * scale, drive);
   const y = lerp(home.y, contact.y - LIGHT_RYUK_HAND_Y * scale, drive);
   let hand = { x: lerp(22, LIGHT_RYUK_REACH, drive), y: lerp(-46, LIGHT_RYUK_HAND_Y, drive) };
+  if (f.attacking === "light" && f.punchFinisher === "light") {
+    const scoop = clamp01((f.attackFrame - attack.windup + 3) / (attack.active + 3));
+    hand.y += lerp(28, -48, easeOutQuad(scoop)) * drive;
+  }
   if (f.attacking === "backThrow" && f.attackFrame >= attack.windup) {
     // The same attached arm follows the lift and over-shoulder release.
     const swing = clamp01((f.attackFrame - attack.windup) / (attack.active + 8));
